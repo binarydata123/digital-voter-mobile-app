@@ -1,5 +1,10 @@
 import { api } from "./api";
-import { ensureAuthSession } from "./authentication";
+import {
+  ensureAuthSession,
+  getCurrentUser,
+  hasPoliticianPageAccess,
+  type AuthUser,
+} from "./authentication";
 
 export type SurveyResponseInput = {
   electionType: string;
@@ -82,6 +87,7 @@ export type WardHeatMapPayload = {
 };
 
 const SURVEY_BASE_PATH = "/politician/survey";
+const currentYear = String(new Date().getFullYear());
 
 function surveyEndpoint(path: string) {
   return `${SURVEY_BASE_PATH}/${path.replace(/^\/+/, "")}`;
@@ -105,14 +111,48 @@ function compactParams(params: Partial<SurveyScope>) {
   );
 }
 
+
+export function buildAssignedSurveyScope(
+  user: AuthUser | null = getCurrentUser(),
+): SurveyScope {
+  return {
+    electionType: "Rajya Sabha",
+    electionYear: currentYear,
+    state: user?.state ?? "",
+    district: user?.district ?? "",
+    city: user?.constituency ?? "",
+    wardNo: user?.ward ?? "",
+  };
+}
+
+export async function getAssignedSurveyScope() {
+  const { user } = await ensureAuthSession();
+  if (!hasPoliticianPageAccess("survey", user)) {
+    throw new Error("Survey page is disabled for this account.");
+  }
+  return buildAssignedSurveyScope(user);
+}
+
 async function get<T>(endpoint: string, params: Partial<SurveyScope>, fallback: T) {
-  await ensureAuthSession();
+  const { user } = await ensureAuthSession();
+  if (!hasPoliticianPageAccess("survey", user)) {
+    throw new Error("Survey page is disabled for this account.");
+  }
   const response = await api.get(endpoint, { params: compactParams(params) });
   return unwrapData<T>(response.data, fallback);
 }
 
 export async function fetchSurveySummary(scope: SurveyScope) {
   return get<SurveySummary>(surveyEndpoint("summary"), scope, emptySummary);
+}
+
+export async function saveSurveyResponse(input: SurveyResponseInput) {
+  const { user } = await ensureAuthSession();
+  if (!hasPoliticianPageAccess("survey", user)) {
+    throw new Error("Survey page is disabled for this account.");
+  }
+  const response = await api.post(SURVEY_BASE_PATH, input);
+  return unwrapData(response.data, { success: true });
 }
 
 export async function fetchSupportByAgeGroup(scope: SurveyScope) {
@@ -161,7 +201,10 @@ export async function fetchMajorPublicConcerns(scope: SurveyScope) {
 }
 
 export async function fetchWardHeatMap(scope: SurveyScope) {
-  await ensureAuthSession();
+  const { user } = await ensureAuthSession();
+  if (!hasPoliticianPageAccess("survey", user)) {
+    throw new Error("Survey page is disabled for this account.");
+  }
   const response = await api.get(surveyEndpoint("summary/ward-heat-map"), {
     params: compactParams({ ...scope, view: "wards" } as Partial<SurveyScope> & { view: string }),
   });

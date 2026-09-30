@@ -28,9 +28,18 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { VoterCard } from "@/features/voters/components/VoterCard";
-import { VoterSlipPreview } from "@/features/voters/components/VoterSlipPreview";
-import { getCurrentUser, logoutPolitician } from "@/services/authentication";
+import {
+  shareVoterSlipPdf,
+  VoterSlipPreview,
+} from "@/features/voters/components/VoterSlipPreview";
+import {
+  getCurrentUser,
+  getDefaultPoliticianRoute,
+  hasPoliticianPageAccess,
+  logoutPolitician,
+} from "@/services/authentication";
 import { buildVoterStats, fetchVoters, type Voter } from "@/services/voters";
+import { shareVoterSlip } from "@/utils/shareVoterSlip";
 
 type PrintScope = "single" | "family";
 type SlipPreviewRequest = {
@@ -53,8 +62,18 @@ export default function VotersScreen() {
   const [printTypeRequest, setPrintTypeRequest] =
     useState<PrintTypeRequest | null>(null);
   const [logoutChoiceVisible, setLogoutChoiceVisible] = useState(false);
+  const currentUser = getCurrentUser();
+  const canOpenSurvey = hasPoliticianPageAccess("survey", currentUser);
+  const canUseTemplates = hasPoliticianPageAccess("template", currentUser);
 
   const loadVoters = useCallback(async () => {
+    if (currentUser && !hasPoliticianPageAccess("voters", currentUser)) {
+      const nextRoute = getDefaultPoliticianRoute(currentUser);
+      router.replace(nextRoute ?? "/login");
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const list = await fetchVoters();
@@ -71,7 +90,7 @@ export default function VotersScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -128,8 +147,10 @@ export default function VotersScreen() {
   }
 
   function openSurveyPage() {
-    setLogoutChoiceVisible(false);
-    router.push("/politician/survey");
+    if (canOpenSurvey) {
+      setLogoutChoiceVisible(false);
+      router.push("/politician/survey");
+    }
   }
 
   function handlePrint(voter: Voter) {
@@ -138,6 +159,15 @@ export default function VotersScreen() {
 
   function handleFamily(voter: Voter) {
     setPrintTypeRequest({ voter, scope: "family" });
+  }
+
+  async function handleShareVoterSlip(voter: Voter) {
+    await shareVoterSlipPdf(
+      voter,
+      canUseTemplates,
+      currentUser?.bannerImage,
+      voter.whatsappNumber || voter.mobileNumber,
+    );
   }
 
   function openSlipPreview(withBanner: boolean) {
@@ -332,6 +362,8 @@ export default function VotersScreen() {
               // onScan={handleScan}
               onPrint={handlePrint}
               onFamily={handleFamily}
+              // onShare={handleShareVoterSlip}
+              onShare={shareVoterSlip}
             />
           )}
         />
@@ -345,24 +377,36 @@ export default function VotersScreen() {
             style={styles.logoutChoiceBackdrop}
           />
           <View style={styles.logoutChoicePanel}>
-            <Text style={styles.logoutChoiceTitle}>Before you leave</Text>
-            <Pressable
-              accessibilityLabel="Close logout options"
-              onPress={() => setLogoutChoiceVisible(false)}
-              style={styles.logoutChoiceClose}
-            >
-              <X color="#64748B" size={20} strokeWidth={2.6} />
-            </Pressable>
+            <View style={styles.logoutChoiceHeader}>
+              <Text style={styles.logoutChoiceTitle}>Before you leave</Text>
+              <Pressable
+                accessibilityLabel="Close logout options"
+                onPress={() => setLogoutChoiceVisible(false)}
+                style={styles.logoutChoiceClose}
+              >
+                <X color="#64748B" size={20} strokeWidth={2.6} />
+              </Pressable>
+            </View>
 
             <Text style={styles.logoutChoiceMessage}>
-              Open the survey report or confirm logout from this account.
+              {canOpenSurvey
+                ? "Open the survey page or confirm logout from this account."
+                : "Confirm logout from this account."}
             </Text>
 
             <View style={styles.logoutChoiceActions}>
-              <Pressable onPress={openSurveyPage} style={styles.surveyChoiceButton}>
-                <Text style={styles.surveyChoiceText}>Open Survey Page</Text>
-              </Pressable>
-              <Pressable onPress={confirmLogout} style={styles.logoutConfirmButton}>
+              {canOpenSurvey ? (
+                <Pressable
+                  onPress={openSurveyPage}
+                  style={styles.surveyChoiceButton}
+                >
+                  <Text style={styles.surveyChoiceText}>Open Survey Page</Text>
+                </Pressable>
+              ) : null}
+              <Pressable
+                onPress={confirmLogout}
+                style={styles.logoutConfirmButton}
+              >
                 <Text style={styles.logoutConfirmText}>Logout</Text>
               </Pressable>
             </View>
@@ -398,22 +442,26 @@ export default function VotersScreen() {
                 </Pressable>
               </View>
 
-              <PrintChoiceRow
-                icon={
-                  printTypeRequest.scope === "family" ? "family-print" : "print"
-                }
-                title={
-                  printTypeRequest.scope === "family"
-                    ? "Print Family Members with Banner"
-                    : "Print Voter Slip with Banner"
-                }
-                subtitle={
-                  printTypeRequest.scope === "family"
-                    ? "Family member slips with banner."
-                    : "Voter slip with banner image."
-                }
-                onPress={() => openSlipPreview(true)}
-              />
+              {canUseTemplates ? (
+                <PrintChoiceRow
+                  icon={
+                    printTypeRequest.scope === "family"
+                      ? "family-print"
+                      : "print"
+                  }
+                  title={
+                    printTypeRequest.scope === "family"
+                      ? "Print Family Members with Banner"
+                      : "Print Voter Slip with Banner"
+                  }
+                  subtitle={
+                    printTypeRequest.scope === "family"
+                      ? "Family member slips with banner."
+                      : "Voter slip with banner image."
+                  }
+                  onPress={() => openSlipPreview(true)}
+                />
+              ) : null}
               <PrintChoiceRow
                 icon={printTypeRequest.scope === "family" ? "family" : "print"}
                 title={
@@ -747,13 +795,16 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 8,
     padding: 18,
-    paddingTop: 46,
+    paddingTop: 18,
     gap: 10,
   },
+  logoutChoiceHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
   logoutChoiceClose: {
-    position: "absolute",
-    top: 10,
-    right: 10,
     width: 32,
     height: 32,
     borderRadius: 16,

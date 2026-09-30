@@ -16,6 +16,9 @@ export type AuthUser = {
   state?: string;
   imageUrl?: string;
   bannerImage?: string;
+  showVoterPage: boolean;
+  showTemplatePage: boolean;
+  showSurveyPage: boolean;
 };
 
 type LoginPayload = {
@@ -68,7 +71,16 @@ function normalizeUser(raw: any): AuthUser {
     state: source?.state ?? profile?.state ?? states?.[0],
     imageUrl: source?.imageUrl ?? source?.profileImage ?? source?.photo ?? profile?.profileImage,
     bannerImage: source?.bannerImage ?? profile?.bannerImage,
+    showVoterPage: normalizeAccessFlag(source?.showVoterPage ?? profile?.showVoterPage),
+    showTemplatePage: normalizeAccessFlag(source?.showTemplatePage ?? profile?.showTemplatePage),
+    showSurveyPage: normalizeAccessFlag(source?.showSurveyPage ?? profile?.showSurveyPage),
   };
+}
+
+function normalizeAccessFlag(value: unknown) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value.toLowerCase() !== "false";
+  return true;
 }
 
 function firstArrayValue(...values: unknown[]) {
@@ -172,6 +184,25 @@ async function loadStoredUser() {
 
   hasLoadedStoredUser = true;
   return currentUser;
+}
+
+export type PoliticianPage = "voters" | "survey" | "template";
+
+export function hasPoliticianPageAccess(
+  page: PoliticianPage,
+  user: AuthUser | null = getCurrentUser(),
+) {
+  if (!user) return false;
+  if (page === "voters") return user.showVoterPage;
+  if (page === "survey") return user.showSurveyPage;
+  return user.showTemplatePage;
+}
+
+export function getDefaultPoliticianRoute(user: AuthUser | null = getCurrentUser()) {
+  if (!user) return null;
+  if (user.showVoterPage) return "/politician/voters";
+  if (user.showSurveyPage) return "/politician/survey";
+  return null;
 }
 
 export function setAuthSession(token: string | null, user: AuthUser | null) {

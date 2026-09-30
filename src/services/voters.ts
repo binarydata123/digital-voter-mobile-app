@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { ensureAuthSession, getCurrentUser } from "./authentication";
+import { ensureAuthSession, getCurrentUser, hasPoliticianPageAccess } from "./authentication";
 
 export type Voter = {
   id: string;
@@ -17,6 +17,8 @@ export type Voter = {
   serialNo?: string;
   pollingStation?: string;
   relation?: string;
+  whatsappNumber?: string;
+  mobileNumber?: string;
 };
 
 export type VoterStats = {
@@ -249,6 +251,40 @@ function normalizeVoter(raw: any, index: number): Voter {
         "",
       ),
     ),
+    whatsappNumber: String(
+      firstValue(
+        data?.["WhatsApp No"],
+        data?.["Whatsapp No"],
+        data?.["WhatsApp Number"],
+        data?.["Whatsapp Number"],
+        data?.whatsappNumber,
+        data?.whatsappNo,
+        data?.whatsAppNumber,
+        data?.whats_app_number,
+        data?.whatsapp,
+        data?.WhatsApp,
+        raw?.whatsappNumber,
+        raw?.whatsappNo,
+        "",
+      ),
+    ),
+    mobileNumber: String(
+      firstValue(
+        data?.["Mobile No"],
+        data?.["Mobile Number"],
+        data?.Phone,
+        data?.phone,
+        data?.mobile,
+        data?.mobileNumber,
+        data?.mobile_no,
+        data?.contactNumber,
+        data?.contact_no,
+        raw?.mobileNumber,
+        raw?.mobile,
+        raw?.phone,
+        "",
+      ),
+    ),
   };
 }
 
@@ -288,7 +324,10 @@ export function buildVoterStats(voters: Voter[]): VoterStats {
 }
 
 export async function fetchVoters(query: VoterQuery = {}): Promise<Voter[]> {
-  await ensureAuthSession();
+  const { user } = await ensureAuthSession();
+  if (!hasPoliticianPageAccess("voters", user)) {
+    throw new Error("Voter page is disabled for this account.");
+  }
   const politician = getCurrentUser();
 
   const response = await api.get("/politician/voters", {
@@ -298,6 +337,8 @@ export async function fetchVoters(query: VoterQuery = {}): Promise<Voter[]> {
       search: query.search || undefined,
       district: query.district || politician?.district || undefined,
       state: query.state || politician?.state || undefined,
+      wardNo: query.ward || politician?.ward || undefined,
+      ward: query.ward || politician?.ward || undefined,
       boothNo: query.booth || undefined,
       includeCounts: false,
     },
@@ -308,7 +349,10 @@ export async function fetchVoters(query: VoterQuery = {}): Promise<Voter[]> {
 
 export async function fetchVoterById(epicNo: string): Promise<Voter | null> {
   try {
-    await ensureAuthSession();
+    const { user } = await ensureAuthSession();
+    if (!hasPoliticianPageAccess("voters", user)) {
+      throw new Error("Voter page is disabled for this account.");
+    }
 
     const response = await api.get(
       `/politician/voters/epic/${encodeURIComponent(epicNo)}`,

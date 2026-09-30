@@ -14,7 +14,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { loginPolitician } from "@/services/authentication";
+import {
+  getDefaultPoliticianRoute,
+  loginPolitician,
+  logoutPolitician,
+} from "@/services/authentication";
 
 export default function LoginScreen() {
   const [phone, setPhone] = useState("");
@@ -33,8 +37,19 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      await loginPolitician({ phone: phone.trim(), password });
-      router.replace("/politician/voters");
+      const { user } = await loginPolitician({ phone: phone.trim(), password });
+      const nextRoute = getDefaultPoliticianRoute(user);
+
+      if (!nextRoute) {
+        logoutPolitician();
+        Alert.alert(
+          "Access disabled",
+          "No mobile pages are enabled for this politician account.",
+        );
+        return;
+      }
+
+      router.replace(nextRoute);
     } catch (error: any) {
       Alert.alert("Unable to login", error?.message ?? "Please try again.");
     } finally {

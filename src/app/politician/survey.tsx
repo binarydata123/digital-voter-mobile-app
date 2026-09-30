@@ -1,994 +1,994 @@
+import { Image } from "expo-image";
 import { router } from "expo-router";
-import { ArrowLeft } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  BarChart3,
+  CheckCircle2,
+  ChevronDown,
+  ClipboardList,
+  LogOut,
+  MapPin,
+  X,
+} from "lucide-react-native";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Modal,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { getCurrentUser, logoutPolitician } from "@/services/authentication";
 import {
-  fetchSurveyReport,
-  type PreferenceByEducationItem,
-  type PreferenceByGenderItem,
-  type PreferenceByIncomeItem,
-  type SupportByAgeGroupItem,
+  getCurrentUser,
+  getDefaultPoliticianRoute,
+  hasPoliticianPageAccess,
+  logoutPolitician,
+} from "@/services/authentication";
+import {
+  buildAssignedSurveyScope,
+  getAssignedSurveyScope,
+  saveSurveyResponse,
+  type SurveyResponseInput,
   type SurveyScope,
-  type SurveySummary,
-  type WardHeatMapItem,
 } from "@/services/survey";
 
+const GENDERS = ["Male", "Female", "Other"];
 const AGE_BRACKETS = ["18-25", "26-35", "36-50", "50+"];
-const COLORS = [
-  "#225451",
-  "#2563EB",
-  "#F97316",
-  "#16A34A",
-  "#8B5CF6",
-  "#64748B",
+const EDUCATION = [
+  "Primary / Basic",
+  "10th / 12th Pass",
+  "Graduate",
+  "PG / Professional",
 ];
-const currentYear = String(new Date().getFullYear());
+const INCOME = ["< ₹15k", "₹15k-35k", "₹35k-75k", "₹75k+"];
+const OCCUPATIONS = [
+  "Private Job / Staff",
+  "State Government",
+  "Central / Army",
+  "Business / Trader",
+  "Farmer / Agriculture",
+  "Daily Wage / Labour",
+  "Homemaker",
+  "Student",
+];
+const CONCERNS = [
+  "Jobs & Youth",
+  "Inflation / Mehngai",
+  "Roads & Transport",
+  "Water Supply",
+  "Healthcare",
+  "Education",
+  "Safety & Crime",
+  "Farming & Agriculture",
+];
+const POLITICIANS = [
+  { name: "Ram", party: "Congress" },
+  { name: "Testing", party: "BJP" },
+];
 
-const emptySummary: SurveySummary = {
-  total: 0,
-  party: [],
+type ScopeField = keyof SurveyScope;
+type FormState = Omit<
+  SurveyResponseInput,
+  keyof SurveyScope | "preferredParty" | "preferredPolitician"
+> & {
+  preferredPolitician: string;
+  preferredParty: string;
+};
+
+const emptyForm: FormState = {
+  gender: "",
+  ageBracket: "",
+  education: "",
+  incomeBracket: "",
+  occupation: "",
   issues: [],
-  occupations: [],
-  occupationSupport: [],
+  preferredPolitician: "",
+  preferredParty: "",
 };
 
-type SurveyReport = Awaited<ReturnType<typeof fetchSurveyReport>>;
-
-type BarRow = {
-  label: string;
-  count: number;
-  percentage?: number;
-  color?: string;
-  meta?: string;
+const scopeLabels: Record<ScopeField, string> = {
+  electionType: "Election Type *",
+  electionYear: "Election Year *",
+  state: "State *",
+  district: "District *",
+  city: "City *",
+  wardNo: "Ward *",
 };
-
-function getDefaultScope(): SurveyScope {
-  const user = getCurrentUser();
-  return {
-    electionType: "Vidhan Sabha",
-    electionYear: currentYear,
-    state: user?.state ?? "",
-    district: user?.district ?? "",
-    city: user?.constituency ?? "",
-    wardNo: user?.ward ?? "",
-  };
-}
-
-function formatPercent(value: number) {
-  return `${Math.round(value * 10) / 10}%`;
-}
-
-function initials(name: string) {
-  return (
-    name
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase())
-      .join("") || "?"
-  );
-}
-
-function colorFor(index: number) {
-  return COLORS[index % COLORS.length];
-}
 
 export default function SurveyScreen() {
-  const [scope, setScope] = useState<SurveyScope>(() => getDefaultScope());
-  const [report, setReport] = useState<SurveyReport>({
-    summary: emptySummary,
-    supportByAgeGroup: [],
-    preferenceByGender: [],
-    preferenceByEducation: [],
-    preferenceByIncome: [],
-    majorPublicConcerns: [],
-    wardHeatMap: [],
-  });
-  const [loading, setLoading] = useState(false);
+  const [scope, setScope] = useState<SurveyScope>(() =>
+    buildAssignedSurveyScope(),
+  );
+  const [form, setForm] = useState<FormState>(emptyForm);
+  const [activeDropdown, setActiveDropdown] = useState<ScopeField | null>(null);
+  const [loadingScope, setLoadingScope] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [logoutChoiceVisible, setLogoutChoiceVisible] = useState(false);
 
-  const canLoad = Boolean(
-    scope.electionType && scope.electionYear && scope.state && scope.district,
+  useEffect(() => {
+    let mounted = true;
+    getAssignedSurveyScope()
+      .then((assignedScope) => {
+        if (mounted) setScope(assignedScope);
+      })
+      .catch((loadError: any) => {
+        if (loadError?.message === "Please sign in again to continue.") {
+          logoutPolitician();
+          router.replace("/login");
+          return;
+        }
+        if (mounted) {
+          setError(loadError?.message ?? "Could not load assigned ward.");
+        }
+      })
+      .finally(() => {
+        if (mounted) setLoadingScope(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const currentUser = getCurrentUser();
+  const canOpenVoters = hasPoliticianPageAccess("voters", currentUser);
+  const politicianName = currentUser?.name ?? "Testing";
+  const locationLabel = [scope.city, scope.state].filter(Boolean).join(", ");
+
+  useEffect(() => {
+    if (currentUser && !hasPoliticianPageAccess("survey", currentUser)) {
+      const nextRoute = getDefaultPoliticianRoute(currentUser);
+      router.replace(nextRoute ?? "/login");
+    }
+  }, [currentUser]);
+
+  const scopeOptions = useMemo<Record<ScopeField, string[]>>(
+    () => ({
+      electionType: uniqueValues(
+        scope.electionType,
+        "Rajya Sabha",
+        "Vidhan Sabha",
+        "Lok Sabha",
+      ),
+      electionYear: uniqueValues(scope.electionYear, "2026", "2025", "2024"),
+      state: uniqueValues(scope.state),
+      district: uniqueValues(scope.district),
+      city: uniqueValues(scope.city),
+      wardNo: uniqueValues(scope.wardNo),
+    }),
+    [scope],
   );
 
-  const loadReport = useCallback(async () => {
-    if (!canLoad) {
-      setError("Election type, year, state, and district are required.");
+  const candidateOptions = useMemo(() => {
+    const userName = currentUser?.name?.trim();
+    if (!userName || POLITICIANS.some((item) => item.name === userName)) {
+      return POLITICIANS;
+    }
+    return [{ name: userName, party: "Assigned" }, ...POLITICIANS];
+  }, [currentUser?.name]);
+
+  function updateScope(field: ScopeField, value: string) {
+    setMessage("");
+    setError("");
+    setScope((current) => ({ ...current, [field]: value }));
+    setActiveDropdown(null);
+  }
+
+  function setSingle(field: keyof FormState, value: string) {
+    setMessage("");
+    setError("");
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function toggleConcern(issue: string) {
+    setMessage("");
+    setError("");
+    setForm((current) => ({
+      ...current,
+      issues: current.issues.includes(issue)
+        ? current.issues.filter((item) => item !== issue)
+        : [...current.issues, issue],
+    }));
+  }
+
+  function choosePolitician(name: string, party: string) {
+    setMessage("");
+    setError("");
+    setForm((current) => ({
+      ...current,
+      preferredPolitician: name,
+      preferredParty: party,
+    }));
+  }
+
+  function validate() {
+    if (
+      !scope.electionType ||
+      !scope.electionYear ||
+      !scope.state ||
+      !scope.district ||
+      !scope.wardNo
+    ) {
+      return "Election location and assigned ward are required.";
+    }
+    if (
+      !form.gender ||
+      !form.ageBracket ||
+      !form.education ||
+      !form.incomeBracket ||
+      !form.occupation
+    ) {
+      return "Please select one option in every voter profile section.";
+    }
+    if (!form.issues.length) {
+      return "Please choose at least one major concern.";
+    }
+    if (!form.preferredPolitician) {
+      return "Please choose the likely preferred politician.";
+    }
+    return "";
+  }
+
+  async function handleSave() {
+    const validationError = validate();
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
-    setLoading(true);
+    setSaving(true);
     try {
-      const nextReport = await fetchSurveyReport(scope);
-      setReport(nextReport);
+      await saveSurveyResponse({ ...scope, ...form });
+      setForm(emptyForm);
+      setMessage("Survey response saved for assigned ward.");
       setError("");
-    } catch (loadError: any) {
-      if (loadError?.message === "Please sign in again to continue.") {
+    } catch (saveError: any) {
+      if (saveError?.message === "Please sign in again to continue.") {
         logoutPolitician();
         router.replace("/login");
         return;
       }
       setError(
-        loadError?.response?.data?.message ??
-          loadError?.message ??
-          "Could not load survey report.",
+        saveError?.response?.data?.message ??
+          saveError?.message ??
+          "Could not save survey response.",
       );
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
-  }, [canLoad, scope]);
+  }
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadReport();
-  }, [loadReport]);
+  function handleLogout() {
+    setLogoutChoiceVisible(true);
+  }
 
-  const leader = report.summary.party[0];
-  const partyRows = useMemo(
-    () =>
-      report.summary.party.map((item, index) => ({
-        label: item._id,
-        count: item.count,
-        percentage: report.summary.total
-          ? (item.count / report.summary.total) * 100
-          : 0,
-        color: colorFor(index),
-      })),
-    [report.summary.party, report.summary.total],
-  );
-  const issueRows = useMemo(
-    () =>
-      report.majorPublicConcerns.slice(0, 10).map((item, index) => ({
-        label: item.issue,
-        count: item.count,
-        color: index === 0 ? "#F97316" : "#FB923C",
-      })),
-    [report.majorPublicConcerns],
-  );
-  const sectorRows = useMemo(() => {
-    const winnerName = leader?._id;
-    return report.summary.occupations.map((occupation) => {
-      const support = report.summary.occupationSupport
-        .filter(
-          (item) =>
-            item._id.occupation === occupation._id &&
-            item._id.politician === winnerName,
-        )
-        .reduce((total, item) => total + item.count, 0);
-      return {
-        label: occupation._id,
-        count: support,
-        percentage: occupation.count ? (support / occupation.count) * 100 : 0,
-        meta: `${occupation.count} responses`,
-        color: "#225451",
-      };
-    });
-  }, [
-    leader?._id,
-    report.summary.occupationSupport,
-    report.summary.occupations,
-  ]);
+  function confirmLogout() {
+    setLogoutChoiceVisible(false);
+    logoutPolitician();
+    router.replace("/login");
+  }
 
-  function updateScope(field: keyof SurveyScope, value: string) {
-    setScope((current) => ({ ...current, [field]: value }));
+  function openVoterPage() {
+    if (canOpenVoters) {
+      setLogoutChoiceVisible(false);
+      router.push("/politician/voters");
+    }
   }
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={loading}
-            onRefresh={loadReport}
-            tintColor="#0F766E"
-          />
-        }
-      >
-        <View style={styles.topRow}>
-          <Pressable
-            accessibilityLabel="Back to voters"
-            onPress={() => router.replace("/politician/voters")}
-            style={styles.iconButton}
-          >
-            <ArrowLeft color="#0F766E" size={21} strokeWidth={3} />
-          </Pressable>
-          {/* <Pressable accessibilityLabel="Refresh survey report" onPress={loadReport} disabled={loading} style={styles.refreshButton}>
-            {loading ? <ActivityIndicator color="#FFFFFF" /> : <RefreshCw color="#FFFFFF" size={18} strokeWidth={2.8} />}
-            <Text style={styles.refreshText}>Refresh</Text>
-          </Pressable> */}
+      <View style={styles.header}>
+        <Image
+          source={require("../../../assets/images/vote.jpeg")}
+          style={styles.headerImage}
+          contentFit="cover"
+          // contentPosition={{ left: "62%", top: "42%" }}
+          transition={120}
+        />
+        <View style={styles.headerOverlay} />
+
+        <View style={styles.headerTop}>
+          <View />
+          <View style={styles.headerActions}>
+            <Pressable
+              accessibilityLabel="Survey report"
+              onPress={() => router.push("/politician/survey-report")}
+              style={styles.headerIconButton}
+            >
+              <BarChart3 color="#0F766E" size={18} strokeWidth={2.8} />
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Logout"
+              onPress={handleLogout}
+              style={[styles.headerIconButton, styles.logoutButton]}
+            >
+              <LogOut color="#FFFFFF" size={18} strokeWidth={2.8} />
+            </Pressable>
+          </View>
         </View>
 
-        <View style={styles.hero}>
-          <Text style={styles.eyebrow}>SURVEY REPORT</Text>
-          {/* <Text style={styles.title}>Constituency survey signal</Text> */}
-          <Text style={styles.subtitle}>
-            Review party support, age groups, demographics, public concerns, and
-            ward signals from saved survey responses.
+        <View style={styles.headerCopy}>
+          <Text style={styles.eyebrow}>GROUND SURVEY</Text>
+          <Text numberOfLines={1} style={styles.title}>
+            {politicianName}
           </Text>
+          <Text style={styles.boothTitle}>
+            Ward-{scope.wardNo || "Assigned"}
+          </Text>
+          {locationLabel ? (
+            <View style={styles.locationRow}>
+              <MapPin color="#087568" size={14} strokeWidth={2.8} />
+              <Text numberOfLines={1} style={styles.location}>
+                {locationLabel}
+              </Text>
+            </View>
+          ) : null}
         </View>
+      </View>
 
-        <View style={styles.filterCard}>
-          <FilterInput
-            label="Election Type"
-            value={scope.electionType}
-            onChangeText={(value) => updateScope("electionType", value)}
-          />
-          <FilterInput
-            label="Election Year"
-            value={scope.electionYear}
-            keyboardType="number-pad"
-            onChangeText={(value) => updateScope("electionYear", value)}
-          />
-          <FilterInput
-            label="State"
-            value={scope.state}
-            onChangeText={(value) => updateScope("state", value)}
-          />
-          <FilterInput
-            label="District"
-            value={scope.district}
-            onChangeText={(value) => updateScope("district", value)}
-          />
-          <FilterInput
-            label="City"
-            value={scope.city}
-            onChangeText={(value) => updateScope("city", value)}
-          />
-          <FilterInput
-            label="Ward No"
-            value={scope.wardNo}
-            onChangeText={(value) => updateScope("wardNo", value)}
-          />
-        </View>
-
-        {error ? <Text style={styles.warning}>{error}</Text> : null}
-
-        <View style={styles.summaryCard}>
-          <View>
-            <Text style={styles.summaryLabel}>Total responses</Text>
-            <Text style={styles.summaryValue}>{report.summary.total}</Text>
+      <View style={styles.body}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.scopeCard}>
+            <View style={styles.scopeGrid}>
+              {(Object.keys(scopeLabels) as ScopeField[]).map((field) => (
+                <DropdownField
+                  key={field}
+                  label={scopeLabels[field]}
+                  value={scope[field]}
+                  onPress={() => setActiveDropdown(field)}
+                />
+              ))}
+            </View>
           </View>
-          <View style={styles.leaderBadge}>
-            <Text style={styles.leaderBadgeLabel}>Leading</Text>
-            <Text style={styles.leaderBadgeText}>
-              {leader?._id ?? "No data"}
+
+          {loadingScope ? (
+            <ActivityIndicator color="#0F766E" style={styles.scopeLoader} />
+          ) : null}
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {message ? <Text style={styles.success}>{message}</Text> : null}
+
+          <OptionSection
+            title="Gender"
+            options={GENDERS}
+            value={form.gender}
+            onSelect={(value) => setSingle("gender", value)}
+            columns={3}
+          />
+          <OptionSection
+            title="Age bracket"
+            options={AGE_BRACKETS}
+            value={form.ageBracket}
+            onSelect={(value) => setSingle("ageBracket", value)}
+            columns={2}
+          />
+          <OptionSection
+            title="Education"
+            options={EDUCATION}
+            value={form.education}
+            onSelect={(value) => setSingle("education", value)}
+            columns={2}
+          />
+          <OptionSection
+            title="Monthly household income"
+            options={INCOME}
+            value={form.incomeBracket}
+            onSelect={(value) => setSingle("incomeBracket", value)}
+            columns={2}
+          />
+          <OptionSection
+            title="Occupation"
+            options={OCCUPATIONS}
+            value={form.occupation}
+            onSelect={(value) => setSingle("occupation", value)}
+            columns={2}
+          />
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              Major concerns{" "}
+              <Text style={styles.hint}>(choose one or more)</Text>
             </Text>
+            <View style={styles.optionGrid}>
+              {CONCERNS.map((issue) => (
+                <OptionButton
+                  key={issue}
+                  label={issue}
+                  selected={form.issues.includes(issue)}
+                  onPress={() => toggleConcern(issue)}
+                  columns={2}
+                />
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Likely preferred politician</Text>
+            <View style={styles.optionGrid}>
+              {candidateOptions.map((candidate) => (
+                <Pressable
+                  key={`${candidate.name}-${candidate.party}`}
+                  onPress={() =>
+                    choosePolitician(candidate.name, candidate.party)
+                  }
+                  style={[
+                    styles.optionButton,
+                    styles.twoColumn,
+                    form.preferredPolitician === candidate.name &&
+                      styles.optionButtonActive,
+                  ]}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.optionText,
+                      form.preferredPolitician === candidate.name &&
+                        styles.optionTextActive,
+                    ]}
+                  >
+                    {candidate.name}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.partyText,
+                      form.preferredPolitician === candidate.name &&
+                        styles.optionTextActive,
+                    ]}
+                  >
+                    {candidate.party}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          <Pressable
+            disabled={saving || loadingScope}
+            onPress={handleSave}
+            style={[
+              styles.saveButton,
+              (saving || loadingScope) && styles.disabledButton,
+            ]}
+          >
+            {saving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <CheckCircle2 color="#FFFFFF" size={18} strokeWidth={2.8} />
+            )}
+            <Text style={styles.saveText}>Save</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => router.push("/politician/survey-report")}
+            style={styles.reportButton}
+          >
+            <ClipboardList color="#087568" size={17} strokeWidth={2.7} />
+            <Text style={styles.reportText}>View report</Text>
+          </Pressable>
+        </ScrollView>
+      </View>
+
+      {logoutChoiceVisible ? (
+        <View style={styles.logoutChoiceOverlay}>
+          <Pressable
+            accessibilityLabel="Cancel logout"
+            onPress={() => setLogoutChoiceVisible(false)}
+            style={styles.logoutChoiceBackdrop}
+          />
+          <View style={styles.logoutChoicePanel}>
+            <View style={styles.logoutChoiceHeader}>
+              <Text style={styles.logoutChoiceTitle}>Before you leave</Text>
+              <Pressable
+                accessibilityLabel="Close logout options"
+                onPress={() => setLogoutChoiceVisible(false)}
+                style={styles.logoutChoiceClose}
+              >
+                <X color="#64748B" size={20} strokeWidth={2.6} />
+              </Pressable>
+            </View>
+
+            <Text style={styles.logoutChoiceMessage}>
+              {canOpenVoters
+                ? "Open the voter page or confirm logout from this account."
+                : "Confirm logout from this account."}
+            </Text>
+
+            <View style={styles.logoutChoiceActions}>
+              {canOpenVoters ? (
+                <Pressable
+                  onPress={openVoterPage}
+                  style={styles.voterChoiceButton}
+                >
+                  <Text style={styles.voterChoiceText}>Open Voter Page</Text>
+                </Pressable>
+              ) : null}
+              <Pressable onPress={confirmLogout} style={styles.logoutConfirmButton}>
+                <Text style={styles.logoutConfirmText}>Logout</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
+      ) : null}
 
-        {report.summary.total === 0 && !loading ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No anonymous responses yet</Text>
-            <Text style={styles.emptyText}>
-              Save survey responses for this location to generate the report.
-            </Text>
-          </View>
+      <Modal
+        transparent
+        visible={Boolean(activeDropdown)}
+        animationType="fade"
+        onRequestClose={() => setActiveDropdown(null)}
+      >
+        {activeDropdown ? (
+          <Pressable
+            style={styles.dropdownBackdrop}
+            onPress={() => setActiveDropdown(null)}
+          >
+            <Pressable style={styles.dropdownSheet}>
+              <View style={styles.handle} />
+              <Text style={styles.dropdownTitle}>
+                {scopeLabels[activeDropdown]}
+              </Text>
+              {scopeOptions[activeDropdown].map((option) => {
+                const selected = scope[activeDropdown] === option;
+                return (
+                  <Pressable
+                    key={option}
+                    onPress={() => updateScope(activeDropdown, option)}
+                    style={[
+                      styles.dropdownOption,
+                      selected && styles.dropdownOptionActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.dropdownOptionText,
+                        selected && styles.dropdownOptionTextActive,
+                      ]}
+                    >
+                      {option || "Assigned after login"}
+                    </Text>
+                    {selected ? (
+                      <CheckCircle2
+                        color="#087568"
+                        size={18}
+                        strokeWidth={2.7}
+                      />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </Pressable>
+          </Pressable>
         ) : null}
-
-        <CandidateSupport summary={report.summary} />
-        <BarChart
-          title="Party support"
-          subtitle="Vote preference by politician"
-          rows={partyRows}
-          showPercent
-        />
-        <AgeGroupSupportChart data={report.supportByAgeGroup} />
-        <PreferenceByGenderChart data={report.preferenceByGender} />
-        <PreferenceByEducationChart data={report.preferenceByEducation} />
-        <PreferenceByIncomeChart data={report.preferenceByIncome} />
-        <BarChart
-          title="Sector support index"
-          subtitle="Support for current lead by occupation"
-          rows={sectorRows}
-          showPercent
-        />
-        <MajorPublicConcernsChart data={issueRows} />
-        <WardHeatMapChart wards={report.wardHeatMap} />
-      </ScrollView>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-function FilterInput({
+function uniqueValues(...values: string[]) {
+  const unique = values.map((value) => value.trim()).filter(Boolean);
+  return unique.length ? Array.from(new Set(unique)) : [""];
+}
+
+function DropdownField({
   label,
   value,
-  onChangeText,
-  keyboardType,
+  onPress,
 }: {
   label: string;
   value: string;
-  onChangeText: (value: string) => void;
-  keyboardType?: "default" | "number-pad";
+  onPress: () => void;
 }) {
   return (
-    <View style={styles.filterField}>
-      <Text style={styles.filterLabel}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType}
-        placeholder={label}
-        placeholderTextColor="#94A3B8"
-        style={styles.filterInput}
-      />
+    <View style={styles.fieldWrap}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <Pressable onPress={onPress} style={styles.dropdownField}>
+        <Text numberOfLines={1} style={styles.dropdownText}>
+          {value || "Assigned after login"}
+        </Text>
+        <ChevronDown color="#64748B" size={16} strokeWidth={2.8} />
+      </Pressable>
     </View>
   );
 }
 
-function CandidateSupport({ summary }: { summary: SurveySummary }) {
-  const rows = summary.party.map((item, index) => ({
-    ...item,
-    percent: summary.total ? (item.count / summary.total) * 100 : 0,
-    color: colorFor(index),
-  }));
-
-  if (!rows.length) return null;
-
+function OptionSection({
+  title,
+  options,
+  value,
+  onSelect,
+  columns,
+}: {
+  title: string;
+  options: string[];
+  value: string;
+  onSelect: (value: string) => void;
+  columns: 2 | 3;
+}) {
   return (
-    <View style={styles.darkCard}>
-      <View style={styles.darkHeader}>
-        <View>
-          <Text style={styles.darkEyebrow}>LIVE SURVEY SIGNAL</Text>
-          <Text style={styles.darkTitle}>Candidate support</Text>
-        </View>
-        <Text style={styles.darkPill}>{summary.total} samples</Text>
-      </View>
-      <View style={styles.candidateGrid}>
-        {rows.map((candidate, index) => (
-          <View
-            key={candidate._id}
-            style={[
-              styles.candidateCard,
-              index === 0 && styles.leadingCandidate,
-            ]}
-          >
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initials(candidate._id)}</Text>
-            </View>
-            <View style={styles.candidateCopy}>
-              <Text numberOfLines={1} style={styles.candidateName}>
-                {candidate._id}
-              </Text>
-              <Text style={styles.candidateMeta}>
-                {index === 0 ? "Leading" : "Support"}
-              </Text>
-            </View>
-            <Text style={styles.candidatePercent}>
-              {formatPercent(candidate.percent)}
-            </Text>
-          </View>
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.optionGrid}>
+        {options.map((option) => (
+          <OptionButton
+            key={option}
+            label={option}
+            selected={value === option}
+            onPress={() => onSelect(option)}
+            columns={columns}
+          />
         ))}
       </View>
     </View>
   );
 }
 
-function BarChart({
-  title,
-  subtitle,
-  rows,
-  showPercent = false,
+function OptionButton({
+  label,
+  selected,
+  onPress,
+  columns,
 }: {
-  title: string;
-  subtitle?: string;
-  rows: BarRow[];
-  showPercent?: boolean;
-}) {
-  const maxCount = Math.max(...rows.map((row) => row.count), 0);
-
-  return (
-    <View style={styles.chartCard}>
-      <ChartHeader title={title} subtitle={subtitle} />
-      {rows.length === 0 ? <EmptyChartText /> : null}
-      {rows.map((row, index) => {
-        const width = showPercent
-          ? (row.percentage ?? 0)
-          : maxCount
-            ? (row.count / maxCount) * 100
-            : 0;
-        return (
-          <View key={`${row.label}-${index}`} style={styles.barRow}>
-            <View style={styles.barLabelRow}>
-              <Text numberOfLines={1} style={styles.barLabel}>
-                {row.label}
-              </Text>
-              <Text style={styles.barValue}>
-                {showPercent ? formatPercent(row.percentage ?? 0) : row.count}
-              </Text>
-            </View>
-            {row.meta ? <Text style={styles.barMeta}>{row.meta}</Text> : null}
-            <View style={styles.track}>
-              <View
-                style={[
-                  styles.barFill,
-                  {
-                    width: `${Math.min(100, width)}%`,
-                    backgroundColor: row.color ?? colorFor(index),
-                  },
-                ]}
-              />
-            </View>
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
-function AgeGroupSupportChart({ data }: { data: SupportByAgeGroupItem[] }) {
-  const politicians = Array.from(
-    new Set(data.flatMap((group) => group.support.map((item) => item.name))),
-  );
-  const groups = AGE_BRACKETS.map(
-    (bracket) =>
-      data.find((group) => group.ageBracket === bracket) ?? {
-        ageBracket: bracket,
-        total: 0,
-        support: [],
-      },
-  );
-
-  return (
-    <View style={styles.chartCard}>
-      <ChartHeader
-        title="Age-group support"
-        subtitle="Percent of each age group"
-      />
-      {politicians.length === 0 ? <EmptyChartText /> : null}
-      <Legend names={politicians} />
-      {groups.map((group) => (
-        <View key={group.ageBracket} style={styles.groupBlock}>
-          <View style={styles.groupHeader}>
-            <Text style={styles.groupTitle}>{group.ageBracket}</Text>
-            <Text style={styles.groupMeta}>{group.total} voters</Text>
-          </View>
-          {politicians.map((name, index) => {
-            const row = group.support.find((item) => item.name === name);
-            const percentage = row?.percentage ?? 0;
-            return (
-              <View key={name} style={styles.miniBarRow}>
-                <Text numberOfLines={1} style={styles.miniBarLabel}>
-                  {name}
-                </Text>
-                <View style={styles.miniTrack}>
-                  <View
-                    style={[
-                      styles.miniFill,
-                      {
-                        width: `${percentage}%`,
-                        backgroundColor: colorFor(index),
-                      },
-                    ]}
-                  />
-                </View>
-                <Text style={styles.miniValue}>
-                  {formatPercent(percentage)}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function PreferenceByGenderChart({ data }: { data: PreferenceByGenderItem[] }) {
-  return (
-    <PreferenceChart
-      title="Preference by gender"
-      groups={data.map((item) => ({
-        label: item.gender,
-        total: item.total,
-        preferences: item.preferences,
-      }))}
-    />
-  );
-}
-
-function PreferenceByEducationChart({
-  data,
-}: {
-  data: PreferenceByEducationItem[];
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  columns: 2 | 3;
 }) {
   return (
-    <PreferenceChart
-      title="Preference by education"
-      groups={data.map((item) => ({
-        label: item.education,
-        total: item.total,
-        preferences: item.preferences,
-      }))}
-    />
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles.optionButton,
+        columns === 2 ? styles.twoColumn : styles.threeColumn,
+        selected && styles.optionButtonActive,
+      ]}
+    >
+      <Text
+        numberOfLines={2}
+        style={[styles.optionText, selected && styles.optionTextActive]}
+      >
+        {label}
+      </Text>
+    </Pressable>
   );
-}
-
-function PreferenceByIncomeChart({ data }: { data: PreferenceByIncomeItem[] }) {
-  return (
-    <PreferenceChart
-      title="Preference by income"
-      groups={data.map((item) => ({
-        label: item.incomeBracket,
-        total: item.total,
-        preferences: item.preferences,
-      }))}
-    />
-  );
-}
-
-function PreferenceChart({
-  title,
-  groups,
-}: {
-  title: string;
-  groups: {
-    label: string;
-    total: number;
-    preferences: { name: string; count: number; percentage?: number }[];
-  }[];
-}) {
-  return (
-    <View style={styles.chartCard}>
-      <ChartHeader title={title} subtitle="Top preference inside each group" />
-      {groups.length === 0 ? <EmptyChartText /> : null}
-      {groups.map((group) => {
-        const top = [...group.preferences].sort((a, b) => b.count - a.count)[0];
-        const pct = top
-          ? (top.percentage ??
-            (group.total ? (top.count / group.total) * 100 : 0))
-          : 0;
-        return (
-          <View key={group.label} style={styles.preferenceRow}>
-            <View style={styles.preferenceTop}>
-              <View>
-                <Text style={styles.preferenceLabel}>{group.label}</Text>
-                <Text style={styles.preferenceMeta}>
-                  {group.total} responses
-                </Text>
-              </View>
-              <View style={styles.preferenceRight}>
-                <Text numberOfLines={1} style={styles.preferenceName}>
-                  {top?.name ?? "No data"}
-                </Text>
-                <Text style={styles.preferencePercent}>
-                  {formatPercent(pct)}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.track}>
-              <View
-                style={[
-                  styles.barFill,
-                  {
-                    width: `${Math.min(100, pct)}%`,
-                    backgroundColor: "#225451",
-                  },
-                ]}
-              />
-            </View>
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
-function MajorPublicConcernsChart({ data }: { data: BarRow[] }) {
-  return (
-    <BarChart
-      title="Major public concerns"
-      subtitle="Issues raised most often by survey respondents"
-      rows={data}
-    />
-  );
-}
-
-function WardHeatMapChart({ wards }: { wards: WardHeatMapItem[] }) {
-  return (
-    <View style={styles.chartCard}>
-      <ChartHeader
-        title="Ward support heat map"
-        subtitle="Leading support percent by ward"
-      />
-      {wards.length === 0 ? (
-        <EmptyChartText message="No ward survey data is available." />
-      ) : null}
-      <View style={styles.wardGrid}>
-        {wards.map((ward) => {
-          const pct = ward.leader?.percentage ?? 0;
-          return (
-            <View
-              key={ward.wardNo}
-              style={[styles.wardCell, { backgroundColor: getHeatColor(pct) }]}
-            >
-              <Text style={[styles.wardNo, pct >= 60 && styles.wardNoLight]}>
-                {ward.wardNo}
-              </Text>
-              <Text style={[styles.wardPct, pct >= 60 && styles.wardNoLight]}>
-                {pct}%
-              </Text>
-              <Text
-                numberOfLines={1}
-                style={[styles.wardLeader, pct >= 60 && styles.wardNoLight]}
-              >
-                {ward.leader?.name ?? "No lead"}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-function getHeatColor(percentage: number) {
-  if (percentage >= 70) return "#166534";
-  if (percentage >= 50) return "#65A30D";
-  if (percentage >= 30) return "#EAB308";
-  if (percentage > 0) return "#F97316";
-  return "#E5E7EB";
-}
-
-function Legend({ names }: { names: string[] }) {
-  if (!names.length) return null;
-  return (
-    <View style={styles.legend}>
-      {names.map((name, index) => (
-        <View key={name} style={styles.legendItem}>
-          <View
-            style={[styles.legendSwatch, { backgroundColor: colorFor(index) }]}
-          />
-          <Text numberOfLines={1} style={styles.legendText}>
-            {name}
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function ChartHeader({
-  title,
-  subtitle,
-}: {
-  title: string;
-  subtitle?: string;
-}) {
-  return (
-    <View style={styles.chartHeader}>
-      <Text style={styles.chartTitle}>{title}</Text>
-      {subtitle ? <Text style={styles.chartSubtitle}>{subtitle}</Text> : null}
-    </View>
-  );
-}
-
-function EmptyChartText({
-  message = "No survey data yet.",
-}: {
-  message?: string;
-}) {
-  return <Text style={styles.emptyChartText}>{message}</Text>;
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F4FBF7" },
-  content: { padding: 16, paddingBottom: 36, gap: 14 },
-  topRow: {
+  header: {
+    minHeight: 198,
+    backgroundColor: "#DFF1EA",
+    paddingHorizontal: 18,
+    paddingTop: 8,
+    paddingBottom: 20,
+    overflow: "hidden",
+  },
+  headerImage: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    // left: 0,
+    width: "155%",
+    height: "100%",
+    // transform: [{ translateX: 18 }, { translateY: -10 }, { scale: 1.14 }],
+  },
+  headerOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    // backgroundColor: "rgba(244, 251, 247, 0.32)",
+  },
+  headerTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 8,
   },
-  iconButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 10,
+  headerActions: { flexDirection: "row", gap: 10 },
+  headerIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#DDE7E3",
+    shadowColor: "#0F766E",
+    shadowOpacity: 0.14,
+    shadowRadius: 9,
+    elevation: 3,
   },
-  refreshButton: {
-    height: 42,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    backgroundColor: "#087568",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+  logoutButton: { backgroundColor: "#087568" },
+  headerCopy: {
+    width: "62%",
+    maxWidth: 250,
+    marginTop: 8,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    // backgroundColor: "rgba(255, 255, 255, 0.72)",
   },
-  refreshText: { color: "#FFFFFF", fontSize: 13, fontWeight: "900" },
-  hero: { backgroundColor: "#0B2020", borderRadius: 8, padding: 18 },
   eyebrow: {
-    color: "#6EE7B7",
+    color: "#55718A",
     fontSize: 11,
     fontWeight: "900",
-    letterSpacing: 1.2,
+    letterSpacing: 0.2,
   },
   title: {
-    color: "#FFFFFF",
-    fontSize: 26,
-    lineHeight: 32,
+    color: "#0F172A",
+    fontSize: 25,
+    lineHeight: 29,
     fontWeight: "900",
-    marginTop: 5,
+    marginTop: 1,
   },
-  subtitle: {
-    color: "#CCFBF1",
-    fontSize: 13,
-    lineHeight: 20,
-    fontWeight: "700",
-    marginTop: 8,
+  boothTitle: {
+    color: "#087568",
+    fontSize: 19,
+    lineHeight: 23,
+    fontWeight: "900",
   },
-  filterCard: {
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 3,
+  },
+  location: { color: "#087568", fontSize: 12, fontWeight: "900", flex: 1 },
+  body: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    marginTop: -20,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    backgroundColor: "#F4FBF7",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 4,
+  },
+  content: { paddingBottom: 34, gap: 14 },
+  scopeCard: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#DDE8EF",
+    padding: 14,
+    shadowColor: "#718096",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  scopeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  fieldWrap: { width: "100%", gap: 6 },
+  fieldLabel: { color: "#334155", fontSize: 12, fontWeight: "900" },
+  dropdownField: {
+    minHeight: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#C5D5E6",
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FFFFFF",
+    gap: 8,
+  },
+  dropdownText: { flex: 1, color: "#1E293B", fontSize: 14, fontWeight: "700" },
+  scopeLoader: { alignSelf: "flex-start", marginTop: -2 },
+  section: { gap: 9 },
+  sectionTitle: { color: "#334155", fontSize: 14, fontWeight: "900" },
+  hint: { color: "#94A3B8", fontWeight: "700" },
+  optionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  optionButton: {
+    minHeight: 44,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    padding: 14,
-    gap: 10,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 9,
+    paddingVertical: 8,
   },
-  filterField: { gap: 6 },
-  filterLabel: { color: "#334155", fontSize: 12, fontWeight: "900" },
-  filterInput: {
-    minHeight: 44,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#DDE7E3",
-    backgroundColor: "#F8FAFC",
-    paddingHorizontal: 12,
-    color: "#0F172A",
+  optionButtonActive: { backgroundColor: "#064E3B", borderColor: "#064E3B" },
+  twoColumn: { width: "48.7%" },
+  threeColumn: { width: "31.8%" },
+  optionText: {
+    color: "#475569",
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  optionTextActive: { color: "#FFFFFF" },
+  partyText: {
+    color: "#64748B",
+    fontSize: 11,
     fontWeight: "800",
-    outlineWidth: 0,
-    outlineColor: "transparent",
+    marginTop: 2,
+    textAlign: "center",
   },
-  warning: {
+  saveButton: {
+    minHeight: 50,
+    borderRadius: 14,
+    backgroundColor: "#064E3B",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.16,
+    shadowRadius: 9,
+    elevation: 3,
+  },
+  saveText: { color: "#FFFFFF", fontSize: 15, fontWeight: "900" },
+  reportButton: {
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#087568",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#FFFFFF",
+  },
+  reportText: { color: "#087568", fontSize: 14, fontWeight: "900" },
+  disabledButton: { opacity: 0.65 },
+  error: {
     backgroundColor: "#FFF7ED",
     borderColor: "#FED7AA",
     borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
     color: "#9A3412",
-    padding: 12,
-    borderRadius: 8,
+    fontWeight: "700",
+  },
+  success: {
+    backgroundColor: "#ECFDF5",
+    borderColor: "#BBF7D0",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
+    color: "#047857",
     fontWeight: "800",
   },
-  summaryCard: {
+  logoutChoiceOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+  logoutChoiceBackdrop: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: "rgba(15, 23, 42, 0.52)",
+  },
+  logoutChoicePanel: {
+    width: "100%",
+    maxWidth: 340,
     backgroundColor: "#FFFFFF",
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    padding: 16,
+    padding: 18,
+    paddingTop: 18,
+    gap: 10,
+  },
+  logoutChoiceHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 12,
   },
-  summaryLabel: { color: "#64748B", fontSize: 12, fontWeight: "900" },
-  summaryValue: { color: "#0F172A", fontSize: 34, fontWeight: "900" },
-  leaderBadge: {
-    maxWidth: "58%",
-    backgroundColor: "#E8F3EF",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    alignItems: "flex-end",
-  },
-  leaderBadgeLabel: { color: "#225451", fontSize: 10, fontWeight: "900" },
-  leaderBadgeText: {
-    color: "#0F172A",
-    fontSize: 13,
-    fontWeight: "900",
-    textAlign: "right",
-  },
-  emptyCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    padding: 18,
+  logoutChoiceClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
+    justifyContent: "center",
   },
-  emptyTitle: { color: "#0F172A", fontSize: 16, fontWeight: "900" },
-  emptyText: {
+  logoutChoiceTitle: { color: "#0F172A", fontSize: 18, fontWeight: "900" },
+  logoutChoiceMessage: {
     color: "#64748B",
     fontSize: 13,
     lineHeight: 19,
     fontWeight: "700",
-    marginTop: 5,
-    textAlign: "center",
+    marginBottom: 4,
   },
-  darkCard: {
-    backgroundColor: "#153C3A",
-    borderRadius: 8,
-    padding: 16,
-    gap: 14,
-  },
-  darkHeader: {
+  logoutChoiceActions: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
-  },
-  darkEyebrow: {
-    color: "#A7F3D0",
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 1.1,
-  },
-  darkTitle: {
-    color: "#FFFFFF",
-    fontSize: 20,
-    fontWeight: "900",
-    marginTop: 3,
-  },
-  darkPill: {
-    color: "#6EE7B7",
-    fontSize: 11,
-    fontWeight: "900",
-    borderWidth: 1,
-    borderColor: "#34D399",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  candidateGrid: { gap: 10 },
-  candidateCard: {
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderRadius: 8,
-    padding: 12,
-    flexDirection: "row",
-    alignItems: "center",
     gap: 10,
   },
-  leadingCandidate: {
-    borderColor: "#34D399",
-    backgroundColor: "rgba(52,211,153,0.12)",
-  },
-  avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "rgba(255,255,255,0.14)",
+  voterChoiceButton: {
+    flex: 1,
+    minWidth: 0,
+    height: 46,
+    borderRadius: 8,
+    backgroundColor: "#087568",
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 8,
   },
-  avatarText: { color: "#FFFFFF", fontWeight: "900" },
-  candidateCopy: { flex: 1, minWidth: 0 },
-  candidateName: { color: "#FFFFFF", fontSize: 14, fontWeight: "900" },
-  candidateMeta: {
-    color: "#CBD5E1",
-    fontSize: 10,
+  voterChoiceText: {
+    color: "#FFFFFF",
+    fontSize: 13,
     fontWeight: "900",
-    marginTop: 2,
+    textAlign: "center",
   },
-  candidatePercent: { color: "#6EE7B7", fontSize: 20, fontWeight: "900" },
-  chartCard: {
-    backgroundColor: "#FFFFFF",
+  logoutConfirmButton: {
+    flex: 1,
+    minWidth: 0,
+    height: 46,
     borderRadius: 8,
+    backgroundColor: "#FEE2E2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  logoutConfirmText: {
+    color: "#B91C1C",
+    fontSize: 13,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  dropdownBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15,23,42,0.46)",
+    justifyContent: "flex-end",
+  },
+  dropdownSheet: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 20,
+    paddingBottom: 34,
+    gap: 10,
+  },
+  handle: {
+    width: 42,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#CBD5E1",
+    alignSelf: "center",
+    marginBottom: 6,
+  },
+  dropdownTitle: {
+    color: "#0F172A",
+    fontSize: 18,
+    fontWeight: "900",
+    marginBottom: 4,
+  },
+  dropdownOption: {
+    minHeight: 48,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    padding: 16,
-    gap: 12,
-  },
-  chartHeader: { gap: 3 },
-  chartTitle: { color: "#0F172A", fontSize: 17, fontWeight: "900" },
-  chartSubtitle: { color: "#64748B", fontSize: 12, fontWeight: "700" },
-  emptyChartText: {
-    color: "#64748B",
-    fontSize: 13,
-    fontWeight: "700",
-    paddingVertical: 4,
-  },
-  barRow: { gap: 6 },
-  barLabelRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  barLabel: { flex: 1, color: "#334155", fontSize: 13, fontWeight: "900" },
-  barValue: { color: "#0F766E", fontSize: 12, fontWeight: "900" },
-  barMeta: { color: "#94A3B8", fontSize: 11, fontWeight: "700" },
-  track: {
-    height: 9,
-    backgroundColor: "#EEF2F7",
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-  barFill: { height: "100%", borderRadius: 999 },
-  legend: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  legendItem: {
-    maxWidth: "48%",
+    paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-  },
-  legendSwatch: { width: 10, height: 10, borderRadius: 2 },
-  legendText: { color: "#475569", fontSize: 11, fontWeight: "800" },
-  groupBlock: {
-    borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
-    paddingTop: 10,
-    gap: 8,
-  },
-  groupHeader: { flexDirection: "row", justifyContent: "space-between" },
-  groupTitle: { color: "#0F172A", fontWeight: "900" },
-  groupMeta: { color: "#94A3B8", fontSize: 11, fontWeight: "800" },
-  miniBarRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  miniBarLabel: {
-    width: 88,
-    color: "#475569",
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  miniTrack: {
-    flex: 1,
-    height: 7,
-    backgroundColor: "#EEF2F7",
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-  miniFill: { height: "100%", borderRadius: 999 },
-  miniValue: {
-    width: 42,
-    color: "#0F766E",
-    fontSize: 11,
-    fontWeight: "900",
-    textAlign: "right",
-  },
-  preferenceRow: {
-    gap: 7,
-    borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
-    paddingTop: 10,
-  },
-  preferenceTop: {
-    flexDirection: "row",
     justifyContent: "space-between",
-    gap: 12,
+    gap: 10,
   },
-  preferenceLabel: { color: "#0F172A", fontSize: 13, fontWeight: "900" },
-  preferenceMeta: {
-    color: "#94A3B8",
-    fontSize: 11,
-    fontWeight: "700",
-    marginTop: 2,
-  },
-  preferenceRight: { flex: 1, alignItems: "flex-end", minWidth: 0 },
-  preferenceName: {
-    color: "#225451",
-    fontSize: 12,
-    fontWeight: "900",
-    maxWidth: "100%",
-  },
-  preferencePercent: {
-    color: "#0F766E",
-    fontSize: 12,
-    fontWeight: "900",
-    marginTop: 2,
-  },
-  wardGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  wardCell: {
-    width: "31.7%",
-    minHeight: 86,
-    borderRadius: 8,
-    padding: 8,
-    justifyContent: "space-between",
-  },
-  wardNo: { color: "#0F172A", fontSize: 12, fontWeight: "900" },
-  wardPct: { color: "#0F172A", fontSize: 22, fontWeight: "900" },
-  wardLeader: { color: "#334155", fontSize: 10, fontWeight: "800" },
-  wardNoLight: { color: "#FFFFFF" },
+  dropdownOptionActive: { backgroundColor: "#EAF7F2", borderColor: "#087568" },
+  dropdownOptionText: { color: "#475569", fontSize: 14, fontWeight: "900" },
+  dropdownOptionTextActive: { color: "#064E3B" },
 });

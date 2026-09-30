@@ -5,6 +5,7 @@ import * as Sharing from "expo-sharing";
 import { Download, Printer, X } from "lucide-react-native";
 import {
   Alert,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -46,7 +47,46 @@ function slugFileName(value: unknown) {
 }
 
 function formatGuardian(value: string) {
-  return String(value || "N/A").replace(/\s*\([^)]*\)\s*$/, "");
+  const text = String(value || "N/A").trim();
+  const relationStart = text.lastIndexOf(" (");
+  return relationStart > 0 && text.endsWith(")")
+    ? text.slice(0, relationStart)
+    : text;
+}
+
+function normalizeWhatsAppPhone(value?: string) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 10) return "91" + digits;
+  return digits;
+}
+
+function buildWhatsAppMessage(voter: Voter) {
+  return [
+    "Voter Slip: " + voter.name,
+    voter.epicNo ? "EPIC: " + voter.epicNo : "",
+    voter.serialNo ? "S.No.: " + voter.serialNo : "",
+    voter.booth ? "Booth: " + voter.booth : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function openWhatsAppChat(phone: string, voter: Voter) {
+  const normalizedPhone = normalizeWhatsAppPhone(phone);
+  if (!normalizedPhone) return false;
+
+  const url =
+    "whatsapp://send?phone=" +
+    normalizedPhone +
+    "&text=" +
+    encodeURIComponent(buildWhatsAppMessage(voter));
+
+  const canOpen = await Linking.canOpenURL(url);
+  if (!canOpen) return false;
+
+  await Linking.openURL(url);
+  return true;
 }
 
 /**
@@ -192,7 +232,7 @@ function buildSlipHtml(
    DOWNLOAD + PRINT (platform aware)
    ============================================================ */
 
-async function downloadSlip(
+export async function downloadSlip(
   voter: Voter,
   showBanner: boolean,
   bannerImage?: string,
@@ -239,7 +279,50 @@ async function downloadSlip(
   }
 }
 
-async function printSlip(
+export async function shareVoterSlipPdf(
+  voter: Voter,
+  showBanner: boolean,
+  bannerImage?: string,
+  whatsappNumber?: string,
+) {
+  const bannerDataUri = showBanner ? await toDataUri(bannerImage) : undefined;
+  const html = buildSlipHtml(voter, showBanner, bannerDataUri);
+
+  try {
+    if (Platform.OS === "web") {
+      Alert.alert("Share", "PDF sharing is available on mobile devices.");
+      return;
+    }
+
+    const { uri } = await Print.printToFileAsync({ html });
+
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(uri, {
+        mimeType: "application/pdf",
+        dialogTitle: whatsappNumber
+          ? "Share Voter Slip to " + voter.name
+          : "Share Voter Slip",
+        UTI: "com.adobe.pdf",
+      });
+
+      if (whatsappNumber) {
+        const opened = await openWhatsAppChat(whatsappNumber, voter);
+        if (!opened) {
+          Alert.alert(
+            "WhatsApp not available",
+            "PDF share sheet opened. Please choose WhatsApp and search the voter number manually.",
+          );
+        }
+      }
+    } else {
+      Alert.alert("Share unavailable", "Sharing is not available on this device.");
+    }
+  } catch (error: any) {
+    Alert.alert("Share failed", error?.message ?? "Unable to share the slip.");
+  }
+}
+
+export async function printSlip(
   voter: Voter,
   showBanner: boolean,
   bannerImage?: string,

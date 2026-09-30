@@ -1,12 +1,21 @@
 import {
   BadgeCheck,
+  EllipsisVertical,
   House,
   Printer,
   QrCode,
   UsersRound,
 } from "lucide-react-native";
 import { useState } from "react";
-import { Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Image,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import QRCode from "react-native-qrcode-svg";
 
 import type { Voter } from "@/services/voters";
@@ -28,17 +37,31 @@ export function VoterCard({
   onScan,
   onPrint,
   onFamily,
+  onShare,
 }: {
   voter: Voter;
   onScan?: (voter: Voter) => void;
   onPrint?: (voter: Voter) => void;
   onFamily?: (voter: Voter) => void;
+  onShare?: (voter: Voter) => Promise<void> | void;
 }) {
   const [qrVisible, setQrVisible] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   function handleQrPress() {
     setQrVisible(true);
     onScan?.(voter);
+  }
+
+  async function handleSharePress() {
+    if (!onShare || sharing) return;
+
+    setSharing(true);
+    try {
+      await onShare(voter);
+    } finally {
+      setSharing(false);
+    }
   }
 
   const qrValue = buildVoterQrValue(voter);
@@ -65,13 +88,35 @@ export function VoterCard({
                   S.No. {voter.serialNo ?? voter.id ?? "N/A"}
                 </Text>
 
-                <Pressable
-                  accessibilityLabel="Show voter QR code"
-                  onPress={handleQrPress}
-                  style={styles.scanButton}
-                >
-                  <QrCode color="#087568" size={15} strokeWidth={2.8} />
-                </Pressable>
+                <View style={styles.quickActions}>
+                  <Pressable
+                    accessibilityLabel="Show voter QR code"
+                    onPress={handleQrPress}
+                    style={styles.scanButton}
+                  >
+                    <QrCode color="#087568" size={15} strokeWidth={2.8} />
+                  </Pressable>
+
+                  <Pressable
+                    accessibilityLabel="Share voter slip"
+                    disabled={sharing}
+                    onPress={handleSharePress}
+                    style={[
+                      styles.scanButton,
+                      sharing && styles.scanButtonDisabled,
+                    ]}
+                  >
+                    {sharing ? (
+                      <ActivityIndicator color="#087568" size="small" />
+                    ) : (
+                      <EllipsisVertical
+                        color="#087568"
+                        size={15}
+                        strokeWidth={3}
+                      />
+                    )}
+                  </Pressable>
+                </View>
               </View>
             </View>
           </View>
@@ -259,6 +304,7 @@ const styles = StyleSheet.create({
   },
   cardRightRail: { alignItems: "flex-end", gap: 7 },
   boothActions: { flexDirection: "row", alignItems: "center", gap: 6 },
+  quickActions: { flexDirection: "row", alignItems: "center", gap: 5 },
   boothBadge: {
     overflow: "hidden",
     backgroundColor: "#DCFCE7",
@@ -270,7 +316,7 @@ const styles = StyleSheet.create({
     borderRadius: 9,
   },
   scanButton: {
-    width: 28,
+    width: 26,
     height: 25,
     borderRadius: 9,
     backgroundColor: "#ECFDF5",
@@ -279,6 +325,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  scanButtonDisabled: { opacity: 0.7 },
   cardFooter: {
     marginTop: 10,
     flexDirection: "row",
