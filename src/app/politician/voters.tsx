@@ -15,10 +15,10 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  type ListRenderItemInfo,
   Modal,
   Platform,
   Pressable,
-  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -27,9 +27,20 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/common/EmptyState";
+import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
 import { VoterCard } from "@/features/voters/components/VoterCard";
 import { VoterSlipPreview } from "@/features/voters/components/VoterSlipPreview";
-import { getCurrentUser, logoutPolitician } from "@/services/authentication";
+import {
+  ensureAuthSession,
+  getCurrentUser,
+  logoutPolitician,
+} from "@/services/authentication";
+import {
+  getLocalVoters,
+  hasLocalVoters,
+  replaceLocalVoters,
+} from "@/services/local-voters";
+import { isLocalVoterDatabaseAvailable } from "@/services/voter-database";
 import { buildVoterStats, fetchVoters, type Voter } from "@/services/voters";
 
 type PrintScope = "single" | "family";
@@ -57,12 +68,31 @@ export default function VotersScreen() {
   const loadVoters = useCallback(async () => {
     setLoading(true);
     try {
+      const session = await ensureAuthSession();
+      const currentPoliticianId = session.user?.id ?? null;
+
+      if (isLocalVoterDatabaseAvailable() && currentPoliticianId) {
+        if (await hasLocalVoters(currentPoliticianId)) {
+          const localVoters = await getLocalVoters(currentPoliticianId);
+          setVoters(localVoters);
+          setError("");
+          return;
+        }
+
+        const downloadedVoters = await fetchVoters();
+        await replaceLocalVoters(currentPoliticianId, downloadedVoters);
+        const localVoters = await getLocalVoters(currentPoliticianId);
+        setVoters(localVoters);
+        setError("");
+        return;
+      }
+
       const list = await fetchVoters();
       setVoters(list);
       setError("");
     } catch (loadError: any) {
       if (loadError?.message === "Please sign in again to continue.") {
-        logoutPolitician();
+        await logoutPolitician();
         router.replace("/login");
         return;
       }
@@ -78,15 +108,34 @@ export default function VotersScreen() {
     loadVoters();
   }, [loadVoters]);
 
-  const refreshCurrentVoters = useCallback(() => {
-    loadVoters();
-  }, [loadVoters]);
-
-  const refreshAllVoterData = useCallback(() => {
+  const refreshAllVoterData = useCallback(async () => {
     setActiveBooth("All");
     setQuery("");
-    loadVoters();
-  }, [loadVoters]);
+    setLoading(true);
+    try {
+      const session = await ensureAuthSession();
+      const downloadedVoters = await fetchVoters();
+      const currentPoliticianId = session.user?.id ?? null;
+
+      if (isLocalVoterDatabaseAvailable() && currentPoliticianId) {
+        await replaceLocalVoters(currentPoliticianId, downloadedVoters);
+        setVoters(await getLocalVoters(currentPoliticianId));
+      } else {
+        setVoters(downloadedVoters);
+      }
+
+      setError("");
+    } catch (refreshError: any) {
+      if (refreshError?.message === "Please sign in again to continue.") {
+        await logoutPolitician();
+        router.replace("/login");
+        return;
+      }
+      setError(refreshError?.message ?? "Unable to refresh voter data.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const booths = useMemo(
     () => ["All", ...Array.from(new Set(voters.map((voter) => voter.booth)))],
@@ -121,9 +170,9 @@ export default function VotersScreen() {
     setLogoutChoiceVisible(true);
   }
 
-  function confirmLogout() {
+  async function confirmLogout() {
     setLogoutChoiceVisible(false);
-    logoutPolitician();
+    await logoutPolitician();
     router.replace("/login");
   }
 
@@ -132,13 +181,20 @@ export default function VotersScreen() {
     router.push("/politician/survey");
   }
 
-  function handlePrint(voter: Voter) {
+  const handlePrint = useCallback((voter: Voter) => {
     setPrintTypeRequest({ voter, scope: "single" });
-  }
+  }, []);
 
-  function handleFamily(voter: Voter) {
+  const handleFamily = useCallback((voter: Voter) => {
     setPrintTypeRequest({ voter, scope: "family" });
-  }
+  }, []);
+
+  const renderVoter = useCallback(
+    ({ item }: ListRenderItemInfo<Voter>) => (
+      <VoterCard voter={item} onPrint={handlePrint} onFamily={handleFamily} />
+    ),
+    [handleFamily, handlePrint],
+  );
 
   function openSlipPreview(withBanner: boolean) {
     if (!printTypeRequest) return;
@@ -159,6 +215,10 @@ export default function VotersScreen() {
       return;
     }
     Alert.alert("Print", "Thermal printer integration will print this slip.");
+  }
+
+  if (loading) {
+    return <VoterDataSetup />;
   }
 
   return (
@@ -307,15 +367,13 @@ export default function VotersScreen() {
         <FlatList
           data={filteredVoters}
           keyExtractor={(item) => item.id}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          updateCellsBatchingPeriod={50}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS === "android"}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={loading}
-              onRefresh={refreshCurrentVoters}
-              tintColor="#0F766E"
-            />
-          }
           ListEmptyComponent={
             loading ? (
               <ActivityIndicator color="#0F766E" />
@@ -326,14 +384,7 @@ export default function VotersScreen() {
               />
             )
           }
-          renderItem={({ item }) => (
-            <VoterCard
-              voter={item}
-              // onScan={handleScan}
-              onPrint={handlePrint}
-              onFamily={handleFamily}
-            />
-          )}
+          renderItem={renderVoter}
         />
       </View>
 

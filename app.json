@@ -30,7 +30,10 @@
               "pathPrefix": "/politician/voter-slip"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -56,7 +59,14 @@
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to scan voter QR codes."
         }
       ],
-      "expo-barcode-scanner"
+      "expo-barcode-scanner",
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true,
+          "enableFTS": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

@@ -116,7 +116,7 @@ export default function SurveyScreen() {
       setError("");
     } catch (loadError: any) {
       if (loadError?.message === "Please sign in again to continue.") {
-        logoutPolitician();
+        await logoutPolitician();
         router.replace("/login");
         return;
       }

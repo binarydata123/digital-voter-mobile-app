@@ -5,7 +5,7 @@ import {
   QrCode,
   UsersRound,
 } from "lucide-react-native";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 
@@ -23,7 +23,7 @@ function buildVoterQrValue(voter: Voter): string {
   return `https://api.votersakha.tech/api/public/voter-slip.html?epicNo=${encodeURIComponent(epicNo)}`;
 }
 
-export function VoterCard({
+export const VoterCard = memo(function VoterCard({
   voter,
   onScan,
   onPrint,
@@ -35,13 +35,16 @@ export function VoterCard({
   onFamily?: (voter: Voter) => void;
 }) {
   const [qrVisible, setQrVisible] = useState(false);
+  const [qrValue, setQrValue] = useState("");
 
   function handleQrPress() {
+    const value = buildVoterQrValue(voter);
+
+    setQrValue(value);
     setQrVisible(true);
+
     onScan?.(voter);
   }
-
-  const qrValue = buildVoterQrValue(voter);
 
   return (
     <View style={styles.voterCard}>
@@ -68,8 +71,7 @@ export function VoterCard({
                 <Pressable
                   accessibilityLabel="Show voter QR code"
                   onPress={handleQrPress}
-                  style={styles.scanButton}
-                >
+                  style={styles.scanButton}>
                   <QrCode color="#087568" size={15} strokeWidth={2.8} />
                 </Pressable>
               </View>
@@ -80,8 +82,7 @@ export function VoterCard({
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.82}
-            style={styles.guardian}
-          >
+            style={styles.guardian}>
             {voter.guardian}
           </Text>
         </View>
@@ -107,8 +108,7 @@ export function VoterCard({
 
         <Pressable
           onPress={() => onFamily?.(voter)}
-          style={styles.familyButton}
-        >
+          style={styles.familyButton}>
           <UsersRound color="#087568" size={17} strokeWidth={2.5} />
           <Text style={styles.printText}>Family</Text>
         </Pressable>
@@ -119,12 +119,10 @@ export function VoterCard({
         transparent
         visible={qrVisible}
         animationType="fade"
-        onRequestClose={() => setQrVisible(false)}
-      >
+        onRequestClose={() => setQrVisible(false)}>
         <Pressable
           style={styles.qrBackdrop}
-          onPress={() => setQrVisible(false)}
-        >
+          onPress={() => setQrVisible(false)}>
           <Pressable style={styles.qrPanel}>
             <Text style={styles.qrTitle}>{voter.name}</Text>
             <Text style={styles.qrSubtitle}>
@@ -141,8 +139,7 @@ export function VoterCard({
 
             <Pressable
               onPress={() => setQrVisible(false)}
-              style={styles.qrCloseButton}
-            >
+              style={styles.qrCloseButton}>
               <Text style={styles.qrCloseText}>Close</Text>
             </Pressable>
           </Pressable>
@@ -150,7 +147,7 @@ export function VoterCard({
       </Modal>
     </View>
   );
-}
+});
 
 /* -------------------------------------------------------------
    AVATAR

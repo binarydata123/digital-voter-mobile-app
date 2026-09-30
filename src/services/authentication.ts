@@ -2,6 +2,7 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
 import { api, getApiAuthToken, setApiAuthToken } from "./api";
+import { deleteVoterDatabase } from "./voter-database";
 
 export type AuthUser = {
   id: string;
@@ -242,6 +243,12 @@ export async function loginPolitician(payload: LoginPayload): Promise<LoginResul
   throw new Error(message);
 }
 
-export function logoutPolitician() {
+export async function logoutPolitician() {
   setAuthSession(null, null);
+
+  try {
+    await deleteVoterDatabase();
+  } catch (error) {
+    console.log("Voter database cleanup error:", error);
+  }
 }
