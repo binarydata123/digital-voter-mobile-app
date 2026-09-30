@@ -23,7 +23,6 @@ export default function RootLayout() {
     const handleDeepLink = (event: { url: string }) => {
       const { path, queryParams } = Linking.parse(event.url);
 
-      // Check karein ki link hamare voter-slip ka hai aur usme voterId hai
       if (path === "politician/voter-slip" && queryParams?.voterId) {
         router.push({
           pathname: "/politician/voter-detail",
@@ -32,10 +31,8 @@ export default function RootLayout() {
       }
     };
 
-    // 1. Jab app already open ho aur tab link click ho
     const subscription = Linking.addEventListener("url", handleDeepLink);
 
-    // 2. Jab app band ho aur link click karne par app khule
     Linking.getInitialURL().then((url) => {
       if (url) {
         handleDeepLink({ url });
@@ -55,6 +52,7 @@ export default function RootLayout() {
         <Stack.Screen name="politician/voters" />
         <Stack.Screen name="politician/voter-slip" />
         <Stack.Screen name="politician/survey" />
+        <Stack.Screen name="politician/survey-report" />
         <Stack.Screen name="politician/scan" />
         <Stack.Screen name="politician/voter-detail" />
       </Stack>

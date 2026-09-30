@@ -27,12 +27,18 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/common/EmptyState";
-import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
 import { VoterCard } from "@/features/voters/components/VoterCard";
-import { VoterSlipPreview } from "@/features/voters/components/VoterSlipPreview";
+import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
+
+import {
+  shareVoterSlipPdf,
+  VoterSlipPreview,
+} from "@/features/voters/components/VoterSlipPreview";
 import {
   ensureAuthSession,
   getCurrentUser,
+  getDefaultPoliticianRoute,
+  hasPoliticianPageAccess,
   logoutPolitician,
 } from "@/services/authentication";
 import {
@@ -42,6 +48,7 @@ import {
 } from "@/services/local-voters";
 import { isLocalVoterDatabaseAvailable } from "@/services/voter-database";
 import { buildVoterStats, fetchVoters, type Voter } from "@/services/voters";
+import { shareVoterSlip } from "@/utils/shareVoterSlip";
 
 type PrintScope = "single" | "family";
 type SlipPreviewRequest = {
@@ -64,8 +71,18 @@ export default function VotersScreen() {
   const [printTypeRequest, setPrintTypeRequest] =
     useState<PrintTypeRequest | null>(null);
   const [logoutChoiceVisible, setLogoutChoiceVisible] = useState(false);
+  const currentUser = getCurrentUser();
+  const canOpenSurvey = hasPoliticianPageAccess("survey", currentUser);
+  const canUseTemplates = hasPoliticianPageAccess("template", currentUser);
 
   const loadVoters = useCallback(async () => {
+    if (currentUser && !hasPoliticianPageAccess("voters", currentUser)) {
+      const nextRoute = getDefaultPoliticianRoute(currentUser);
+      router.replace(nextRoute ?? "/login");
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const session = await ensureAuthSession();
@@ -101,7 +118,7 @@ export default function VotersScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -177,8 +194,10 @@ export default function VotersScreen() {
   }
 
   function openSurveyPage() {
-    setLogoutChoiceVisible(false);
-    router.push("/politician/survey");
+    if (canOpenSurvey) {
+      setLogoutChoiceVisible(false);
+      router.push("/politician/survey");
+    }
   }
 
   const handlePrint = useCallback((voter: Voter) => {
@@ -195,6 +214,15 @@ export default function VotersScreen() {
     ),
     [handleFamily, handlePrint],
   );
+
+  async function handleShareVoterSlip(voter: Voter) {
+    await shareVoterSlipPdf(
+      voter,
+      canUseTemplates,
+      currentUser?.bannerImage,
+      voter.whatsappNumber || voter.mobileNumber,
+    );
+  }
 
   function openSlipPreview(withBanner: boolean) {
     if (!printTypeRequest) return;
@@ -243,15 +271,13 @@ export default function VotersScreen() {
               style={[
                 styles.headerIconButton,
                 loading && styles.headerIconButtonDisabled,
-              ]}
-            >
+              ]}>
               <RefreshCw color="#0F766E" size={18} strokeWidth={2.8} />
             </Pressable>
             <Pressable
               accessibilityLabel="Logout"
               onPress={handleLogout}
-              style={[styles.headerIconButton, styles.logoutButton]}
-            >
+              style={[styles.headerIconButton, styles.logoutButton]}>
               <LogOut color="#FFFFFF" size={18} strokeWidth={2.8} />
             </Pressable>
           </View>
@@ -304,8 +330,7 @@ export default function VotersScreen() {
           </View>
           <Pressable
             style={styles.filterButton}
-            onPress={() => setModalVisible(true)}
-          >
+            onPress={() => setModalVisible(true)}>
             <SlidersHorizontal color="#FFFFFF" size={15} strokeWidth={2.8} />
             <Text style={styles.filterButtonText}>Filter</Text>
           </Pressable>
@@ -326,8 +351,7 @@ export default function VotersScreen() {
               return (
                 <Pressable
                   onPress={() => setActiveBooth(item)}
-                  style={[styles.boothTab, isActive && styles.boothTabActive]}
-                >
+                  style={[styles.boothTab, isActive && styles.boothTabActive]}>
                   {item === "All" ? (
                     <UsersRound
                       color={isActive ? "#FFFFFF" : "#087568"}
@@ -339,22 +363,19 @@ export default function VotersScreen() {
                     style={[
                       styles.boothTabText,
                       isActive && styles.boothTabTextActive,
-                    ]}
-                  >
+                    ]}>
                     {label}
                   </Text>
                   <View
                     style={[
                       styles.countBadge,
                       isActive && styles.countBadgeActive,
-                    ]}
-                  >
+                    ]}>
                     <Text
                       style={[
                         styles.countBadgeText,
                         isActive && styles.countBadgeTextActive,
-                      ]}
-                    >
+                      ]}>
                       {count}
                     </Text>
                   </View>
@@ -384,7 +405,16 @@ export default function VotersScreen() {
               />
             )
           }
-          renderItem={renderVoter}
+          renderItem={({ item }) => (
+            <VoterCard
+              voter={item}
+              // onScan={handleScan}
+              onPrint={handlePrint}
+              onFamily={handleFamily}
+              // onShare={handleShareVoterSlip}
+              onShare={shareVoterSlip}
+            />
+          )}
         />
       </View>
 
@@ -396,24 +426,33 @@ export default function VotersScreen() {
             style={styles.logoutChoiceBackdrop}
           />
           <View style={styles.logoutChoicePanel}>
-            <Text style={styles.logoutChoiceTitle}>Before you leave</Text>
-            <Pressable
-              accessibilityLabel="Close logout options"
-              onPress={() => setLogoutChoiceVisible(false)}
-              style={styles.logoutChoiceClose}
-            >
-              <X color="#64748B" size={20} strokeWidth={2.6} />
-            </Pressable>
+            <View style={styles.logoutChoiceHeader}>
+              <Text style={styles.logoutChoiceTitle}>Before you leave</Text>
+              <Pressable
+                accessibilityLabel="Close logout options"
+                onPress={() => setLogoutChoiceVisible(false)}
+                style={styles.logoutChoiceClose}>
+                <X color="#64748B" size={20} strokeWidth={2.6} />
+              </Pressable>
+            </View>
 
             <Text style={styles.logoutChoiceMessage}>
-              Open the survey report or confirm logout from this account.
+              {canOpenSurvey
+                ? "Open the survey page or confirm logout from this account."
+                : "Confirm logout from this account."}
             </Text>
 
             <View style={styles.logoutChoiceActions}>
-              <Pressable onPress={openSurveyPage} style={styles.surveyChoiceButton}>
-                <Text style={styles.surveyChoiceText}>Open Survey Page</Text>
-              </Pressable>
-              <Pressable onPress={confirmLogout} style={styles.logoutConfirmButton}>
+              {canOpenSurvey ? (
+                <Pressable
+                  onPress={openSurveyPage}
+                  style={styles.surveyChoiceButton}>
+                  <Text style={styles.surveyChoiceText}>Open Survey Page</Text>
+                </Pressable>
+              ) : null}
+              <Pressable
+                onPress={confirmLogout}
+                style={styles.logoutConfirmButton}>
                 <Text style={styles.logoutConfirmText}>Logout</Text>
               </Pressable>
             </View>
@@ -426,13 +465,11 @@ export default function VotersScreen() {
         transparent
         visible={Boolean(printTypeRequest)}
         animationType="fade"
-        onRequestClose={() => setPrintTypeRequest(null)}
-      >
+        onRequestClose={() => setPrintTypeRequest(null)}>
         {printTypeRequest ? (
           <Pressable
             style={styles.printChoiceBackdrop}
-            onPress={() => setPrintTypeRequest(null)}
-          >
+            onPress={() => setPrintTypeRequest(null)}>
             <Pressable style={styles.printChoicePanel}>
               <View style={styles.printChoiceHeader}>
                 <Text style={styles.printChoiceTitle}>
@@ -443,28 +480,31 @@ export default function VotersScreen() {
                 <Pressable
                   accessibilityLabel="Close print type"
                   onPress={() => setPrintTypeRequest(null)}
-                  style={styles.printChoiceClose}
-                >
+                  style={styles.printChoiceClose}>
                   <Text style={styles.printChoiceCloseText}>x</Text>
                 </Pressable>
               </View>
 
-              <PrintChoiceRow
-                icon={
-                  printTypeRequest.scope === "family" ? "family-print" : "print"
-                }
-                title={
-                  printTypeRequest.scope === "family"
-                    ? "Print Family Members with Banner"
-                    : "Print Voter Slip with Banner"
-                }
-                subtitle={
-                  printTypeRequest.scope === "family"
-                    ? "Family member slips with banner."
-                    : "Voter slip with banner image."
-                }
-                onPress={() => openSlipPreview(true)}
-              />
+              {canUseTemplates ? (
+                <PrintChoiceRow
+                  icon={
+                    printTypeRequest.scope === "family"
+                      ? "family-print"
+                      : "print"
+                  }
+                  title={
+                    printTypeRequest.scope === "family"
+                      ? "Print Family Members with Banner"
+                      : "Print Voter Slip with Banner"
+                  }
+                  subtitle={
+                    printTypeRequest.scope === "family"
+                      ? "Family member slips with banner."
+                      : "Voter slip with banner image."
+                  }
+                  onPress={() => openSlipPreview(true)}
+                />
+              ) : null}
               <PrintChoiceRow
                 icon={printTypeRequest.scope === "family" ? "family" : "print"}
                 title={
@@ -489,8 +529,7 @@ export default function VotersScreen() {
         transparent
         visible={Boolean(slipPreview)}
         animationType="fade"
-        onRequestClose={() => setSlipPreview(null)}
-      >
+        onRequestClose={() => setSlipPreview(null)}>
         {slipPreview ? (
           <VoterSlipPreview
             voter={slipPreview.voter}
@@ -508,12 +547,10 @@ export default function VotersScreen() {
         transparent
         visible={modalVisible}
         animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
-      >
+        onRequestClose={() => setModalVisible(false)}>
         <Pressable
           style={styles.modalBackdrop}
-          onPress={() => setModalVisible(false)}
-        >
+          onPress={() => setModalVisible(false)}>
           <View style={styles.modalSheet}>
             <View style={styles.handle} />
             <Text style={styles.modalTitle}>Booth Wise Voters</Text>
@@ -525,8 +562,7 @@ export default function VotersScreen() {
                     setActiveBooth(booth);
                     setModalVisible(false);
                   }}
-                  style={styles.modalCard}
-                >
+                  style={styles.modalCard}>
                   <Text style={styles.modalCardLabel}>{booth}</Text>
                   <Text style={styles.modalCardValue}>{count}</Text>
                 </Pressable>
@@ -798,13 +834,16 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 8,
     padding: 18,
-    paddingTop: 46,
+    paddingTop: 18,
     gap: 10,
   },
+  logoutChoiceHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
   logoutChoiceClose: {
-    position: "absolute",
-    top: 10,
-    right: 10,
     width: 32,
     height: 32,
     borderRadius: 16,
