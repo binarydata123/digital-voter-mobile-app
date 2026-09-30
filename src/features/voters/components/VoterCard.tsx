@@ -20,7 +20,7 @@ const oldWomenImage = require("@/assets/icons/old-women.png");
 
 function buildVoterQrValue(voter: Voter): string {
   const epicNo = voter.epicNo ?? voter.id ?? voter.serialNo ?? "";
-  return `https://api.votersakha.tech/api/public/voter-slip.html?epicNo=${encodeURIComponent(epicNo)}`;
+  return `https://votersakha.tech/voter-slip.html?epicNo=${encodeURIComponent(epicNo)}`;
 }
 
 export function VoterCard({
