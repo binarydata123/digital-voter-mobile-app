@@ -15,7 +15,7 @@ export function VoterDataSetup() {
           />
           <View style={styles.heroOverlay} />
           <View style={styles.brandBadge}>
-            <Text style={styles.brandText}>DIGITAL VOTER</Text>
+            <Text style={styles.brandText}>VoterSakha</Text>
           </View>
         </View>
 
