@@ -317,13 +317,15 @@ export default function VotersScreen() {
               style={[
                 styles.headerIconButton,
                 loading && styles.headerIconButtonDisabled,
-              ]}>
+              ]}
+            >
               <RefreshCw color="#0F766E" size={18} strokeWidth={2.8} />
             </Pressable>
             <Pressable
               accessibilityLabel="Logout"
               onPress={handleLogout}
-              style={[styles.headerIconButton, styles.logoutButton]}>
+              style={[styles.headerIconButton, styles.logoutButton]}
+            >
               <LogOut color="#FFFFFF" size={18} strokeWidth={2.8} />
             </Pressable>
           </View>
@@ -376,7 +378,8 @@ export default function VotersScreen() {
           </View>
           <Pressable
             style={styles.filterButton}
-            onPress={() => setModalVisible(true)}>
+            onPress={() => setModalVisible(true)}
+          >
             <SlidersHorizontal color="#FFFFFF" size={15} strokeWidth={2.8} />
             <Text style={styles.filterButtonText}>Filter</Text>
           </Pressable>
@@ -397,7 +400,8 @@ export default function VotersScreen() {
               return (
                 <Pressable
                   onPress={() => selectBooth(item)}
-                  style={[styles.boothTab, isActive && styles.boothTabActive]}>
+                  style={[styles.boothTab, isActive && styles.boothTabActive]}
+                >
                   {item === "All" ? (
                     <UsersRound
                       color={isActive ? "#FFFFFF" : "#087568"}
@@ -409,19 +413,22 @@ export default function VotersScreen() {
                     style={[
                       styles.boothTabText,
                       isActive && styles.boothTabTextActive,
-                    ]}>
+                    ]}
+                  >
                     {label}
                   </Text>
                   <View
                     style={[
                       styles.countBadge,
                       isActive && styles.countBadgeActive,
-                    ]}>
+                    ]}
+                  >
                     <Text
                       style={[
                         styles.countBadgeText,
                         isActive && styles.countBadgeTextActive,
-                      ]}>
+                      ]}
+                    >
                       {count}
                     </Text>
                   </View>
@@ -454,13 +461,13 @@ export default function VotersScreen() {
           />
         )}
 
-        <Pressable
+        {/* <Pressable
           accessibilityLabel="Open booth filter"
           onPress={() => setModalVisible(true)}
           style={styles.boothFilterHandleButton}
         >
           <View style={styles.boothFilterHandle} />
-        </Pressable>
+        </Pressable> */}
       </View>
 
       {logoutChoiceVisible ? (
@@ -476,7 +483,8 @@ export default function VotersScreen() {
               <Pressable
                 accessibilityLabel="Close logout options"
                 onPress={() => setLogoutChoiceVisible(false)}
-                style={styles.logoutChoiceClose}>
+                style={styles.logoutChoiceClose}
+              >
                 <X color="#64748B" size={20} strokeWidth={2.6} />
               </Pressable>
             </View>
@@ -491,13 +499,15 @@ export default function VotersScreen() {
               {canOpenSurvey ? (
                 <Pressable
                   onPress={openSurveyPage}
-                  style={styles.surveyChoiceButton}>
+                  style={styles.surveyChoiceButton}
+                >
                   <Text style={styles.surveyChoiceText}>Open Survey Page</Text>
                 </Pressable>
               ) : null}
               <Pressable
                 onPress={confirmLogout}
-                style={styles.logoutConfirmButton}>
+                style={styles.logoutConfirmButton}
+              >
                 <Text style={styles.logoutConfirmText}>Logout</Text>
               </Pressable>
             </View>
@@ -510,11 +520,13 @@ export default function VotersScreen() {
         transparent
         visible={Boolean(printTypeRequest)}
         animationType="fade"
-        onRequestClose={() => setPrintTypeRequest(null)}>
+        onRequestClose={() => setPrintTypeRequest(null)}
+      >
         {printTypeRequest ? (
           <Pressable
             style={styles.printChoiceBackdrop}
-            onPress={() => setPrintTypeRequest(null)}>
+            onPress={() => setPrintTypeRequest(null)}
+          >
             <Pressable style={styles.printChoicePanel}>
               <View style={styles.printChoiceHeader}>
                 <Text style={styles.printChoiceTitle}>
@@ -525,7 +537,8 @@ export default function VotersScreen() {
                 <Pressable
                   accessibilityLabel="Close print type"
                   onPress={() => setPrintTypeRequest(null)}
-                  style={styles.printChoiceClose}>
+                  style={styles.printChoiceClose}
+                >
                   <Text style={styles.printChoiceCloseText}>x</Text>
                 </Pressable>
               </View>
@@ -574,7 +587,8 @@ export default function VotersScreen() {
         transparent
         visible={Boolean(slipPreview)}
         animationType="fade"
-        onRequestClose={() => setSlipPreview(null)}>
+        onRequestClose={() => setSlipPreview(null)}
+      >
         {slipPreview ? (
           <VoterSlipPreview
             voter={slipPreview.voter}
@@ -592,10 +606,12 @@ export default function VotersScreen() {
         transparent
         visible={modalVisible}
         animationType="slide"
-        onRequestClose={() => setModalVisible(false)}>
+        onRequestClose={() => setModalVisible(false)}
+      >
         <Pressable
           style={styles.modalBackdrop}
-          onPress={() => setModalVisible(false)}>
+          onPress={() => setModalVisible(false)}
+        >
           <View style={styles.modalSheet}>
             <View style={styles.handle} />
             <Text style={styles.modalTitle}>Booth Wise Voters</Text>
@@ -607,7 +623,8 @@ export default function VotersScreen() {
                     selectBooth(booth);
                     setModalVisible(false);
                   }}
-                  style={styles.modalCard}>
+                  style={styles.modalCard}
+                >
                   <Text style={styles.modalCardLabel}>{booth}</Text>
                   <Text style={styles.modalCardValue}>{count}</Text>
                 </Pressable>
@@ -788,6 +805,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 10,
+    gap: 5,
   },
   searchBox: {
     flex: 1,
