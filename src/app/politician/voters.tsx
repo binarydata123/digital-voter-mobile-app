@@ -31,7 +31,8 @@ import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
 import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleton";
 
 import {
-  shareVoterSlipPdf,
+  shareVoterSlipImageFromRef,
+  VoterSlipPaper,
   VoterSlipPreview,
 } from "@/features/voters/components/VoterSlipPreview";
 import {
@@ -56,6 +57,7 @@ type SlipPreviewRequest = {
   withBanner: boolean;
 };
 type PrintTypeRequest = { voter: Voter; scope: PrintScope };
+type ShareImageRequest = { voter: Voter; resolve: () => void };
 
 export default function VotersScreen() {
   const [voters, setVoters] = useState<Voter[]>([]);
@@ -70,8 +72,11 @@ export default function VotersScreen() {
   );
   const [printTypeRequest, setPrintTypeRequest] =
     useState<PrintTypeRequest | null>(null);
+  const [shareImageRequest, setShareImageRequest] =
+    useState<ShareImageRequest | null>(null);
   const [logoutChoiceVisible, setLogoutChoiceVisible] = useState(false);
   const boothSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shareSlipRef = useRef<View>(null);
   const currentUser = getCurrentUser();
   const canOpenSurvey = hasPoliticianPageAccess("survey", currentUser);
   const canUseTemplates = hasPoliticianPageAccess("template", currentUser);
@@ -143,6 +148,33 @@ export default function VotersScreen() {
     const frame = requestAnimationFrame(() => setPendingBooth(null));
     return () => cancelAnimationFrame(frame);
   }, [activeBooth, pendingBooth]);
+
+  useEffect(() => {
+    if (!shareImageRequest) return;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const frame = requestAnimationFrame(() => {
+      const waitForBanner =
+        canUseTemplates && currentUser?.bannerImage ? 250 : 0;
+
+      timer = setTimeout(() => {
+        shareVoterSlipImageFromRef(
+          shareSlipRef,
+          shareImageRequest.voter,
+          shareImageRequest.voter.whatsappNumber ||
+            shareImageRequest.voter.mobileNumber,
+        ).finally(() => {
+          shareImageRequest.resolve();
+          setShareImageRequest(null);
+        });
+      }, waitForBanner);
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      if (timer) clearTimeout(timer);
+    };
+  }, [canUseTemplates, currentUser?.bannerImage, shareImageRequest]);
 
   const refreshAllVoterData = useCallback(async () => {
     setActiveBooth("All");
@@ -248,14 +280,11 @@ export default function VotersScreen() {
 
   const handleShareVoterSlip = useCallback(
     async (voter: Voter) => {
-      await shareVoterSlipPdf(
-        voter,
-        canUseTemplates,
-        currentUser?.bannerImage,
-        voter.whatsappNumber || voter.mobileNumber,
-      );
+      await new Promise<void>((resolve) => {
+        setShareImageRequest({ voter, resolve });
+      });
     },
-    [canUseTemplates, currentUser?.bannerImage],
+    [],
   );
 
   const renderVoter = useCallback(
@@ -609,6 +638,21 @@ export default function VotersScreen() {
         ) : null}
       </Modal>
 
+      {shareImageRequest ? (
+        <View
+          pointerEvents="none"
+          style={styles.shareCaptureHost}
+        >
+          <View collapsable={false} ref={shareSlipRef}>
+            <VoterSlipPaper
+              voter={shareImageRequest.voter}
+              showBanner={canUseTemplates}
+              bannerImage={currentUser?.bannerImage}
+            />
+          </View>
+        </View>
+      ) : null}
+
       {/* Booth wise modal */}
       <Modal
         transparent
@@ -677,6 +721,13 @@ function PrintChoiceRow({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F4FBF7" },
+  shareCaptureHost: {
+    position: "absolute",
+    left: -10000,
+    top: 0,
+    width: 420,
+    backgroundColor: "#FFFFFF",
+  },
 
   /* ---------- Header ---------- */
   header: {

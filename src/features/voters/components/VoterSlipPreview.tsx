@@ -3,6 +3,7 @@ import { Image } from "expo-image";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { Download, Printer, X } from "lucide-react-native";
+import type { RefObject } from "react";
 import {
   Alert,
   Linking,
@@ -13,6 +14,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { captureRef } from "react-native-view-shot";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import type { Voter } from "@/services/voters";
@@ -25,6 +27,12 @@ export type VoterSlipPreviewProps = {
   onDownload?: () => void;
   onPrint?: () => void;
   variant?: "modal" | "page";
+};
+
+export type VoterSlipPaperProps = {
+  voter: Voter;
+  showBanner: boolean;
+  bannerImage?: string;
 };
 
 /* ============================================================
@@ -345,6 +353,60 @@ export async function shareVoterSlipPdf(
   }
 }
 
+export async function shareVoterSlipImageFromRef(
+  paperRef: RefObject<View | null>,
+  voter: Voter,
+  whatsappNumber?: string,
+) {
+  try {
+    if (Platform.OS === "web") {
+      Alert.alert("Share", "Image sharing is available on mobile devices.");
+      return;
+    }
+
+    if (!paperRef.current) {
+      Alert.alert("Share failed", "Unable to prepare the voter slip image.");
+      return;
+    }
+
+    if (!(await Sharing.isAvailableAsync())) {
+      Alert.alert("Share unavailable", "Sharing is not available on this device.");
+      return;
+    }
+
+    const capturedUri = await captureRef(paperRef, {
+      format: "png",
+      quality: 1,
+      result: "tmpfile",
+    });
+    const imageUri =
+      (FileSystem.cacheDirectory ?? "") +
+      "voter-slip-" +
+      slugFileName(voter.epicNo || voter.id || voter.name) +
+      "-" +
+      Date.now() +
+      ".png";
+
+    await FileSystem.copyAsync({ from: capturedUri, to: imageUri });
+
+    await Sharing.shareAsync(imageUri, {
+      mimeType: "image/png",
+      dialogTitle: whatsappNumber
+        ? "Share Voter Slip to " + voter.name
+        : "Share Voter Slip",
+      UTI: "public.png",
+    });
+
+    if (whatsappNumber) {
+      await openWhatsAppChat(whatsappNumber, voter);
+    } else {
+      await openWhatsAppRecipientPicker(voter);
+    }
+  } catch (error: any) {
+    Alert.alert("Share failed", error?.message ?? "Unable to share the slip.");
+  }
+}
+
 export async function printSlip(
   voter: Voter,
   showBanner: boolean,
@@ -385,17 +447,6 @@ export function VoterSlipPreview({
   onPrint,
   variant = "modal",
 }: VoterSlipPreviewProps) {
-  const address = [
-    voter.houseNo && voter.houseNo !== "N/A"
-      ? "House No. " + voter.houseNo
-      : "",
-    voter.ward ? "Ward " + voter.ward : "",
-    voter.district,
-    voter.state,
-  ]
-    .filter(Boolean)
-    .join(", ");
-
   async function handleDownload() {
     await downloadSlip(voter, showBanner, bannerImage);
     onDownload?.();
@@ -407,7 +458,82 @@ export function VoterSlipPreview({
   }
 
   const slipContent = (
-    <View style={styles.paper}>
+    <VoterSlipPaper
+      voter={voter}
+      showBanner={showBanner}
+      bannerImage={bannerImage}
+    />
+  );
+
+  if (variant === "page") {
+    return (
+      <SafeAreaView style={styles.pageBackdrop}>
+        <ScrollView contentContainerStyle={styles.pageScrollContent}>
+          {slipContent}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.backdrop}>
+      <View style={styles.previewPanel}>
+        <View style={styles.previewHeader}>
+          <Text style={styles.previewTitle}>Voter Slip Preview</Text>
+          <Pressable
+            accessibilityLabel="Close voter slip preview"
+            onPress={onClose}
+            style={styles.closeButton}
+          >
+            <X color="#64748B" size={22} strokeWidth={2.2} />
+          </Pressable>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {slipContent}
+        </ScrollView>
+
+        <View style={styles.footerActions}>
+          <Pressable
+            accessibilityLabel="Download voter slip"
+            onPress={handleDownload}
+            style={[styles.footerButton, styles.downloadButton]}
+          >
+            <Download color="#334155" size={17} strokeWidth={2.5} />
+            <Text style={styles.downloadText}>Download</Text>
+          </Pressable>
+          <Pressable
+            accessibilityLabel="Print voter slip"
+            onPress={handlePrint}
+            style={[styles.footerButton, styles.printButton]}
+          >
+            <Printer color="#FFFFFF" size={17} strokeWidth={2.5} />
+            <Text style={styles.printText}>Print</Text>
+          </Pressable>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+export function VoterSlipPaper({
+  voter,
+  showBanner,
+  bannerImage,
+}: VoterSlipPaperProps) {
+  const address = [
+    voter.houseNo && voter.houseNo !== "N/A"
+      ? "House No. " + voter.houseNo
+      : "",
+    voter.ward ? "Ward " + voter.ward : "",
+    voter.district,
+    voter.state,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  return (
+    <View collapsable={false} style={styles.paper}>
       {showBanner ? (
         bannerImage ? (
           <Image
@@ -459,56 +585,6 @@ export function VoterSlipPreview({
         />
       </View>
     </View>
-  );
-
-  if (variant === "page") {
-    return (
-      <SafeAreaView style={styles.pageBackdrop}>
-        <ScrollView contentContainerStyle={styles.pageScrollContent}>
-          {slipContent}
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  return (
-    <SafeAreaView style={styles.backdrop}>
-      <View style={styles.previewPanel}>
-        <View style={styles.previewHeader}>
-          <Text style={styles.previewTitle}>Voter Slip Preview</Text>
-          <Pressable
-            accessibilityLabel="Close voter slip preview"
-            onPress={onClose}
-            style={styles.closeButton}
-          >
-            <X color="#64748B" size={22} strokeWidth={2.2} />
-          </Pressable>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          {slipContent}
-        </ScrollView>
-
-        <View style={styles.footerActions}>
-          <Pressable
-            accessibilityLabel="Download voter slip"
-            onPress={handleDownload}
-            style={[styles.footerButton, styles.downloadButton]}
-          >
-            <Download color="#334155" size={17} strokeWidth={2.5} />
-            <Text style={styles.downloadText}>Download</Text>
-          </Pressable>
-          <Pressable
-            accessibilityLabel="Print voter slip"
-            onPress={handlePrint}
-            style={[styles.footerButton, styles.printButton]}
-          >
-            <Printer color="#FFFFFF" size={17} strokeWidth={2.5} />
-            <Text style={styles.printText}>Print</Text>
-          </Pressable>
-        </View>
-      </View>
-    </SafeAreaView>
   );
 }
 
