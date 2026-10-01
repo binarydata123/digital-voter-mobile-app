@@ -344,25 +344,6 @@ export default function VotersScreen() {
       </View>
 
       <View style={styles.body}>
-        {error ? <Text style={styles.warning}>{error}</Text> : null}
-
-        {/* Total Voters card with Users icon */}
-        {/* <Pressable
-          onPress={() => setModalVisible(true)}
-          style={styles.totalCard}
-        >
-          <View style={styles.totalCardLeft}>
-            <View style={styles.totalIconWrap}>
-              <UsersRound color="#087568" size={22} strokeWidth={2.5} />
-            </View>
-            <View>
-              <Text style={styles.cardLabel}>Total Voters</Text>
-              <Text style={styles.totalValue}>{stats.total}</Text>
-            </View>
-          </View>
-          <Info color="#0F766E" size={20} strokeWidth={2.5} />
-        </Pressable> */}
-
         {/* Search */}
         <View style={styles.searchRow}>
           <View style={styles.searchBox}>
@@ -385,81 +366,106 @@ export default function VotersScreen() {
           </Pressable>
         </View>
 
-        {/* Booth tabs with counts */}
-        <View style={styles.boothTabsWrap}>
-          <FlatList
-            horizontal
-            data={booths}
-            keyExtractor={(item) => item}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.boothTabs}
-            renderItem={({ item }) => {
-              const isActive = activeBooth === item;
-              const label = item === "All" ? "All Voters" : item;
-              const count = boothCounts[item] ?? 0;
-              return (
-                <Pressable
-                  onPress={() => selectBooth(item)}
-                  style={[styles.boothTab, isActive && styles.boothTabActive]}
-                >
-                  {item === "All" ? (
-                    <UsersRound
-                      color={isActive ? "#FFFFFF" : "#087568"}
-                      size={16}
-                      strokeWidth={2.6}
-                    />
-                  ) : null}
-                  <Text
-                    style={[
-                      styles.boothTabText,
-                      isActive && styles.boothTabTextActive,
-                    ]}
-                  >
-                    {label}
-                  </Text>
-                  <View
-                    style={[
-                      styles.countBadge,
-                      isActive && styles.countBadgeActive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.countBadgeText,
-                        isActive && styles.countBadgeTextActive,
-                      ]}
-                    >
-                      {count}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            }}
-          />
-        </View>
+        <FlatList
+          data={pendingBooth ? [] : filteredVoters}
+          keyExtractor={(item) => item.id}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          updateCellsBatchingPeriod={50}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS === "android"}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.listContent}
+          ListHeaderComponent={
+            <>
+              {error ? <Text style={styles.warning}>{error}</Text> : null}
 
-        {pendingBooth ? (
-          <VoterListSkeleton />
-        ) : (
-          <FlatList
-            data={filteredVoters}
-            keyExtractor={(item) => item.id}
-            initialNumToRender={12}
-            maxToRenderPerBatch={12}
-            updateCellsBatchingPeriod={50}
-            windowSize={7}
-            removeClippedSubviews={Platform.OS === "android"}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.listContent}
-            ListEmptyComponent={
+              {/* Total Voters card with Users icon */}
+              {/* <Pressable
+                onPress={() => setModalVisible(true)}
+                style={styles.totalCard}
+              >
+                <View style={styles.totalCardLeft}>
+                  <View style={styles.totalIconWrap}>
+                    <UsersRound color="#087568" size={22} strokeWidth={2.5} />
+                  </View>
+                  <View>
+                    <Text style={styles.cardLabel}>Total Voters</Text>
+                    <Text style={styles.totalValue}>{stats.total}</Text>
+                  </View>
+                </View>
+                <Info color="#0F766E" size={20} strokeWidth={2.5} />
+              </Pressable> */}
+
+              {/* Booth tabs with counts */}
+              <View style={styles.boothTabsWrap}>
+                <FlatList
+                  horizontal
+                  data={booths}
+                  keyExtractor={(item) => item}
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.boothTabs}
+                  renderItem={({ item }) => {
+                    const isActive = activeBooth === item;
+                    const label = item === "All" ? "All Voters" : item;
+                    const count = boothCounts[item] ?? 0;
+                    return (
+                      <Pressable
+                        onPress={() => selectBooth(item)}
+                        style={[
+                          styles.boothTab,
+                          isActive && styles.boothTabActive,
+                        ]}
+                      >
+                        {item === "All" ? (
+                          <UsersRound
+                            color={isActive ? "#FFFFFF" : "#087568"}
+                            size={16}
+                            strokeWidth={2.6}
+                          />
+                        ) : null}
+                        <Text
+                          style={[
+                            styles.boothTabText,
+                            isActive && styles.boothTabTextActive,
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                        <View
+                          style={[
+                            styles.countBadge,
+                            isActive && styles.countBadgeActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.countBadgeText,
+                              isActive && styles.countBadgeTextActive,
+                            ]}
+                          >
+                            {count}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  }}
+                />
+              </View>
+            </>
+          }
+          ListEmptyComponent={
+            pendingBooth ? (
+              <VoterListSkeleton />
+            ) : (
               <EmptyState
                 title="No voters found"
                 message="Try a different name, EPIC number, or booth."
               />
-            }
-            renderItem={renderVoter}
-          />
-        )}
+            )
+          }
+          renderItem={renderVoter}
+        />
 
         {/* <Pressable
           accessibilityLabel="Open booth filter"

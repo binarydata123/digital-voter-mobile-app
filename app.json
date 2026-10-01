@@ -56,7 +56,6 @@
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to scan voter QR codes."
         }
       ],
-      "expo-barcode-scanner",
       [
         "expo-sqlite",
         {
