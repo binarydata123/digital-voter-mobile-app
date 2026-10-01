@@ -6,7 +6,6 @@ import {
   Printer,
   RefreshCw,
   Search,
-  SlidersHorizontal,
   UsersRound,
   X,
 } from "lucide-react-native";
@@ -39,7 +38,6 @@ import {
   logoutPolitician,
 } from "@/services/authentication";
 import { buildVoterStats, fetchVoters, type Voter } from "@/services/voters";
-import { shareVoterSlip } from "@/utils/shareVoterSlip";
 
 type PrintScope = "single" | "family";
 type SlipPreviewRequest = {
@@ -259,7 +257,7 @@ export default function VotersScreen() {
           <Info color="#0F766E" size={20} strokeWidth={2.5} />
         </Pressable> */}
 
-        {/* Search + Filter */}
+        {/* Search */}
         <View style={styles.searchRow}>
           <View style={styles.searchBox}>
             <Search color="#94A3B8" size={18} strokeWidth={2.6} />
@@ -272,13 +270,6 @@ export default function VotersScreen() {
               returnKeyType="search"
             />
           </View>
-          <Pressable
-            style={styles.filterButton}
-            onPress={() => setModalVisible(true)}
-          >
-            <SlidersHorizontal color="#FFFFFF" size={15} strokeWidth={2.8} />
-            <Text style={styles.filterButtonText}>Filter</Text>
-          </Pressable>
         </View>
 
         {/* Booth tabs with counts */}
@@ -362,11 +353,18 @@ export default function VotersScreen() {
               // onScan={handleScan}
               onPrint={handlePrint}
               onFamily={handleFamily}
-              // onShare={handleShareVoterSlip}
-              onShare={shareVoterSlip}
+              onShare={handleShareVoterSlip}
             />
           )}
         />
+
+        <Pressable
+          accessibilityLabel="Open booth filter"
+          onPress={() => setModalVisible(true)}
+          style={styles.boothFilterHandleButton}
+        >
+          <View style={styles.boothFilterHandle} />
+        </Pressable>
       </View>
 
       {logoutChoiceVisible ? (
@@ -699,11 +697,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  /* Search + Filter */
+  /* Search */
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
     marginBottom: 10,
   },
   searchBox: {
@@ -725,16 +722,6 @@ const styles = StyleSheet.create({
     outlineWidth: 0,
     outlineColor: "transparent",
   },
-  filterButton: {
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: "#064E3B",
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  filterButtonText: { color: "#FFFFFF", fontWeight: "900", fontSize: 13 },
 
   /* Booth tabs */
   boothTabsWrap: { height: 50, marginBottom: 0 },
@@ -767,7 +754,33 @@ const styles = StyleSheet.create({
   countBadgeTextActive: { color: "#064E3B" },
 
   /* List */
-  listContent: { paddingBottom: 28, gap: 6, paddingTop: 2 },
+  listContent: { paddingBottom: 70, gap: 6, paddingTop: 2 },
+  boothFilterHandleButton: {
+    position: "absolute",
+    left: "50%",
+    bottom: 1,
+    width: 78,
+    height: 15,
+    marginLeft: -59,
+    // borderRadius: 16,
+    // backgroundColor: "#FFFFFF",
+    // borderWidth: 1,
+    // borderColor: "#E2E8F0",
+    alignItems: "center",
+    justifyContent: "center",
+    // shadowColor: "#0F172A",
+    // shadowOpacity: 0.12,
+    // shadowRadius: 12,
+    // shadowOffset: { width: 0, height: 4 },
+    // elevation: 6,
+    // zIndex: 5,
+  },
+  boothFilterHandle: {
+    width: 92,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#CBD5E1",
+  },
 
   logoutChoiceOverlay: {
     position: "absolute",

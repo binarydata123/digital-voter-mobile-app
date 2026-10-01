@@ -1,12 +1,13 @@
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -25,6 +26,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const passwordInputRef = useRef<TextInput>(null);
 
   async function handleLogin() {
     if (phone.trim().length < 10 || !password) {
@@ -60,10 +62,16 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.container}
       >
-        <View style={styles.hero}>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <View style={styles.hero}>
           <View style={styles.brandRow}>
             <View style={styles.brandMark}>
               <Image
@@ -92,27 +100,44 @@ export default function LoginScreen() {
           <Text style={styles.formTitle}>Politician Login</Text>
 
           <Text style={styles.label}>Phone Number</Text>
-          <TextInput
-            value={phone}
-            onChangeText={(value) =>
-              setPhone(value.replace(/\D/g, "").slice(0, 10))
-            }
-            keyboardType="phone-pad"
-            placeholder="Enter 10 digit number"
-            placeholderTextColor="#94A3B8"
-            style={styles.input}
-            maxLength={10}
-          />
+          <View style={styles.inputRow}>
+            <TextInput
+              value={phone}
+              onChangeText={(value) =>
+                setPhone(value.replace(/\D/g, "").slice(0, 10))
+              }
+              keyboardType="phone-pad"
+              placeholder="Enter 10 digit number"
+              placeholderTextColor="#94A3B8"
+              returnKeyType="next"
+              style={styles.rowInput}
+              maxLength={10}
+              onSubmitEditing={() => passwordInputRef.current?.focus()}
+            />
+            {phone ? (
+              <Pressable
+                accessibilityLabel="Clear phone number"
+                accessibilityRole="button"
+                onPress={() => setPhone("")}
+                style={styles.clearButton}
+              >
+                <Text style={styles.clearButtonText}>x</Text>
+              </Pressable>
+            ) : null}
+          </View>
 
           <Text style={styles.label}>Password</Text>
           <View style={styles.passwordRow}>
             <TextInput
+              ref={passwordInputRef}
               value={password}
               onChangeText={setPassword}
               placeholder="Enter password"
               placeholderTextColor="#94A3B8"
               secureTextEntry={!showPassword}
+              returnKeyType="done"
               style={styles.passwordInput}
+              onSubmitEditing={handleLogin}
             />
             <Pressable
               accessibilityRole="button"
@@ -141,6 +166,7 @@ export default function LoginScreen() {
             )}
           </Pressable>
         </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -155,6 +181,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#FFFFFF",
   },
+  scroll: { flex: 1, backgroundColor: "#FFFFFF" },
+  scrollContent: { flexGrow: 1, paddingBottom: 24 },
   hero: {
     backgroundColor: "#134E4A",
     paddingHorizontal: 24,
@@ -208,7 +236,7 @@ const styles = StyleSheet.create({
     maxWidth: 350,
   },
   sheet: {
-    flex: 1,
+    minHeight: 380,
     backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
@@ -237,19 +265,37 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginBottom: 8,
   },
-  input: {
+  inputRow: {
     height: 52,
     borderRadius: 14,
     backgroundColor: "#EFF6FF",
     borderWidth: 1,
     borderColor: "#DBEAFE",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingLeft: 15,
+    marginBottom: 16,
+  },
+  rowInput: {
+    flex: 1,
     color: "#0F172A",
     fontSize: 15,
     fontWeight: "700",
-    paddingHorizontal: 15,
-    marginBottom: 16,
+    paddingVertical: 0,
     outlineWidth: 0,
     outlineColor: "transparent",
+  },
+  clearButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  clearButtonText: {
+    color: "#64748B",
+    fontSize: 20,
+    lineHeight: 22,
+    fontWeight: "900",
   },
   passwordRow: {
     height: 52,
