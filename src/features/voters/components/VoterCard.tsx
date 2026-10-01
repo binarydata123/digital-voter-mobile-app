@@ -161,37 +161,39 @@ export const VoterCard = memo(function VoterCard({
         </Pressable>
       </View>
 
-      {/* =============== QR MODAL =============== */}
-      <Modal
-        transparent
-        visible={qrVisible}
-        animationType="fade"
-        onRequestClose={() => setQrVisible(false)}>
-        <Pressable
-          style={styles.qrBackdrop}
-          onPress={() => setQrVisible(false)}>
-          <Pressable style={styles.qrPanel}>
-            <Text style={styles.qrTitle}>{voter.name}</Text>
-            <Text style={styles.qrSubtitle}>
-              S.No. {voter.serialNo ?? voter.id ?? "N/A"} · {voter.booth}
-            </Text>
+      {/* Mount the expensive QR SVG only when the voter asks to see it. */}
+      {qrVisible ? (
+        <Modal
+          transparent
+          visible
+          animationType="fade"
+          onRequestClose={() => setQrVisible(false)}>
+          <Pressable
+            style={styles.qrBackdrop}
+            onPress={() => setQrVisible(false)}>
+            <Pressable style={styles.qrPanel}>
+              <Text style={styles.qrTitle}>{voter.name}</Text>
+              <Text style={styles.qrSubtitle}>
+                S.No. {voter.serialNo ?? voter.id ?? "N/A"} · {voter.booth}
+              </Text>
 
-            <View style={styles.qrWrap}>
-              <QRCode value={qrValue} size={200} />
-            </View>
+              <View style={styles.qrWrap}>
+                <QRCode value={qrValue} size={200} />
+              </View>
 
-            <Text style={styles.qrHint}>
-              Scan this QR with another phone to open the voter detail.
-            </Text>
+              <Text style={styles.qrHint}>
+                Scan this QR with another phone to open the voter detail.
+              </Text>
 
-            <Pressable
-              onPress={() => setQrVisible(false)}
-              style={styles.qrCloseButton}>
-              <Text style={styles.qrCloseText}>Close</Text>
+              <Pressable
+                onPress={() => setQrVisible(false)}
+                style={styles.qrCloseButton}>
+                <Text style={styles.qrCloseText}>Close</Text>
+              </Pressable>
             </Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Modal>
+      ) : null}
     </View>
   );
 });

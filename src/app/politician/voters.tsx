@@ -30,10 +30,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { VoterCard } from "@/features/voters/components/VoterCard";
 import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
 
-import {
-  shareVoterSlipPdf,
-  VoterSlipPreview,
-} from "@/features/voters/components/VoterSlipPreview";
+import { VoterSlipPreview } from "@/features/voters/components/VoterSlipPreview";
 import {
   ensureAuthSession,
   getCurrentUser,
@@ -210,19 +207,15 @@ export default function VotersScreen() {
 
   const renderVoter = useCallback(
     ({ item }: ListRenderItemInfo<Voter>) => (
-      <VoterCard voter={item} onPrint={handlePrint} onFamily={handleFamily} />
+      <VoterCard
+        voter={item}
+        onPrint={handlePrint}
+        onFamily={handleFamily}
+        onShare={shareVoterSlip}
+      />
     ),
     [handleFamily, handlePrint],
   );
-
-  async function handleShareVoterSlip(voter: Voter) {
-    await shareVoterSlipPdf(
-      voter,
-      canUseTemplates,
-      currentUser?.bannerImage,
-      voter.whatsappNumber || voter.mobileNumber,
-    );
-  }
 
   function openSlipPreview(withBanner: boolean) {
     if (!printTypeRequest) return;
@@ -405,16 +398,7 @@ export default function VotersScreen() {
               />
             )
           }
-          renderItem={({ item }) => (
-            <VoterCard
-              voter={item}
-              // onScan={handleScan}
-              onPrint={handlePrint}
-              onFamily={handleFamily}
-              // onShare={handleShareVoterSlip}
-              onShare={shareVoterSlip}
-            />
-          )}
+          renderItem={renderVoter}
         />
       </View>
 
