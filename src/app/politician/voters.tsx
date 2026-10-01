@@ -30,7 +30,10 @@ import { VoterCard } from "@/features/voters/components/VoterCard";
 import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
 import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleton";
 
-import { VoterSlipPreview } from "@/features/voters/components/VoterSlipPreview";
+import {
+  shareVoterSlipPdf,
+  VoterSlipPreview,
+} from "@/features/voters/components/VoterSlipPreview";
 import {
   ensureAuthSession,
   getCurrentUser,
@@ -45,7 +48,6 @@ import {
 } from "@/services/local-voters";
 import { isLocalVoterDatabaseAvailable } from "@/services/voter-database";
 import { buildVoterStats, fetchVoters, type Voter } from "@/services/voters";
-import { shareVoterSlip } from "@/utils/shareVoterSlip";
 
 type PrintScope = "single" | "family";
 type SlipPreviewRequest = {
@@ -244,16 +246,28 @@ export default function VotersScreen() {
     setPrintTypeRequest({ voter, scope: "family" });
   }, []);
 
+  const handleShareVoterSlip = useCallback(
+    async (voter: Voter) => {
+      await shareVoterSlipPdf(
+        voter,
+        canUseTemplates,
+        currentUser?.bannerImage,
+        voter.whatsappNumber || voter.mobileNumber,
+      );
+    },
+    [canUseTemplates, currentUser?.bannerImage],
+  );
+
   const renderVoter = useCallback(
     ({ item }: ListRenderItemInfo<Voter>) => (
       <VoterCard
         voter={item}
         onPrint={handlePrint}
         onFamily={handleFamily}
-        onShare={shareVoterSlip}
+        onShare={handleShareVoterSlip}
       />
     ),
-    [handleFamily, handlePrint],
+    [handleFamily, handlePrint, handleShareVoterSlip],
   );
 
   function openSlipPreview(withBanner: boolean) {
@@ -347,7 +361,7 @@ export default function VotersScreen() {
           <Info color="#0F766E" size={20} strokeWidth={2.5} />
         </Pressable> */}
 
-        {/* Search + Filter */}
+        {/* Search */}
         <View style={styles.searchRow}>
           <View style={styles.searchBox}>
             <Search color="#94A3B8" size={18} strokeWidth={2.6} />
@@ -439,6 +453,14 @@ export default function VotersScreen() {
             renderItem={renderVoter}
           />
         )}
+
+        <Pressable
+          accessibilityLabel="Open booth filter"
+          onPress={() => setModalVisible(true)}
+          style={styles.boothFilterHandleButton}
+        >
+          <View style={styles.boothFilterHandle} />
+        </Pressable>
       </View>
 
       {logoutChoiceVisible ? (
@@ -761,11 +783,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  /* Search + Filter */
+  /* Search */
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
     marginBottom: 10,
   },
   searchBox: {
@@ -829,7 +850,33 @@ const styles = StyleSheet.create({
   countBadgeTextActive: { color: "#064E3B" },
 
   /* List */
-  listContent: { paddingBottom: 28, gap: 6, paddingTop: 2 },
+  listContent: { paddingBottom: 70, gap: 6, paddingTop: 2 },
+  boothFilterHandleButton: {
+    position: "absolute",
+    left: "50%",
+    bottom: 1,
+    width: 78,
+    height: 15,
+    marginLeft: -59,
+    // borderRadius: 16,
+    // backgroundColor: "#FFFFFF",
+    // borderWidth: 1,
+    // borderColor: "#E2E8F0",
+    alignItems: "center",
+    justifyContent: "center",
+    // shadowColor: "#0F172A",
+    // shadowOpacity: 0.12,
+    // shadowRadius: 12,
+    // shadowOffset: { width: 0, height: 4 },
+    // elevation: 6,
+    // zIndex: 5,
+  },
+  boothFilterHandle: {
+    width: 92,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#CBD5E1",
+  },
 
   logoutChoiceOverlay: {
     position: "absolute",

@@ -77,16 +77,29 @@ async function openWhatsAppChat(phone: string, voter: Voter) {
   if (!normalizedPhone) return false;
 
   const url =
-    "whatsapp://send?phone=" +
+    "https://wa.me/" +
     normalizedPhone +
-    "&text=" +
+    "?text=" +
     encodeURIComponent(buildWhatsAppMessage(voter));
 
-  const canOpen = await Linking.canOpenURL(url);
-  if (!canOpen) return false;
+  try {
+    await Linking.openURL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-  await Linking.openURL(url);
-  return true;
+async function openWhatsAppRecipientPicker(voter: Voter) {
+  const url =
+    "https://wa.me/?text=" + encodeURIComponent(buildWhatsAppMessage(voter));
+
+  try {
+    await Linking.openURL(url);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -294,10 +307,24 @@ export async function shareVoterSlipPdf(
       return;
     }
 
-    const { uri } = await Print.printToFileAsync({ html });
+    const { base64 } = await Print.printToFileAsync({ html, base64: true });
+    const pdfUri =
+      (FileSystem.cacheDirectory ?? "") +
+      "voter-slip-" +
+      slugFileName(voter.epicNo || voter.id || voter.name) +
+      ".pdf";
+
+    if (!base64) {
+      Alert.alert("Share failed", "Unable to create the voter slip PDF.");
+      return;
+    }
+
+    await FileSystem.writeAsStringAsync(pdfUri, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
 
     if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(uri, {
+      await Sharing.shareAsync(pdfUri, {
         mimeType: "application/pdf",
         dialogTitle: whatsappNumber
           ? "Share Voter Slip to " + voter.name
@@ -306,13 +333,9 @@ export async function shareVoterSlipPdf(
       });
 
       if (whatsappNumber) {
-        const opened = await openWhatsAppChat(whatsappNumber, voter);
-        if (!opened) {
-          Alert.alert(
-            "WhatsApp not available",
-            "PDF share sheet opened. Please choose WhatsApp and search the voter number manually.",
-          );
-        }
+        await openWhatsAppChat(whatsappNumber, voter);
+      } else {
+        await openWhatsAppRecipientPicker(voter);
       }
     } else {
       Alert.alert("Share unavailable", "Sharing is not available on this device.");
