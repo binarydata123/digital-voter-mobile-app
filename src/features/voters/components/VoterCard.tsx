@@ -106,7 +106,7 @@ export const VoterCard = memo(function VoterCard({
                     disabled={sharing}
                     onPress={handleSharePress}
                     style={[
-                      styles.scanButton,
+                      // styles.scanButton,
                       sharing && styles.scanButtonDisabled,
                     ]}
                   >
