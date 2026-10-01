@@ -37,6 +37,9 @@ export type VoterQuery = {
   state?: string;
 };
 
+const VOTER_PAGE_SIZE = 1000;
+const MAX_VOTER_PAGES = 500;
+
 let selectedVoter: Voter | null = null;
 
 export function setSelectedVoter(voter: Voter | null) {
@@ -302,6 +305,26 @@ function unwrapList(raw: any): any[] {
   return Array.isArray(list) ? list : [];
 }
 
+function readTotalCount(raw: any): number | null {
+  const total = firstValue(
+    raw?.total,
+    raw?.totalCount,
+    raw?.count,
+    raw?.data?.total,
+    raw?.data?.totalCount,
+    raw?.data?.count,
+    raw?.pagination?.total,
+    raw?.pagination?.totalCount,
+    raw?.meta?.total,
+    raw?.meta?.totalCount,
+  );
+  const numericTotal = Number(total);
+
+  return Number.isFinite(numericTotal) && numericTotal > 0
+    ? numericTotal
+    : null;
+}
+
 export function buildVoterStats(voters: Voter[]): VoterStats {
   return voters.reduce<VoterStats>(
     (stats, voter) => {
@@ -329,22 +352,54 @@ export async function fetchVoters(query: VoterQuery = {}): Promise<Voter[]> {
     throw new Error("Voter page is disabled for this account.");
   }
   const politician = getCurrentUser();
+  const baseParams = {
+    search: query.search || undefined,
+    district: query.district || politician?.district || undefined,
+    state: query.state || politician?.state || undefined,
+    wardNo: query.ward || politician?.ward || undefined,
+    ward: query.ward || politician?.ward || undefined,
+    boothNo: query.booth || undefined,
+    includeCounts: false,
+  };
+  const voters: Voter[] = [];
+  const seenVoterIds = new Set<string>();
+  let totalCount: number | null = null;
 
-  const response = await api.get("/politician/voters", {
-    params: {
-      page: 1,
-      limit: 10000,
-      search: query.search || undefined,
-      district: query.district || politician?.district || undefined,
-      state: query.state || politician?.state || undefined,
-      wardNo: query.ward || politician?.ward || undefined,
-      ward: query.ward || politician?.ward || undefined,
-      boothNo: query.booth || undefined,
-      includeCounts: false,
-    },
-  });
+  for (let page = 1; page <= MAX_VOTER_PAGES; page += 1) {
+    const response = await api.get("/politician/voters", {
+      params: {
+        ...baseParams,
+        page,
+        limit: VOTER_PAGE_SIZE,
+      },
+    });
+    const pageItems = unwrapList(response.data);
 
-  return unwrapList(response.data).map(normalizeVoter);
+    totalCount = totalCount ?? readTotalCount(response.data);
+
+    if (pageItems.length === 0) {
+      break;
+    }
+
+    const previousCount = voters.length;
+    pageItems
+      .map((item, index) => normalizeVoter(item, voters.length + index))
+      .forEach((voter) => {
+        if (!seenVoterIds.has(voter.id)) {
+          seenVoterIds.add(voter.id);
+          voters.push(voter);
+        }
+      });
+
+    if (totalCount !== null && voters.length >= totalCount) {
+      break;
+    }
+    if (voters.length === previousCount) {
+      break;
+    }
+  }
+
+  return voters;
 }
 
 export async function fetchVoterById(epicNo: string): Promise<Voter | null> {

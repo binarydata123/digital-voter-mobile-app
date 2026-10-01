@@ -201,6 +201,7 @@ export default function VotersScreen() {
       return boothMatch && queryMatch;
     });
   }, [activeBooth, query, voters]);
+  const voterRenderBatchSize = Math.max(filteredVoters.length, 1);
 
   const selectBooth = useCallback(
     (booth: string) => {
@@ -369,10 +370,9 @@ export default function VotersScreen() {
         <FlatList
           data={pendingBooth ? [] : filteredVoters}
           keyExtractor={(item) => item.id}
-          initialNumToRender={12}
-          maxToRenderPerBatch={12}
+          initialNumToRender={voterRenderBatchSize}
+          maxToRenderPerBatch={voterRenderBatchSize}
           updateCellsBatchingPeriod={50}
-          windowSize={7}
           removeClippedSubviews={Platform.OS === "android"}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
