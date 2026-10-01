@@ -77,27 +77,29 @@ async function openWhatsAppChat(phone: string, voter: Voter) {
   if (!normalizedPhone) return false;
 
   const url =
-    "whatsapp://send?phone=" +
+    "https://wa.me/" +
     normalizedPhone +
-    "&text=" +
+    "?text=" +
     encodeURIComponent(buildWhatsAppMessage(voter));
 
-  const canOpen = await Linking.canOpenURL(url);
-  if (!canOpen) return false;
-
-  await Linking.openURL(url);
-  return true;
+  try {
+    await Linking.openURL(url);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function openWhatsAppRecipientPicker(voter: Voter) {
   const url =
-    "whatsapp://send?text=" + encodeURIComponent(buildWhatsAppMessage(voter));
+    "https://wa.me/?text=" + encodeURIComponent(buildWhatsAppMessage(voter));
 
-  const canOpen = await Linking.canOpenURL(url);
-  if (!canOpen) return false;
-
-  await Linking.openURL(url);
-  return true;
+  try {
+    await Linking.openURL(url);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -330,17 +332,10 @@ export async function shareVoterSlipPdf(
         UTI: "com.adobe.pdf",
       });
 
-      const opened = whatsappNumber
-        ? await openWhatsAppChat(whatsappNumber, voter)
-        : await openWhatsAppRecipientPicker(voter);
-
-      if (!opened) {
-        Alert.alert(
-          "WhatsApp not available",
-          whatsappNumber
-            ? "PDF share sheet opened. Please choose WhatsApp and search the voter number manually."
-            : "PDF share sheet opened. Please choose WhatsApp there to send the PDF to anyone.",
-        );
+      if (whatsappNumber) {
+        await openWhatsAppChat(whatsappNumber, voter);
+      } else {
+        await openWhatsAppRecipientPicker(voter);
       }
     } else {
       Alert.alert("Share unavailable", "Sharing is not available on this device.");
