@@ -10,9 +10,8 @@ import {
   UsersRound,
   X,
 } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   type ListRenderItemInfo,
@@ -29,6 +28,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { EmptyState } from "@/components/common/EmptyState";
 import { VoterCard } from "@/features/voters/components/VoterCard";
 import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
+import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleton";
 
 import { VoterSlipPreview } from "@/features/voters/components/VoterSlipPreview";
 import {
@@ -59,6 +59,7 @@ export default function VotersScreen() {
   const [voters, setVoters] = useState<Voter[]>([]);
   const [query, setQuery] = useState("");
   const [activeBooth, setActiveBooth] = useState("All");
+  const [pendingBooth, setPendingBooth] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
@@ -68,6 +69,7 @@ export default function VotersScreen() {
   const [printTypeRequest, setPrintTypeRequest] =
     useState<PrintTypeRequest | null>(null);
   const [logoutChoiceVisible, setLogoutChoiceVisible] = useState(false);
+  const boothSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentUser = getCurrentUser();
   const canOpenSurvey = hasPoliticianPageAccess("survey", currentUser);
   const canUseTemplates = hasPoliticianPageAccess("template", currentUser);
@@ -121,6 +123,24 @@ export default function VotersScreen() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadVoters();
   }, [loadVoters]);
+
+  useEffect(
+    () => () => {
+      if (boothSwitchTimer.current) {
+        clearTimeout(boothSwitchTimer.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!pendingBooth || pendingBooth !== activeBooth) {
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => setPendingBooth(null));
+    return () => cancelAnimationFrame(frame);
+  }, [activeBooth, pendingBooth]);
 
   const refreshAllVoterData = useCallback(async () => {
     setActiveBooth("All");
@@ -179,6 +199,25 @@ export default function VotersScreen() {
       return boothMatch && queryMatch;
     });
   }, [activeBooth, query, voters]);
+
+  const selectBooth = useCallback(
+    (booth: string) => {
+      if (booth === activeBooth && !pendingBooth) {
+        return;
+      }
+
+      if (boothSwitchTimer.current) {
+        clearTimeout(boothSwitchTimer.current);
+      }
+
+      setPendingBooth(booth);
+      boothSwitchTimer.current = setTimeout(() => {
+        boothSwitchTimer.current = null;
+        setActiveBooth(booth);
+      }, 0);
+    },
+    [activeBooth, pendingBooth],
+  );
 
   function handleLogout() {
     setLogoutChoiceVisible(true);
@@ -343,7 +382,7 @@ export default function VotersScreen() {
               const count = boothCounts[item] ?? 0;
               return (
                 <Pressable
-                  onPress={() => setActiveBooth(item)}
+                  onPress={() => selectBooth(item)}
                   style={[styles.boothTab, isActive && styles.boothTabActive]}>
                   {item === "All" ? (
                     <UsersRound
@@ -378,28 +417,28 @@ export default function VotersScreen() {
           />
         </View>
 
-        <FlatList
-          data={filteredVoters}
-          keyExtractor={(item) => item.id}
-          initialNumToRender={12}
-          maxToRenderPerBatch={12}
-          updateCellsBatchingPeriod={50}
-          windowSize={7}
-          removeClippedSubviews={Platform.OS === "android"}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            loading ? (
-              <ActivityIndicator color="#0F766E" />
-            ) : (
+        {pendingBooth ? (
+          <VoterListSkeleton />
+        ) : (
+          <FlatList
+            data={filteredVoters}
+            keyExtractor={(item) => item.id}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            updateCellsBatchingPeriod={50}
+            windowSize={7}
+            removeClippedSubviews={Platform.OS === "android"}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={
               <EmptyState
                 title="No voters found"
                 message="Try a different name, EPIC number, or booth."
               />
-            )
-          }
-          renderItem={renderVoter}
-        />
+            }
+            renderItem={renderVoter}
+          />
+        )}
       </View>
 
       {logoutChoiceVisible ? (
@@ -543,7 +582,7 @@ export default function VotersScreen() {
                 <Pressable
                   key={booth}
                   onPress={() => {
-                    setActiveBooth(booth);
+                    selectBooth(booth);
                     setModalVisible(false);
                   }}
                   style={styles.modalCard}>
