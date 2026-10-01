@@ -396,12 +396,6 @@ export async function shareVoterSlipImageFromRef(
         : "Share Voter Slip",
       UTI: "public.png",
     });
-
-    if (whatsappNumber) {
-      await openWhatsAppChat(whatsappNumber, voter);
-    } else {
-      await openWhatsAppRecipientPicker(voter);
-    }
   } catch (error: any) {
     Alert.alert("Share failed", error?.message ?? "Unable to share the slip.");
   }
