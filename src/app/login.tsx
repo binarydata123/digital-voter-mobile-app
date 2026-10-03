@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
@@ -74,13 +75,13 @@ export default function LoginScreen() {
           <View style={styles.header}>
             <View style={styles.logoContainer}>
               <Image
-                source={require("../../assets/icons/election_icon_192x192.png")}
+                source={require("../../assets/icons/new-bg.png")}
                 style={styles.logoIcon}
                 resizeMode="contain"
               />
             </View>
             <Text style={styles.brandTitle}>
-              VOTER<Text style={styles.brandTitleBold}>SAKHA</Text>
+              Lok<Text style={styles.brandTitleBold}>Setu</Text>
             </Text>
             <Text style={styles.brandMeta}>POLITICIAN APP</Text>
           </View>
@@ -159,29 +160,31 @@ export default function LoginScreen() {
               </Pressable>
             </View>
 
-            {/* {(phone || password || loading) && (
-              <Pressable
-                accessibilityRole="button"
-                disabled={loading}
-                onPress={handleLogin}
-                style={({ pressed }) => [
-                  styles.loginButton,
-                  (pressed || loading) && styles.loginButtonPressed,
-                ]}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.loginButtonText}>Sign in</Text>
-                )}
-              </Pressable>
-            )} */}
+            {/* 
+              SIGN IN BUTTON 
+              Ab yeh ek proper button ki tarah dikhega (green background, white text)
+            */}
+            <Pressable
+              accessibilityRole="button"
+              disabled={loading}
+              onPress={handleLogin}
+              style={({ pressed }) => [
+                styles.loginButton,
+                (pressed || loading) && styles.loginButtonPressed,
+              ]}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.loginButtonText}>Sign in</Text>
+              )}
+            </Pressable>
           </View>
 
           {/* Footer Text */}
           <Text style={styles.footerText}>
             Manage voters, booths, and election work securely. Login with your
-            VoterSakha politician account to access your assigned voter list.
+            LokSetu politician account to access your assigned voter list.
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -296,22 +299,26 @@ const styles = StyleSheet.create({
   eyeButton: {
     padding: 4,
   },
+  // YAHAN BUTTON KA STYLE UPDATE KIYA GAYA HAI
   loginButton: {
     height: 52,
     borderRadius: 8,
-    backgroundColor: "#0F4C4E",
+    backgroundColor: "#0F4C4E", // Green background
     alignItems: "center",
     justifyContent: "center",
     marginTop: 8,
     marginBottom: 8,
+    width: "100%", // Full width button
   },
   loginButtonPressed: {
     opacity: 0.85,
   },
   loginButtonText: {
-    color: "#FFFFFF",
+    color: "#FFFFFF", // White text
     fontSize: 16,
     fontWeight: "700",
+    textAlign: "center", // Text ko horizontally center karega
+    width: "100%", // Poori width lega taaki center align ho sake
   },
   footerText: {
     textAlign: "center",

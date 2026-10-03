@@ -8,7 +8,7 @@ import {
   RefreshCw,
   Search,
   SlidersHorizontal,
-  UsersRound,
+  UsersRound
 } from "lucide-react-native";
 import {
   useCallback,
@@ -1025,6 +1025,7 @@ const styles = StyleSheet.create({
     position: "relative",
     paddingHorizontal: 16,
     marginBottom: 8,
+    marginTop: 10,
     zIndex: 0,
     elevation: 0,
   },
