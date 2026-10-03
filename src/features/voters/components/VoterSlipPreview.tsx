@@ -2,7 +2,8 @@ import * as FileSystem from "expo-file-system/legacy";
 import { Image } from "expo-image";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
-import { Download, Printer, X } from "lucide-react-native";
+import { Bluetooth, Download, Printer, X } from "lucide-react-native";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Linking,
@@ -15,6 +16,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import {
+  getSavedThermalPrinter,
+  type ThermalPrinterDevice,
+} from "@/services/thermal-printer";
 import type { Voter } from "@/services/voters";
 
 export type VoterSlipPreviewProps = {
@@ -23,7 +28,8 @@ export type VoterSlipPreviewProps = {
   showBanner?: boolean;
   bannerImage?: string;
   onDownload?: () => void;
-  onPrint?: () => void;
+  onPrint?: () => Promise<void> | void;
+  onChangeDevice?: () => Promise<void> | void;
   variant?: "modal" | "page";
 };
 
@@ -52,6 +58,11 @@ function formatGuardian(value: string) {
   return relationStart > 0 && text.endsWith(")")
     ? text.slice(0, relationStart)
     : text;
+}
+
+function displayValue(value: unknown) {
+  const text = String(value ?? "").trim();
+  return !text || text === "undefined" || text === "null" ? "N/A" : text;
 }
 
 function normalizeWhatsAppPhone(value?: string) {
@@ -383,8 +394,18 @@ export function VoterSlipPreview({
   bannerImage,
   onDownload,
   onPrint,
+  onChangeDevice,
   variant = "modal",
 }: VoterSlipPreviewProps) {
+  const [savedPrinter, setSavedPrinter] = useState<ThermalPrinterDevice | null>(
+    null,
+  );
+
+  useEffect(() => {
+    void getSavedThermalPrinter().then(setSavedPrinter).catch(() => {
+      setSavedPrinter(null);
+    });
+  }, []);
   const address = [
     voter.houseNo && voter.houseNo !== "N/A"
       ? "House No. " + voter.houseNo
@@ -402,8 +423,25 @@ export function VoterSlipPreview({
   }
 
   async function handlePrint() {
+    if (onPrint) {
+      try {
+        await onPrint();
+      } catch (error: any) {
+        Alert.alert("Print failed", error?.message ?? "Unable to print the voter slip.");
+      }
+      return;
+    }
+
     await printSlip(voter, showBanner, bannerImage);
-    onPrint?.();
+  }
+
+  async function handleChangeDevice() {
+    if (!onChangeDevice) return;
+    try {
+      await onChangeDevice();
+    } catch (error: any) {
+      Alert.alert("Printer unavailable", error?.message ?? "Unable to prepare the voter slip.");
+    }
   }
 
   const slipContent = (
@@ -455,7 +493,7 @@ export function VoterSlipPreview({
         <SlipBlock label="Address" value={address || "N/A"} />
         <SlipBlock
           label="Polling Station No. & Address"
-          value={voter.pollingStation || "N/A"}
+          value={displayValue(voter.pollingStation)}
         />
       </View>
     </View>
@@ -490,6 +528,28 @@ export function VoterSlipPreview({
         </ScrollView>
 
         <View style={styles.footerActions}>
+          {onChangeDevice ? (
+            <View style={styles.printerBar}>
+              <View style={styles.printerStatus}>
+                <Bluetooth color="#087568" size={19} strokeWidth={2.7} />
+                <View style={styles.printerCopy}>
+                  <Text style={styles.printerLabel}>Selected printer</Text>
+                  <Text numberOfLines={1} style={styles.printerName}>
+                    {savedPrinter?.name || "No printer selected"}
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                accessibilityLabel="Change Bluetooth printer"
+                onPress={handleChangeDevice}
+                style={styles.changeDeviceButton}>
+                <Text style={styles.changeDeviceText}>
+                  {savedPrinter ? "Change" : "Select"}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
+          <View style={styles.primaryFooterActions}>
           <Pressable
             accessibilityLabel="Download voter slip"
             onPress={handleDownload}
@@ -506,6 +566,7 @@ export function VoterSlipPreview({
             <Printer color="#FFFFFF" size={17} strokeWidth={2.5} />
             <Text style={styles.printText}>Print</Text>
           </Pressable>
+          </View>
         </View>
       </View>
     </SafeAreaView>
@@ -519,7 +580,7 @@ export function VoterSlipPreview({
 function SlipInline({ label, value }: { label: string; value: string }) {
   return (
     <Text style={styles.inlineText}>
-      {label} : <Text style={styles.inlineValue}>{value}</Text>
+      {label} : <Text style={styles.inlineValue}>{displayValue(value)}</Text>
     </Text>
   );
 }
@@ -527,7 +588,7 @@ function SlipInline({ label, value }: { label: string; value: string }) {
 function SlipLine({ label, value }: { label: string; value: string }) {
   return (
     <Text style={styles.lineText}>
-      {label} : <Text style={styles.lineValue}>{value}</Text>
+      {label} : <Text style={styles.lineValue}>{displayValue(value)}</Text>
     </Text>
   );
 }
@@ -536,7 +597,7 @@ function SlipBlock({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.blockRow}>
       <Text style={styles.blockText}>
-        {label} : {value}
+        {label} : {displayValue(value)}
       </Text>
     </View>
   );
@@ -550,18 +611,15 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(2, 6, 23, 0.78)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 32,
+    padding: 0,
   },
   pageBackdrop: { flex: 1, backgroundColor: "#F8FAFC" },
   pageScrollContent: { padding: 15, paddingBottom: 28 },
   previewPanel: {
     width: "100%",
-    maxWidth: 362,
-    maxHeight: "92%",
+    height: "100%",
     backgroundColor: "#F8FAFC",
-    borderRadius: 5,
+    borderRadius: 0,
     overflow: "hidden",
     shadowColor: "#000000",
     shadowOpacity: 0.24,
@@ -691,10 +749,36 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderTopWidth: 1,
     borderTopColor: "#E5E7EB",
-    flexDirection: "row",
-    gap: 8,
     padding: 12,
   },
+  primaryFooterActions: { flexDirection: "row", gap: 8 },
+  printerBar: {
+    minHeight: 54,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#C5EEE7",
+    backgroundColor: "#F0FDFA",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingLeft: 11,
+    paddingRight: 7,
+    marginBottom: 8,
+  },
+  printerStatus: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
+  printerCopy: { flex: 1 },
+  printerLabel: { color: "#64748B", fontSize: 10, fontWeight: "700" },
+  printerName: { color: "#075E54", fontSize: 13, fontWeight: "900", marginTop: 1 },
+  changeDeviceButton: {
+    height: 34,
+    minWidth: 76,
+    borderRadius: 6,
+    backgroundColor: "#087568",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  changeDeviceText: { color: "#FFFFFF", fontSize: 12, fontWeight: "900" },
   footerButton: {
     flex: 1,
     height: 42,

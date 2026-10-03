@@ -71,7 +71,17 @@ function normalizeUser(raw: any): AuthUser {
     district: source?.district ?? profile?.district ?? districts?.[0],
     state: source?.state ?? profile?.state ?? states?.[0],
     imageUrl: source?.imageUrl ?? source?.profileImage ?? source?.photo ?? profile?.profileImage,
-    bannerImage: source?.bannerImage ?? profile?.bannerImage,
+    bannerImage:
+      source?.bannerImage ??
+      source?.banner ??
+      source?.voterBanner ??
+      source?.voterBannerImage ??
+      source?.slipBanner ??
+      profile?.bannerImage ??
+      profile?.banner ??
+      profile?.voterBanner ??
+      profile?.voterBannerImage ??
+      profile?.slipBanner,
     showVoterPage: normalizeAccessFlag(source?.showVoterPage ?? profile?.showVoterPage),
     showTemplatePage: normalizeAccessFlag(source?.showTemplatePage ?? profile?.showTemplatePage),
     showSurveyPage: normalizeAccessFlag(source?.showSurveyPage ?? profile?.showSurveyPage),

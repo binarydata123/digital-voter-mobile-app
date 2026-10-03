@@ -1,0 +1,268 @@
+diff --git a/node_modules/@vardrz/react-native-bluetooth-escpos-printer/android/build.gradle b/node_modules/@vardrz/react-native-bluetooth-escpos-printer/android/build.gradle
+--- a/node_modules/@vardrz/react-native-bluetooth-escpos-printer/android/build.gradle
++++ b/node_modules/@vardrz/react-native-bluetooth-escpos-printer/android/build.gradle
+@@ -1,6 +1,5 @@
+ buildscript {
+     repositories {
+-        jcenter { url "https://jcenter.bintray.com/" }
+         maven {url "https://repo.spring.io/plugins-release/"}
+         mavenCentral()
+         maven {
+@@ -42,7 +41,6 @@
+ 
+ repositories {
+     google()
+-    jcenter { url "https://jcenter.bintray.com/" }
+     maven {url "https://repo.spring.io/plugins-release/"}
+     mavenCentral()
+     maven {
+diff --git a/node_modules/@vardrz/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/RNBluetoothManagerModule.java b/node_modules/@vardrz/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/RNBluetoothManagerModule.java
+--- a/node_modules/@vardrz/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/RNBluetoothManagerModule.java
++++ b/node_modules/@vardrz/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/RNBluetoothManagerModule.java
+@@ -3,6 +3,7 @@
+ 
+ import android.app.Activity;
+ import android.bluetooth.BluetoothAdapter;
++import android.bluetooth.BluetoothClass;
+ import android.bluetooth.BluetoothDevice;
+ import android.content.BroadcastReceiver;
+ import android.content.Context;
+@@ -10,6 +11,9 @@
+ import android.content.IntentFilter;
+ import android.content.pm.PackageManager;
+ import android.os.Bundle;
++import android.os.Handler;
++import android.os.Looper;
++import android.provider.Settings;
+ import androidx.core.content.ContextCompat;
+ import androidx.core.app.ActivityCompat;
+ import android.util.Log;
+@@ -137,8 +141,7 @@
+             for (BluetoothDevice d : boundDevices) {
+                 try {
+                     JSONObject obj = new JSONObject();
+-                    obj.put("name", d.getName());
+-                    obj.put("address", d.getAddress());
++                    putDeviceDetails(obj, d);
+                     pairedDeivce.pushString(obj.toString());
+                 } catch (Exception e) {
+                     //ignore.
+@@ -169,6 +172,18 @@
+     }
+ 
+     @ReactMethod
++    public void openBluetoothSettings(final Promise promise) {
++        try {
++            Intent intent = new Intent(Settings.ACTION_BLUETOOTH_SETTINGS);
++            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
++            reactContext.startActivity(intent);
++            promise.resolve(null);
++        } catch (Exception e) {
++            promise.reject("OPEN_BLUETOOTH_SETTINGS", e);
++        }
++    }
++
++    @ReactMethod
+     public void scanDevices(final Promise promise) {
+         BluetoothAdapter adapter = this.getBluetoothAdapter();
+         if(adapter == null){
+@@ -190,8 +205,7 @@
+             for (BluetoothDevice d : boundDevices) {
+                 try {
+                     JSONObject obj = new JSONObject();
+-                    obj.put("name", d.getName());
+-                    obj.put("address", d.getAddress());
++                    putDeviceDetails(obj, d);
+                     pairedDeivce.put(obj);
+                 } catch (Exception e) {
+                     //ignore.
+@@ -201,12 +215,48 @@
+             WritableMap params = Arguments.createMap();
+             params.putString("devices", pairedDeivce.toString());
+             emitRNEvent(EVENT_DEVICE_ALREADY_PAIRED, params);
+-            if (!adapter.startDiscovery()) {
+-                promise.reject("DISCOVER", "NOT_STARTED");
+-                cancelDisCovery();
+-            } else {
++            // On modern Android, cancelDiscovery() completes asynchronously.
++            // Wait until the adapter is idle, then retry discovery a few times
++            // instead of returning NOT_STARTED immediately.
++            startDiscoveryWhenReady(adapter, promise, 0);
++        }
++    }
++
++    private void startDiscoveryWhenReady(
++            final BluetoothAdapter adapter,
++            final Promise promise,
++            final int attempt) {
++        if (adapter.isDiscovering()) {
++            adapter.cancelDiscovery();
++        }
++
++        new Handler(Looper.getMainLooper()).postDelayed(() -> {
++            if (adapter.isDiscovering()) {
++                if (attempt < 8) {
++                    startDiscoveryWhenReady(adapter, promise, attempt + 1);
++                } else {
++                    promise.reject("DISCOVER", "NOT_STARTED");
++                }
++                return;
++            }
++
++            if (adapter.startDiscovery()) {
+                 promiseMap.put(PROMISE_SCAN, promise);
++            } else if (attempt < 8) {
++                startDiscoveryWhenReady(adapter, promise, attempt + 1);
++            } else {
++                promise.reject("DISCOVER", "NOT_STARTED");
+             }
++        }, 700);
++    }
++
++    private void putDeviceDetails(JSONObject output, BluetoothDevice device) throws Exception {
++        output.put("name", device.getName());
++        output.put("address", device.getAddress());
++        BluetoothClass bluetoothClass = device.getBluetoothClass();
++        if (bluetoothClass != null) {
++            output.put("deviceClass", bluetoothClass.getDeviceClass());
++            output.put("majorDeviceClass", bluetoothClass.getMajorDeviceClass());
+         }
+     }
+ 
+@@ -423,8 +473,7 @@
+                 if (device.getBondState() != BluetoothDevice.BOND_BONDED) {
+                     JSONObject deviceFound = new JSONObject();
+                     try {
+-                        deviceFound.put("name", device.getName());
+-                        deviceFound.put("address", device.getAddress());
++                        putDeviceDetails(deviceFound, device);
+                     } catch (Exception e) {
+                         //ignore
+                     }
+diff --git a/node_modules/@vardrz/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/escpos/RNBluetoothEscposPrinterModule.java b/node_modules/@vardrz/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/escpos/RNBluetoothEscposPrinterModule.java
+--- a/node_modules/@vardrz/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/escpos/RNBluetoothEscposPrinterModule.java
++++ b/node_modules/@vardrz/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/escpos/RNBluetoothEscposPrinterModule.java
+@@ -3,6 +3,12 @@
+ 
+ import android.graphics.Bitmap;
+ import android.graphics.BitmapFactory;
++import android.graphics.Canvas;
++import android.graphics.Color;
++import android.graphics.Typeface;
++import android.text.Layout;
++import android.text.StaticLayout;
++import android.text.TextPaint;
+ import android.util.Base64;
+ import android.util.Log;
+ import cn.jystudio.bluetooth.BluetoothService;
+@@ -325,7 +331,7 @@
+     }
+ 
+     @ReactMethod
+-    public void printPic(String base64encodeStr, @Nullable  ReadableMap options) {
++    public void printPic(String base64encodeStr, @Nullable ReadableMap options, final Promise promise) {
+         int width = 0;
+         int leftPadding = 0;
+         boolean autoCut = true;
+@@ -356,11 +362,16 @@
+             if (leftPadding < 0) leftPadding = 0;
+         }
+ 
+-        byte[] bytes = Base64.decode(base64encodeStr, Base64.DEFAULT);
+-        Bitmap mBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+-        int nMode = 0;
++        try {
++            byte[] bytes = Base64.decode(base64encodeStr, Base64.DEFAULT);
++            Bitmap mBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
++            int nMode = 0;
++
++            if (mBitmap == null) {
++                promise.reject("INVALID_IMAGE", "Unable to decode the printer image.");
++                return;
++            }
+ 
+-        if (mBitmap != null) {
+             /**
+              * Parameters:
+              * mBitmap  要打印的图片
+@@ -370,14 +381,58 @@
+              */
+             byte[] data = PrintPicture.POS_PrintBMP(mBitmap, width, nMode, leftPadding);
+             //  SendDataByte(buffer);
+-            sendDataByte(Command.ESC_Init);
+-            // sendDataByte(Command.LF);
+-            sendDataByte(data);
++            boolean initialized = sendDataByte(Command.ESC_Init);
++            boolean imageSent = initialized && sendDataInChunks(data);
+             sendDataByte(PrinterCommand.POS_Set_PrtAndFeedPaper(30));
+             if (autoCut) {
+                 sendDataByte(PrinterCommand.POS_Set_Cut(1));
+             }
+             sendDataByte(PrinterCommand.POS_Set_PrtInit());
++            if (imageSent) {
++                promise.resolve(null);
++            } else {
++                promise.reject("IMAGE_NOT_SENT", "The printer did not accept the banner image.");
++            }
++        } catch (Exception e) {
++            promise.reject("IMAGE_PRINT_FAILED", e);
++        }
++    }
++
++    @ReactMethod
++    public void printUnicodeText(String text, int textSize, final Promise promise) {
++        try {
++            TextPaint paint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG | TextPaint.SUBPIXEL_TEXT_FLAG);
++            paint.setColor(Color.BLACK);
++            paint.setTextSize(Math.max(textSize, 16));
++            paint.setTypeface(Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL));
++
++            StaticLayout layout = new StaticLayout(
++                    text,
++                    paint,
++                    WIDTH_58,
++                    Layout.Alignment.ALIGN_NORMAL,
++                    1.15f,
++                    0,
++                    false
++            );
++            Bitmap bitmap = Bitmap.createBitmap(WIDTH_58, layout.getHeight() + 16, Bitmap.Config.ARGB_8888);
++            Canvas canvas = new Canvas(bitmap);
++            canvas.drawColor(Color.WHITE);
++            canvas.translate(0, 8);
++            layout.draw(canvas);
++
++            byte[] data = PrintPicture.POS_PrintBMP(bitmap, WIDTH_58, 0, 0);
++            boolean initialized = sendDataByte(Command.ESC_Init);
++            boolean printed = initialized && sendDataInChunks(data);
++            sendDataByte(PrinterCommand.POS_Set_PrtAndFeedPaper(20));
++
++            if (printed) {
++                promise.resolve(null);
++            } else {
++                promise.reject("UNICODE_TEXT_NOT_SENT", "The printer did not accept the Hindi text.");
++            }
++        } catch (Exception e) {
++            promise.reject("UNICODE_TEXT_FAILED", e);
+         }
+     }
+ 
+@@ -495,6 +550,18 @@
+         return true;
+     }
+ 
++    private boolean sendDataInChunks(byte[] data) {
++        final int chunkSize = 2048;
++        for (int offset = 0; offset < data.length; offset += chunkSize) {
++            int length = Math.min(chunkSize, data.length - offset);
++            byte[] chunk = Arrays.copyOfRange(data, offset, offset + length);
++            if (!sendDataByte(chunk)) {
++                return false;
++            }
++        }
++        return true;
++    }
++
+     // 根据Unicode编码完美的判断中文汉字和符号
+     private static boolean isChinese(char c) {
+         Character.UnicodeBlock ub = Character.UnicodeBlock.of(c);
