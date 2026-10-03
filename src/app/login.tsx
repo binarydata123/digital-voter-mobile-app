@@ -1,9 +1,8 @@
-import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -20,6 +19,7 @@ import {
   loginPolitician,
   logoutPolitician,
 } from "@/services/authentication";
+import { Eye, EyeOff, Lock, Phone, X } from "lucide-react-native";
 
 export default function LoginScreen() {
   const [phone, setPhone] = useState("");
@@ -68,39 +68,39 @@ export default function LoginScreen() {
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
         >
-          <View style={styles.hero}>
-            <View style={styles.brandRow}>
-              <View style={styles.brandMark}>
-                <Image
-                  source={require("../../assets/icons/election_icon_192x192.png")}
-                  style={styles.brandIcon}
-                  contentFit="contain"
-                />
-              </View>
-              <View>
-                <Text style={styles.brandTitle}>VoterSakha</Text>
-                <Text style={styles.brandMeta}>POLITICIAN APP</Text>
-              </View>
+          {/* Header / Logo Section */}
+          <View style={styles.header}>
+            <View style={styles.logoContainer}>
+              <Image
+                source={require("../../assets/icons/election_icon_192x192.png")}
+                style={styles.logoIcon}
+                resizeMode="contain"
+              />
             </View>
-
-            <Text style={styles.headline}>
-              Manage voters, booths, and election work securely.
+            <Text style={styles.brandTitle}>
+              VOTER<Text style={styles.brandTitleBold}>SAKHA</Text>
             </Text>
-            <Text style={styles.subhead}>
-              Login with your VoterSakha politician account to access your
-              assigned voter list.
-            </Text>
+            <Text style={styles.brandMeta}>POLITICIAN APP</Text>
           </View>
 
-          <View style={styles.sheet}>
-            <View style={styles.handle} />
-            <Text style={styles.formTitle}>Politician Login</Text>
+          {/* Form Card Section */}
+          <View style={styles.formCard}>
+            <Text style={styles.headline}>Welcome Back</Text>
+            <Text style={styles.subHeadline}>
+              Access your politician portal
+            </Text>
 
-            <Text style={styles.label}>Phone Number</Text>
-            <View style={styles.inputRow}>
+            {/* Phone Input */}
+            <Text style={styles.label}>PHONE NUMBER</Text>
+            <View style={styles.inputWrapper}>
+              <Phone
+                size={18}
+                color="#4A5568"
+                style={styles.inputIcon}
+                strokeWidth={2}
+              />
               <TextInput
                 value={phone}
                 onChangeText={(value) =>
@@ -108,9 +108,9 @@ export default function LoginScreen() {
                 }
                 keyboardType="phone-pad"
                 placeholder="Enter 10 digit number"
-                placeholderTextColor="#94A3B8"
+                placeholderTextColor="#718096"
                 returnKeyType="next"
-                style={styles.rowInput}
+                style={styles.input}
                 maxLength={10}
                 onSubmitEditing={() => passwordInputRef.current?.focus()}
               />
@@ -121,51 +121,68 @@ export default function LoginScreen() {
                   onPress={() => setPhone("")}
                   style={styles.clearButton}
                 >
-                  <Text style={styles.clearButtonText}>x</Text>
+                  <X size={20} color="#718096" strokeWidth={2} />
                 </Pressable>
               ) : null}
             </View>
 
-            <Text style={styles.label}>Password</Text>
-            <View style={styles.passwordRow}>
+            {/* Password Input */}
+            <Text style={styles.label}>PASSWORD</Text>
+            <View style={styles.inputWrapper}>
+              <Lock
+                size={18}
+                color="#4A5568"
+                style={styles.inputIcon}
+                strokeWidth={2}
+              />
               <TextInput
                 ref={passwordInputRef}
                 value={password}
                 onChangeText={setPassword}
-                placeholder="Enter password"
-                placeholderTextColor="#94A3B8"
+                placeholder="••••••••"
+                placeholderTextColor="#718096"
                 secureTextEntry={!showPassword}
                 returnKeyType="done"
-                style={styles.passwordInput}
+                style={styles.input}
                 onSubmitEditing={handleLogin}
               />
               <Pressable
                 accessibilityRole="button"
                 onPress={() => setShowPassword((value) => !value)}
-                style={styles.smallButton}
+                style={styles.eyeButton}
               >
-                <Text style={styles.smallButtonText}>
-                  {showPassword ? "Hide" : "Show"}
-                </Text>
+                {showPassword ? (
+                  <EyeOff size={20} color="#718096" strokeWidth={2} />
+                ) : (
+                  <Eye size={20} color="#718096" strokeWidth={2} />
+                )}
               </Pressable>
             </View>
 
-            <Pressable
-              accessibilityRole="button"
-              disabled={loading}
-              onPress={handleLogin}
-              style={({ pressed }) => [
-                styles.loginButton,
-                (pressed || loading) && styles.loginButtonPressed,
-              ]}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.loginButtonText}>Sign In</Text>
-              )}
-            </Pressable>
+            {/* {(phone || password || loading) && (
+              <Pressable
+                accessibilityRole="button"
+                disabled={loading}
+                onPress={handleLogin}
+                style={({ pressed }) => [
+                  styles.loginButton,
+                  (pressed || loading) && styles.loginButtonPressed,
+                ]}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.loginButtonText}>Sign in</Text>
+                )}
+              </Pressable>
+            )} */}
           </View>
+
+          {/* Footer Text */}
+          <Text style={styles.footerText}>
+            Manage voters, booths, and election work securely. Login with your
+            VoterSakha politician account to access your assigned voter list.
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -175,172 +192,133 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#0A1118",
   },
   container: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#0A1118",
   },
-  scroll: { flex: 1, backgroundColor: "#FFFFFF" },
-  scrollContent: { flexGrow: 1, paddingBottom: 24 },
-  hero: {
-    backgroundColor: "#134E4A",
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
     paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 71,
+    paddingVertical: 40,
   },
-  brandRow: {
-    flexDirection: "row",
+  header: {
     alignItems: "center",
-    gap: 12,
-    marginBottom: 28,
+    marginBottom: 32,
   },
-  brandMark: {
+  logoContainer: {
+    width: 60,
+    height: 60,
+    marginBottom: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#0F4C4E",
+    borderRadius: 16,
+    shadowColor: "#0F4C4E",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 15,
+    elevation: 10,
+  },
+  logoIcon: {
     width: 48,
     height: 48,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.13)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
-    overflow: "hidden",
-  },
-  brandIcon: {
-    width: 40,
-    height: 40,
   },
   brandTitle: {
+    fontSize: 24,
     color: "#FFFFFF",
-    fontSize: 21,
+    fontWeight: "400",
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  brandTitleBold: {
     fontWeight: "900",
+    color: "#00B4D8",
   },
   brandMeta: {
     color: "#6EE7B7",
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.5,
+    marginTop: 4,
+  },
+  formCard: {
+    backgroundColor: "#131C24",
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: "#1F2E3A",
   },
   headline: {
+    fontSize: 24,
+    fontWeight: "700",
     color: "#FFFFFF",
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: "900",
-    marginBottom: 12,
-    maxWidth: 350,
+    marginBottom: 4,
   },
-  subhead: {
-    color: "#CCFBF1",
+  subHeadline: {
     fontSize: 14,
-    lineHeight: 22,
-    maxWidth: 350,
-  },
-  sheet: {
-    minHeight: 380,
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    paddingHorizontal: 24,
-    paddingTop: 18,
-    paddingBottom: 30,
-    marginTop: -28,
-  },
-  handle: {
-    width: 48,
-    height: 4,
-    borderRadius: 4,
-    backgroundColor: "#CBD5E1",
-    alignSelf: "center",
-    marginBottom: 22,
-  },
-  formTitle: {
-    color: "#0F172A",
-    fontSize: 22,
-    fontWeight: "900",
-    marginBottom: 22,
+    color: "#A0AEC0",
+    marginBottom: 24,
   },
   label: {
-    color: "#334155",
-    fontSize: 12,
-    fontWeight: "800",
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#A0AEC0",
+    letterSpacing: 1,
     marginBottom: 8,
   },
-  inputRow: {
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: "#EFF6FF",
-    borderWidth: 1,
-    borderColor: "#DBEAFE",
+  inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    paddingLeft: 15,
-    marginBottom: 16,
+    backgroundColor: "#F0F4F8",
+    borderRadius: 8,
+    height: 52,
+    marginBottom: 20,
+    paddingHorizontal: 16,
   },
-  rowInput: {
+  inputIcon: {
+    fontSize: 16,
+    marginRight: 10,
+    color: "#4A5568",
+  },
+  input: {
     flex: 1,
-    color: "#0F172A",
+    height: "100%",
+    color: "#1A202C",
     fontSize: 15,
-    fontWeight: "700",
-    paddingVertical: 0,
-    outlineWidth: 0,
-    outlineColor: "transparent",
+    fontWeight: "500",
   },
   clearButton: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
+    padding: 4,
   },
-  clearButtonText: {
-    color: "#64748B",
-    fontSize: 20,
-    lineHeight: 22,
-    fontWeight: "900",
-  },
-  passwordRow: {
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: "#EFF6FF",
-    borderWidth: 1,
-    borderColor: "#DBEAFE",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingLeft: 15,
-    marginBottom: 20,
-  },
-  passwordInput: {
-    flex: 1,
-    color: "#0F172A",
-    fontSize: 15,
-    fontWeight: "700",
-    paddingVertical: 0,
-    outlineWidth: 0,
-    outlineColor: "transparent",
-  },
-  smallButton: {
-    height: 40,
-    paddingHorizontal: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  smallButtonText: {
-    color: "#0F766E",
-    fontSize: 12,
-    fontWeight: "900",
+  eyeButton: {
+    padding: 4,
   },
   loginButton: {
     height: 52,
-    borderRadius: 14,
-    backgroundColor: "#134E4A",
+    borderRadius: 8,
+    backgroundColor: "#0F4C4E",
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 8,
+    marginBottom: 8,
   },
   loginButtonPressed: {
-    opacity: 0.82,
+    opacity: 0.85,
   },
   loginButtonText: {
     color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "900",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  footerText: {
+    textAlign: "center",
+    fontSize: 11,
+    color: "#4A5568",
+    marginTop: 32,
+    lineHeight: 18,
+    paddingHorizontal: 20,
   },
 });
