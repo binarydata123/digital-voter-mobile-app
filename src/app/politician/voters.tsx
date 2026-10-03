@@ -14,10 +14,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
-  type ListRenderItemInfo,
   Modal,
   Platform,
   Pressable,
+  SectionList,
   StyleSheet,
   Text,
   TextInput,
@@ -32,7 +32,8 @@ import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleto
 import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 
 import {
-  shareVoterSlipPdf,
+  shareVoterSlipImageFromRef,
+  VoterSlipPaper,
   VoterSlipPreview,
 } from "@/features/voters/components/VoterSlipPreview";
 import {
@@ -66,6 +67,7 @@ type ThermalPrintRequest = {
   showBanner: boolean;
   voter: Voter;
 };
+type ShareImageRequest = { voter: Voter; resolve: () => void };
 
 export default function VotersScreen() {
   const [voters, setVoters] = useState<Voter[]>([]);
@@ -82,8 +84,11 @@ export default function VotersScreen() {
     useState<PrintTypeRequest | null>(null);
   const [thermalPrintRequest, setThermalPrintRequest] =
     useState<ThermalPrintRequest | null>(null);
+  const [shareImageRequest, setShareImageRequest] =
+    useState<ShareImageRequest | null>(null);
   const [logoutChoiceVisible, setLogoutChoiceVisible] = useState(false);
   const boothSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shareSlipRef = useRef<View>(null);
   const currentUser = getCurrentUser();
   const canOpenSurvey = hasPoliticianPageAccess("survey", currentUser);
   const canUseTemplates = hasPoliticianPageAccess("template", currentUser);
@@ -156,6 +161,35 @@ export default function VotersScreen() {
     return () => cancelAnimationFrame(frame);
   }, [activeBooth, pendingBooth]);
 
+  useEffect(() => {
+    if (!shareImageRequest) return;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const frame = requestAnimationFrame(() => {
+      const waitForBanner =
+        canUseTemplates && currentUser?.bannerImage ? 250 : 0;
+
+      timer = setTimeout(() => {
+        shareVoterSlipImageFromRef(
+          shareSlipRef,
+          shareImageRequest.voter,
+          shareImageRequest.voter.whatsappNumber ||
+            shareImageRequest.voter.mobileNumber,
+          canUseTemplates,
+          currentUser?.bannerImage,
+        ).finally(() => {
+          shareImageRequest.resolve();
+          setShareImageRequest(null);
+        });
+      }, waitForBanner);
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      if (timer) clearTimeout(timer);
+    };
+  }, [canUseTemplates, currentUser?.bannerImage, shareImageRequest]);
+
   const refreshAllVoterData = useCallback(async () => {
     setActiveBooth("All");
     setQuery("");
@@ -185,13 +219,12 @@ export default function VotersScreen() {
     }
   }, []);
 
+  const stats = useMemo(() => buildVoterStats(voters), [voters]);
   const booths = useMemo(
     () => ["All", ...Array.from(new Set(voters.map((voter) => voter.booth)))],
     [voters],
   );
-  const stats = useMemo(() => buildVoterStats(voters), [voters]);
 
-  // Count per booth tab (All = total, others = boothCounts[booth] or 0)
   const boothCounts = useMemo(() => {
     const counts: Record<string, number> = { All: stats.total };
     booths.forEach((booth) => {
@@ -260,20 +293,17 @@ export default function VotersScreen() {
 
   const handleShareVoterSlip = useCallback(
     async (voter: Voter) => {
-      await shareVoterSlipPdf(
-        voter,
-        canUseTemplates,
-        currentUser?.bannerImage,
-        voter.whatsappNumber || voter.mobileNumber,
-      );
+      await new Promise<void>((resolve) => {
+        setShareImageRequest({ voter, resolve });
+      });
     },
-    [canUseTemplates, currentUser?.bannerImage],
+    [],
   );
 
   const renderVoter = useCallback(
-    ({ item }: ListRenderItemInfo<Voter>) => (
+    (voter: Voter) => (
       <VoterCard
-        voter={item}
+        voter={voter}
         onPrint={handlePrint}
         onFamily={handleFamily}
         onShare={handleShareVoterSlip}
@@ -281,6 +311,174 @@ export default function VotersScreen() {
     ),
     [handleFamily, handlePrint, handleShareVoterSlip],
   );
+
+  const sections = useMemo(
+    () => [
+      {
+        data: pendingBooth ? [] : filteredVoters,
+        key: "voters",
+      },
+    ],
+    [filteredVoters, pendingBooth],
+  );
+
+  const renderScreenHeader = useCallback(
+    () => (
+      <>
+        <View style={styles.header}>
+          <Image
+            source={require("../../../assets/images/vote.jpeg")}
+            style={styles.headerImage}
+            contentFit="cover"
+            transition={120}
+          />
+          <View style={styles.headerOverlay} />
+
+          <View style={styles.headerTop}>
+            <View />
+            <View style={styles.headerActions}>
+              <Pressable
+                accessibilityLabel="Refresh offline voter data"
+                onPress={refreshAllVoterData}
+                disabled={loading}
+                style={[
+                  styles.headerIconButton,
+                  loading && styles.headerIconButtonDisabled,
+                ]}
+              >
+                <RefreshCw color="#0F766E" size={18} strokeWidth={2.8} />
+              </Pressable>
+              <Pressable
+                accessibilityLabel="Logout"
+                onPress={handleLogout}
+                style={[styles.headerIconButton, styles.logoutButton]}
+              >
+                <LogOut color="#FFFFFF" size={18} strokeWidth={2.8} />
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.headerCopy}>
+            <Text style={styles.eyebrow}>VOTER LIST</Text>
+            <Text style={styles.title}>Ward-14</Text>
+            <Text style={styles.boothTitle}>Booth-1, 2</Text>
+            <View style={styles.locationRow}>
+              <MapPin color="#087568" size={14} strokeWidth={2.8} />
+              <Text style={styles.location}>Ganganagar, Rajasthan</Text>
+            </View>
+          </View>
+        </View>
+
+        {error ? (
+          <View style={styles.warningWrap}>
+            <Text style={styles.warning}>{error}</Text>
+          </View>
+        ) : null}
+      </>
+    ),
+    [error, loading, refreshAllVoterData],
+  );
+
+  const renderStickyControls = useCallback(
+    () => (
+      <View style={styles.stickyControls}>
+        <View style={styles.searchRow}>
+          <View style={styles.searchBox}>
+            <Search color="#94A3B8" size={18} strokeWidth={2.6} />
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search name, EPIC No. or Serial No."
+              placeholderTextColor="#94A3B8"
+              style={styles.searchInput}
+              returnKeyType="search"
+            />
+          </View>
+          <Pressable
+            style={styles.filterButton}
+            onPress={() => setModalVisible(true)}
+          >
+            <SlidersHorizontal color="#FFFFFF" size={15} strokeWidth={2.8} />
+            <Text style={styles.filterButtonText}>Filter</Text>
+          </Pressable>
+        </View>
+        <FlatList
+          horizontal
+          data={booths}
+          keyExtractor={(item) => item}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.boothTabs}
+          renderItem={({ item }) => {
+            const isActive = activeBooth === item;
+            const label = item === "All" ? "All Voters" : item;
+            const count = boothCounts[item] ?? 0;
+
+            return (
+              <Pressable
+                onPress={() => selectBooth(item)}
+                style={[styles.boothTab, isActive && styles.boothTabActive]}
+              >
+                {item === "All" ? (
+                  <UsersRound
+                    color={isActive ? "#FFFFFF" : "#087568"}
+                    size={16}
+                    strokeWidth={2.6}
+                  />
+                ) : null}
+                <Text
+                  style={[
+                    styles.boothTabText,
+                    isActive && styles.boothTabTextActive,
+                  ]}
+                >
+                  {label}
+                </Text>
+                <View
+                  style={[
+                    styles.countBadge,
+                    isActive && styles.countBadgeActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.countBadgeText,
+                      isActive && styles.countBadgeTextActive,
+                    ]}
+                  >
+                    {count}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          }}
+        />
+      </View>
+    ),
+    [activeBooth, boothCounts, booths, query, selectBooth],
+  );
+
+  const renderListFooter = useCallback(() => {
+    if (pendingBooth) {
+      return (
+        <View style={styles.listFooterWrap}>
+          <VoterListSkeleton />
+        </View>
+      );
+    }
+
+    if (filteredVoters.length === 0) {
+      return (
+        <View style={styles.listFooterWrap}>
+          <EmptyState
+            title="No voters found"
+            message="Try a different name, EPIC number, or booth."
+          />
+        </View>
+      );
+    }
+
+    return null;
+  }, [filteredVoters.length, pendingBooth]);
 
   function openSlipPreview(withBanner: boolean) {
     if (!printTypeRequest) return;
@@ -334,171 +532,24 @@ export default function VotersScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* ================= HEADER ================= */}
-      <View style={styles.header}>
-        <Image
-          source={require("../../../assets/images/vote.jpeg")}
-          style={styles.headerImage}
-          contentFit="cover"
-          transition={120}
-        />
-        <View style={styles.headerOverlay} />
-
-        <View style={styles.headerTop}>
-          <View />
-          <View style={styles.headerActions}>
-            <Pressable
-              accessibilityLabel="Refresh offline voter data"
-              onPress={refreshAllVoterData}
-              disabled={loading}
-              style={[
-                styles.headerIconButton,
-                loading && styles.headerIconButtonDisabled,
-              ]}>
-              <RefreshCw color="#0F766E" size={18} strokeWidth={2.8} />
-            </Pressable>
-            <Pressable
-              accessibilityLabel="Logout"
-              onPress={handleLogout}
-              style={[styles.headerIconButton, styles.logoutButton]}>
-              <LogOut color="#FFFFFF" size={18} strokeWidth={2.8} />
-            </Pressable>
-          </View>
-        </View>
-
-        {/* Title block starts on next line (not beside back arrow) */}
-        <View style={styles.headerCopy}>
-          <Text style={styles.eyebrow}>VOTER LIST</Text>
-          <Text style={styles.title}>Ward-14</Text>
-          <Text style={styles.boothTitle}>Booth-1, 2</Text>
-          <View style={styles.locationRow}>
-            <MapPin color="#087568" size={14} strokeWidth={2.8} />
-            <Text style={styles.location}>Ganganagar, Rajasthan</Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.body}>
-        {error ? <Text style={styles.warning}>{error}</Text> : null}
-
-        {/* Total Voters card with Users icon */}
-        {/* <Pressable
-          onPress={() => setModalVisible(true)}
-          style={styles.totalCard}
-        >
-          <View style={styles.totalCardLeft}>
-            <View style={styles.totalIconWrap}>
-              <UsersRound color="#087568" size={22} strokeWidth={2.5} />
-            </View>
-            <View>
-              <Text style={styles.cardLabel}>Total Voters</Text>
-              <Text style={styles.totalValue}>{stats.total}</Text>
-            </View>
-          </View>
-          <Info color="#0F766E" size={20} strokeWidth={2.5} />
-        </Pressable> */}
-
-        {/* Search */}
-        <View style={styles.searchRow}>
-          <View style={styles.searchBox}>
-            <Search color="#94A3B8" size={18} strokeWidth={2.6} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search name, EPIC No. or Serial No."
-              placeholderTextColor="#94A3B8"
-              style={styles.searchInput}
-              returnKeyType="search"
-            />
-          </View>
-          <Pressable
-            style={styles.filterButton}
-            onPress={() => setModalVisible(true)}>
-            <SlidersHorizontal color="#FFFFFF" size={15} strokeWidth={2.8} />
-            <Text style={styles.filterButtonText}>Filter</Text>
-          </Pressable>
-        </View>
-
-        {/* Booth tabs with counts */}
-        <View style={styles.boothTabsWrap}>
-          <FlatList
-            horizontal
-            data={booths}
-            keyExtractor={(item) => item}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.boothTabs}
-            renderItem={({ item }) => {
-              const isActive = activeBooth === item;
-              const label = item === "All" ? "All Voters" : item;
-              const count = boothCounts[item] ?? 0;
-              return (
-                <Pressable
-                  onPress={() => selectBooth(item)}
-                  style={[styles.boothTab, isActive && styles.boothTabActive]}>
-                  {item === "All" ? (
-                    <UsersRound
-                      color={isActive ? "#FFFFFF" : "#087568"}
-                      size={16}
-                      strokeWidth={2.6}
-                    />
-                  ) : null}
-                  <Text
-                    style={[
-                      styles.boothTabText,
-                      isActive && styles.boothTabTextActive,
-                    ]}>
-                    {label}
-                  </Text>
-                  <View
-                    style={[
-                      styles.countBadge,
-                      isActive && styles.countBadgeActive,
-                    ]}>
-                    <Text
-                      style={[
-                        styles.countBadgeText,
-                        isActive && styles.countBadgeTextActive,
-                      ]}>
-                      {count}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            }}
-          />
-        </View>
-
-        {pendingBooth ? (
-          <VoterListSkeleton />
-        ) : (
-          <FlatList
-            data={filteredVoters}
-            keyExtractor={(item) => item.id}
-            initialNumToRender={12}
-            maxToRenderPerBatch={12}
-            updateCellsBatchingPeriod={50}
-            windowSize={7}
-            removeClippedSubviews={Platform.OS === "android"}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.listContent}
-            ListEmptyComponent={
-              <EmptyState
-                title="No voters found"
-                message="Try a different name, EPIC number, or booth."
-              />
-            }
-            renderItem={renderVoter}
-          />
+      <SectionList
+        sections={sections}
+        keyExtractor={(item) => item.id}
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        updateCellsBatchingPeriod={50}
+        windowSize={7}
+        stickySectionHeadersEnabled
+        removeClippedSubviews={Platform.OS === "android"}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={renderScreenHeader}
+        renderSectionHeader={renderStickyControls}
+        renderSectionFooter={renderListFooter}
+        renderItem={({ item }) => (
+          <View style={styles.voterItemWrap}>{renderVoter(item)}</View>
         )}
-
-        <Pressable
-          accessibilityLabel="Open booth filter"
-          onPress={() => setModalVisible(true)}
-          style={styles.boothFilterHandleButton}
-        >
-          <View style={styles.boothFilterHandle} />
-        </Pressable>
-      </View>
+      />
 
       {logoutChoiceVisible ? (
         <View style={styles.logoutChoiceOverlay}>
@@ -513,7 +564,8 @@ export default function VotersScreen() {
               <Pressable
                 accessibilityLabel="Close logout options"
                 onPress={() => setLogoutChoiceVisible(false)}
-                style={styles.logoutChoiceClose}>
+                style={styles.logoutChoiceClose}
+              >
                 <X color="#64748B" size={20} strokeWidth={2.6} />
               </Pressable>
             </View>
@@ -528,13 +580,15 @@ export default function VotersScreen() {
               {canOpenSurvey ? (
                 <Pressable
                   onPress={openSurveyPage}
-                  style={styles.surveyChoiceButton}>
+                  style={styles.surveyChoiceButton}
+                >
                   <Text style={styles.surveyChoiceText}>Open Survey Page</Text>
                 </Pressable>
               ) : null}
               <Pressable
                 onPress={confirmLogout}
-                style={styles.logoutConfirmButton}>
+                style={styles.logoutConfirmButton}
+              >
                 <Text style={styles.logoutConfirmText}>Logout</Text>
               </Pressable>
             </View>
@@ -547,11 +601,13 @@ export default function VotersScreen() {
         transparent
         visible={Boolean(printTypeRequest)}
         animationType="fade"
-        onRequestClose={() => setPrintTypeRequest(null)}>
+        onRequestClose={() => setPrintTypeRequest(null)}
+      >
         {printTypeRequest ? (
           <Pressable
             style={styles.printChoiceBackdrop}
-            onPress={() => setPrintTypeRequest(null)}>
+            onPress={() => setPrintTypeRequest(null)}
+          >
             <Pressable style={styles.printChoicePanel}>
               <View style={styles.printChoiceHeader}>
                 <Text style={styles.printChoiceTitle}>
@@ -562,7 +618,8 @@ export default function VotersScreen() {
                 <Pressable
                   accessibilityLabel="Close print type"
                   onPress={() => setPrintTypeRequest(null)}
-                  style={styles.printChoiceClose}>
+                  style={styles.printChoiceClose}
+                >
                   <Text style={styles.printChoiceCloseText}>x</Text>
                 </Pressable>
               </View>
@@ -611,7 +668,8 @@ export default function VotersScreen() {
         transparent
         visible={Boolean(slipPreview)}
         animationType="fade"
-        onRequestClose={() => setSlipPreview(null)}>
+        onRequestClose={() => setSlipPreview(null)}
+      >
         {slipPreview ? (
           <VoterSlipPreview
             voter={slipPreview.voter}
@@ -639,15 +697,32 @@ export default function VotersScreen() {
         />
       ) : null}
 
+      {shareImageRequest ? (
+        <View
+          pointerEvents="none"
+          style={styles.shareCaptureHost}
+        >
+          <View collapsable={false} ref={shareSlipRef}>
+            <VoterSlipPaper
+              voter={shareImageRequest.voter}
+              showBanner={canUseTemplates}
+              bannerImage={currentUser?.bannerImage}
+            />
+          </View>
+        </View>
+      ) : null}
+
       {/* Booth wise modal */}
       <Modal
         transparent
         visible={modalVisible}
         animationType="slide"
-        onRequestClose={() => setModalVisible(false)}>
+        onRequestClose={() => setModalVisible(false)}
+      >
         <Pressable
           style={styles.modalBackdrop}
-          onPress={() => setModalVisible(false)}>
+          onPress={() => setModalVisible(false)}
+        >
           <View style={styles.modalSheet}>
             <View style={styles.handle} />
             <Text style={styles.modalTitle}>Booth Wise Voters</Text>
@@ -659,7 +734,8 @@ export default function VotersScreen() {
                     selectBooth(booth);
                     setModalVisible(false);
                   }}
-                  style={styles.modalCard}>
+                  style={styles.modalCard}
+                >
                   <Text style={styles.modalCardLabel}>{booth}</Text>
                   <Text style={styles.modalCardValue}>{count}</Text>
                 </Pressable>
@@ -704,6 +780,13 @@ function PrintChoiceRow({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F4FBF7" },
+  shareCaptureHost: {
+    position: "absolute",
+    left: -10000,
+    top: 0,
+    width: 420,
+    backgroundColor: "#FFFFFF",
+  },
 
   /* ---------- Header ---------- */
   header: {
@@ -805,6 +888,11 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginBottom: 10,
   },
+  warningWrap: {
+    backgroundColor: "#F4FBF7",
+    paddingHorizontal: 16,
+    paddingTop: 14,
+  },
 
   /* Total voters card */
   totalCard: {
@@ -836,10 +924,26 @@ const styles = StyleSheet.create({
   },
 
   /* Search */
+  stickyControls: {
+    position: "relative",
+    backgroundColor: "#F4FBF7",
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 24,
+    zIndex: 24,
+  },
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 10,
+    gap: 5,
   },
   searchBox: {
     flex: 1,
@@ -872,7 +976,6 @@ const styles = StyleSheet.create({
   filterButtonText: { color: "#FFFFFF", fontWeight: "900", fontSize: 13 },
 
   /* Booth tabs */
-  boothTabsWrap: { height: 50, marginBottom: 0 },
   boothTabs: { gap: 8, paddingBottom: 4, paddingTop: 2 },
   boothTab: {
     height: 36,
@@ -902,7 +1005,17 @@ const styles = StyleSheet.create({
   countBadgeTextActive: { color: "#064E3B" },
 
   /* List */
-  listContent: { paddingBottom: 70, gap: 6, paddingTop: 2 },
+  listContent: { paddingBottom: 70, backgroundColor: "#F4FBF7" },
+  voterItemWrap: {
+    position: "relative",
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    zIndex: 0,
+    elevation: 0,
+  },
+  listFooterWrap: {
+    paddingHorizontal: 16,
+  },
   boothFilterHandleButton: {
     position: "absolute",
     left: "50%",

@@ -4,9 +4,11 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { Bluetooth, Download, Printer, X } from "lucide-react-native";
 import { useEffect, useState } from "react";
+import type { RefObject } from "react";
 import {
   Alert,
   Linking,
+  NativeModules,
   Platform,
   Pressable,
   ScrollView,
@@ -14,6 +16,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { captureRef } from "react-native-view-shot";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
@@ -31,6 +34,12 @@ export type VoterSlipPreviewProps = {
   onPrint?: () => Promise<void> | void;
   onChangeDevice?: () => Promise<void> | void;
   variant?: "modal" | "page";
+};
+
+export type VoterSlipPaperProps = {
+  voter: Voter;
+  showBanner: boolean;
+  bannerImage?: string;
 };
 
 /* ============================================================
@@ -356,6 +365,64 @@ export async function shareVoterSlipPdf(
   }
 }
 
+export async function shareVoterSlipImageFromRef(
+  paperRef: RefObject<View | null>,
+  voter: Voter,
+  whatsappNumber?: string,
+  showBanner = false,
+  bannerImage?: string,
+) {
+  try {
+    if (Platform.OS === "web") {
+      Alert.alert("Share", "Image sharing is available on mobile devices.");
+      return;
+    }
+
+    if (!paperRef.current) {
+      Alert.alert("Share failed", "Unable to prepare the voter slip image.");
+      return;
+    }
+
+    if (!(await Sharing.isAvailableAsync())) {
+      Alert.alert("Share unavailable", "Sharing is not available on this device.");
+      return;
+    }
+
+    // Expo Go and an already-installed development build do not receive newly
+    // added native libraries until the Android app is rebuilt. Use the PDF
+    // sharing path in that case, rather than exposing an RNViewShot error.
+    if (!NativeModules.RNViewShot) {
+      await shareVoterSlipPdf(voter, showBanner, bannerImage, whatsappNumber);
+      return;
+    }
+
+    const capturedUri = await captureRef(paperRef, {
+      format: "png",
+      quality: 1,
+      result: "tmpfile",
+    });
+    const imageUri =
+      (FileSystem.cacheDirectory ?? "") +
+      "voter-slip-" +
+      slugFileName(voter.epicNo || voter.id || voter.name) +
+      "-" +
+      Date.now() +
+      ".png";
+
+    await FileSystem.copyAsync({ from: capturedUri, to: imageUri });
+
+    await Sharing.shareAsync(imageUri, {
+      mimeType: "image/png",
+      dialogTitle: whatsappNumber
+        ? "Share Voter Slip to " + voter.name
+        : "Share Voter Slip",
+      UTI: "public.png",
+    });
+  } catch (error: any) {
+    Alert.alert("Share failed", error?.message ?? "Unable to share the slip.");
+  }
+}
+
 export async function printSlip(
   voter: Voter,
   showBanner: boolean,
@@ -406,17 +473,6 @@ export function VoterSlipPreview({
       setSavedPrinter(null);
     });
   }, []);
-  const address = [
-    voter.houseNo && voter.houseNo !== "N/A"
-      ? "House No. " + voter.houseNo
-      : "",
-    voter.ward ? "Ward " + voter.ward : "",
-    voter.district,
-    voter.state,
-  ]
-    .filter(Boolean)
-    .join(", ");
-
   async function handleDownload() {
     await downloadSlip(voter, showBanner, bannerImage);
     onDownload?.();
@@ -445,58 +501,11 @@ export function VoterSlipPreview({
   }
 
   const slipContent = (
-    <View style={styles.paper}>
-      {showBanner ? (
-        bannerImage ? (
-          <Image
-            source={{ uri: bannerImage }}
-            style={styles.bannerImage}
-            contentFit="contain"
-          />
-        ) : (
-          <View style={styles.bannerFallback}>
-            <Text style={styles.bannerMeta}>
-              वार्ड संख्या : {voter.ward || "58"}
-            </Text>
-            <Text style={styles.bannerDivider} />
-            <Text style={styles.bannerText}>मतदान केंद्र पता</Text>
-            <Text style={styles.bannerSchool}>
-              राजकीय उच्च प्राथमिक विद्यालय
-            </Text>
-            <Text style={styles.bannerPlace}>
-              {voter.district || "श्रीगंगानगर"}
-            </Text>
-          </View>
-        )
-      ) : null}
-
-      <Text style={styles.slipTitle}>Voter Slip</Text>
-
-      <View style={styles.slipBox}>
-        <Text style={styles.voterName}>{voter.name}</Text>
-        {voter.hindiName ? (
-          <Text style={styles.voterHindiName}>{voter.hindiName}</Text>
-        ) : null}
-
-        <View style={styles.twoColumnRow}>
-          <SlipInline label="Gender" value={voter.gender || "N/A"} />
-          <SlipInline label="Age" value={String(voter.age || "N/A")} />
-        </View>
-
-        <SlipLine label="पिता का नाम" value={formatGuardian(voter.guardian)} />
-        <SlipLine
-          label="Serial No"
-          value={voter.serialNo || voter.id || "N/A"}
-        />
-        <SlipLine label="Booth No" value={voter.booth || "N/A"} />
-        <SlipLine label="Epic No" value={voter.epicNo || "N/A"} />
-        <SlipBlock label="Address" value={address || "N/A"} />
-        <SlipBlock
-          label="Polling Station No. & Address"
-          value={displayValue(voter.pollingStation)}
-        />
-      </View>
-    </View>
+    <VoterSlipPaper
+      voter={voter}
+      showBanner={showBanner}
+      bannerImage={bannerImage}
+    />
   );
 
   if (variant === "page") {
@@ -550,26 +559,96 @@ export function VoterSlipPreview({
             </View>
           ) : null}
           <View style={styles.primaryFooterActions}>
-          <Pressable
-            accessibilityLabel="Download voter slip"
-            onPress={handleDownload}
-            style={[styles.footerButton, styles.downloadButton]}
-          >
-            <Download color="#334155" size={17} strokeWidth={2.5} />
-            <Text style={styles.downloadText}>Download</Text>
-          </Pressable>
-          <Pressable
-            accessibilityLabel="Print voter slip"
-            onPress={handlePrint}
-            style={[styles.footerButton, styles.printButton]}
-          >
-            <Printer color="#FFFFFF" size={17} strokeWidth={2.5} />
-            <Text style={styles.printText}>Print</Text>
-          </Pressable>
+            <Pressable
+              accessibilityLabel="Download voter slip"
+              onPress={handleDownload}
+              style={[styles.footerButton, styles.downloadButton]}>
+              <Download color="#334155" size={17} strokeWidth={2.5} />
+              <Text style={styles.downloadText}>Download</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Print voter slip"
+              onPress={handlePrint}
+              style={[styles.footerButton, styles.printButton]}>
+              <Printer color="#FFFFFF" size={17} strokeWidth={2.5} />
+              <Text style={styles.printText}>Print</Text>
+            </Pressable>
           </View>
         </View>
       </View>
     </SafeAreaView>
+  );
+}
+
+export function VoterSlipPaper({
+  voter,
+  showBanner,
+  bannerImage,
+}: VoterSlipPaperProps) {
+  const address = [
+    voter.houseNo && voter.houseNo !== "N/A"
+      ? "House No. " + voter.houseNo
+      : "",
+    voter.ward ? "Ward " + voter.ward : "",
+    voter.district,
+    voter.state,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  return (
+    <View collapsable={false} style={styles.paper}>
+      {showBanner ? (
+        bannerImage ? (
+          <Image
+            source={{ uri: bannerImage }}
+            style={styles.bannerImage}
+            contentFit="contain"
+          />
+        ) : (
+          <View style={styles.bannerFallback}>
+            <Text style={styles.bannerMeta}>
+              वार्ड संख्या : {voter.ward || "58"}
+            </Text>
+            <Text style={styles.bannerDivider} />
+            <Text style={styles.bannerText}>मतदान केंद्र पता</Text>
+            <Text style={styles.bannerSchool}>
+              राजकीय उच्च प्राथमिक विद्यालय
+            </Text>
+            <Text style={styles.bannerPlace}>
+              {voter.district || "श्रीगंगानगर"}
+            </Text>
+          </View>
+        )
+      ) : null}
+
+      <Text style={styles.slipTitle}>Voter Slip</Text>
+
+      <View style={styles.slipBox}>
+        <Text style={styles.voterName}>{voter.name}</Text>
+        {voter.hindiName ? (
+          <Text style={styles.voterHindiName}>{voter.hindiName}</Text>
+        ) : null}
+
+        <View style={styles.twoColumnRow}>
+          <SlipInline label="Gender" value={voter.gender || "N/A"} />
+          <SlipInline label="Age" value={String(voter.age || "N/A")} />
+        </View>
+
+        <SlipLine label="पिता का नाम" value={formatGuardian(voter.guardian)} />
+        <SlipLine
+          label="Serial No"
+          value={voter.serialNo || voter.id || "N/A"}
+        />
+        <SlipLine label="Booth No" value={voter.booth || "N/A"} />
+        <SlipLine label="Epic No" value={voter.epicNo || "N/A"} />
+        <SlipBlock label="Address" value={address || "N/A"} />
+        <SlipBlock
+          label="Polling Station No. & Address"
+          value={displayValue(voter.pollingStation)}
+        />
+      </View>
+    </View>
   );
 }
 

@@ -72,100 +72,100 @@ export default function LoginScreen() {
           contentContainerStyle={styles.scrollContent}
         >
           <View style={styles.hero}>
-          <View style={styles.brandRow}>
-            <View style={styles.brandMark}>
-              <Image
-                source={require("../../assets/icons/election_icon_192x192.png")}
-                style={styles.brandIcon}
-                contentFit="contain"
+            <View style={styles.brandRow}>
+              <View style={styles.brandMark}>
+                <Image
+                  source={require("../../assets/icons/election_icon_192x192.png")}
+                  style={styles.brandIcon}
+                  contentFit="contain"
+                />
+              </View>
+              <View>
+                <Text style={styles.brandTitle}>VoterSakha</Text>
+                <Text style={styles.brandMeta}>POLITICIAN APP</Text>
+              </View>
+            </View>
+
+            <Text style={styles.headline}>
+              Manage voters, booths, and election work securely.
+            </Text>
+            <Text style={styles.subhead}>
+              Login with your VoterSakha politician account to access your
+              assigned voter list.
+            </Text>
+          </View>
+
+          <View style={styles.sheet}>
+            <View style={styles.handle} />
+            <Text style={styles.formTitle}>Politician Login</Text>
+
+            <Text style={styles.label}>Phone Number</Text>
+            <View style={styles.inputRow}>
+              <TextInput
+                value={phone}
+                onChangeText={(value) =>
+                  setPhone(value.replace(/\D/g, "").slice(0, 10))
+                }
+                keyboardType="phone-pad"
+                placeholder="Enter 10 digit number"
+                placeholderTextColor="#94A3B8"
+                returnKeyType="next"
+                style={styles.rowInput}
+                maxLength={10}
+                onSubmitEditing={() => passwordInputRef.current?.focus()}
               />
+              {phone ? (
+                <Pressable
+                  accessibilityLabel="Clear phone number"
+                  accessibilityRole="button"
+                  onPress={() => setPhone("")}
+                  style={styles.clearButton}
+                >
+                  <Text style={styles.clearButtonText}>x</Text>
+                </Pressable>
+              ) : null}
             </View>
-            <View>
-              <Text style={styles.brandTitle}>Digital Voter</Text>
-              <Text style={styles.brandMeta}>POLITICIAN APP</Text>
-            </View>
-          </View>
 
-          <Text style={styles.headline}>
-            Manage voters, booths, and election work securely.
-          </Text>
-          <Text style={styles.subhead}>
-            Login with your VoterSakha politician account to access your
-            assigned voter list.
-          </Text>
-        </View>
-
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-          <Text style={styles.formTitle}>Politician Login</Text>
-
-          <Text style={styles.label}>Phone Number</Text>
-          <View style={styles.inputRow}>
-            <TextInput
-              value={phone}
-              onChangeText={(value) =>
-                setPhone(value.replace(/\D/g, "").slice(0, 10))
-              }
-              keyboardType="phone-pad"
-              placeholder="Enter 10 digit number"
-              placeholderTextColor="#94A3B8"
-              returnKeyType="next"
-              style={styles.rowInput}
-              maxLength={10}
-              onSubmitEditing={() => passwordInputRef.current?.focus()}
-            />
-            {phone ? (
+            <Text style={styles.label}>Password</Text>
+            <View style={styles.passwordRow}>
+              <TextInput
+                ref={passwordInputRef}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Enter password"
+                placeholderTextColor="#94A3B8"
+                secureTextEntry={!showPassword}
+                returnKeyType="done"
+                style={styles.passwordInput}
+                onSubmitEditing={handleLogin}
+              />
               <Pressable
-                accessibilityLabel="Clear phone number"
                 accessibilityRole="button"
-                onPress={() => setPhone("")}
-                style={styles.clearButton}
+                onPress={() => setShowPassword((value) => !value)}
+                style={styles.smallButton}
               >
-                <Text style={styles.clearButtonText}>x</Text>
+                <Text style={styles.smallButtonText}>
+                  {showPassword ? "Hide" : "Show"}
+                </Text>
               </Pressable>
-            ) : null}
-          </View>
+            </View>
 
-          <Text style={styles.label}>Password</Text>
-          <View style={styles.passwordRow}>
-            <TextInput
-              ref={passwordInputRef}
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Enter password"
-              placeholderTextColor="#94A3B8"
-              secureTextEntry={!showPassword}
-              returnKeyType="done"
-              style={styles.passwordInput}
-              onSubmitEditing={handleLogin}
-            />
             <Pressable
               accessibilityRole="button"
-              onPress={() => setShowPassword((value) => !value)}
-              style={styles.smallButton}
+              disabled={loading}
+              onPress={handleLogin}
+              style={({ pressed }) => [
+                styles.loginButton,
+                (pressed || loading) && styles.loginButtonPressed,
+              ]}
             >
-              <Text style={styles.smallButtonText}>
-                {showPassword ? "Hide" : "Show"}
-              </Text>
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.loginButtonText}>Sign In</Text>
+              )}
             </Pressable>
           </View>
-
-          <Pressable
-            accessibilityRole="button"
-            disabled={loading}
-            onPress={handleLogin}
-            style={({ pressed }) => [
-              styles.loginButton,
-              (pressed || loading) && styles.loginButtonPressed,
-            ]}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.loginButtonText}>Sign In</Text>
-            )}
-          </Pressable>
-        </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

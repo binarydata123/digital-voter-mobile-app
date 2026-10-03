@@ -1,9 +1,9 @@
 import {
   BadgeCheck,
-  EllipsisVertical,
   House,
   Printer,
   QrCode,
+  Share2,
   UsersRound,
 } from "lucide-react-native";
 import { memo, useState } from "react";
@@ -113,10 +113,10 @@ export const VoterCard = memo(function VoterCard({
                     {sharing ? (
                       <ActivityIndicator color="#087568" size="small" />
                     ) : (
-                      <EllipsisVertical
+                      <Share2
                         color="#087568"
-                        size={15}
-                        strokeWidth={3}
+                        size={16}
+                        strokeWidth={2.7}
                       />
                     )}
                   </Pressable>
@@ -140,6 +140,7 @@ export const VoterCard = memo(function VoterCard({
           icon={<BadgeCheck color="#087568" size={17} strokeWidth={2.5} />}
           label="EPIC No."
           value={voter.epicNo}
+          priority
         />
 
         <InfoTile
@@ -234,17 +235,23 @@ function InfoTile({
   icon,
   label,
   value,
+  priority = false,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
+  priority?: boolean;
 }) {
   return (
-    <View style={styles.infoTile}>
+    <View style={[styles.infoTile, priority && styles.priorityInfoTile]}>
       <View style={styles.tileIcon}>{icon}</View>
       <View style={styles.tileTextWrap}>
         <Text style={styles.infoLabel}>{label}</Text>
-        <Text numberOfLines={1} style={styles.infoValue}>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.82}
+          style={styles.infoValue}>
           {value}
         </Text>
       </View>
@@ -331,23 +338,27 @@ const styles = StyleSheet.create({
     marginTop: 10,
     flexDirection: "row",
     alignItems: "stretch",
-    gap: 6,
+    gap: 4,
   },
   infoTile: {
     flex: 1,
-    minWidth: 72,
+    minWidth: 58,
     height: 50,
     backgroundColor: "#F6FBFF",
     borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 7,
+    gap: 4,
+    paddingHorizontal: 6,
+  },
+  priorityInfoTile: {
+    flex: 1.55,
+    minWidth: 112,
   },
   tileIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
+    width: 26,
+    height: 26,
+    borderRadius: 8,
     backgroundColor: "#DDF8EC",
     alignItems: "center",
     justifyContent: "center",
@@ -361,28 +372,28 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   printButton: {
-    width: 45,
+    width: 34,
     height: 45,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "#99D6CC",
+    // borderRadius: 12,
+    // borderWidth: 1.5,
+    // borderColor: "#99D6CC",
     alignItems: "center",
     justifyContent: "center",
   },
   familyButton: {
-    width: 45,
+    width: 38,
     height: 45,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "#BFEBDD",
-    backgroundColor: "#F4FFFA",
+    // borderRadius: 12,
+    // borderWidth: 1.5,
+    // borderColor: "#BFEBDD",
+    // backgroundColor: "#F4FFFA",
     alignItems: "center",
     justifyContent: "center",
     gap: 2,
   },
   printText: {
     color: "#087568",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
     textAlign: "center",
   },

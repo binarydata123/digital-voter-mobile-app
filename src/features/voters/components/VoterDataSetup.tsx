@@ -11,12 +11,12 @@ export function VoterDataSetup() {
             source={require("../../../../assets/images/vote.jpeg")}
             style={styles.heroImage}
             contentFit="cover"
-            contentPosition="right bottom"
+            transition={120}
           />
-          <View style={styles.heroOverlay} />
-          <View style={styles.brandBadge}>
-            <Text style={styles.brandText}>DIGITAL VOTER</Text>
-          </View>
+
+          {/* <View style={styles.brandBadge}>
+            <Text style={styles.brandText}>VoterSakha</Text>
+          </View> */}
         </View>
 
         <View style={styles.content}>
@@ -41,27 +41,26 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F4FBF7" },
   container: { flex: 1 },
   hero: {
-    height: "36%",
-    minHeight: 250,
+    height: 220,
     overflow: "hidden",
     justifyContent: "flex-end",
-    padding: 24,
+    backgroundColor: "#A3C4B5",
   },
   heroImage: {
     position: "absolute",
-    width: "100%",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: "155%",
     height: "100%",
-  },
-  heroOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(6, 78, 59, 0.38)",
   },
   brandBadge: {
     alignSelf: "flex-start",
-    backgroundColor: "rgba(255,255,255,0.9)",
     borderRadius: 99,
     paddingHorizontal: 12,
     paddingVertical: 7,
+    marginBottom: 10,
+    marginLeft: 20,
   },
   brandText: {
     color: "#065F46",
@@ -75,7 +74,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#F4FBF7",
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
-    marginTop: -24,
+    marginTop: -29,
     paddingHorizontal: 28,
     paddingTop: 32,
   },
