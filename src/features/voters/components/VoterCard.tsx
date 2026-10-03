@@ -88,10 +88,6 @@ export const VoterCard = memo(function VoterCard({
 
             <View style={styles.cardRightRail}>
               <View style={styles.boothActions}>
-                <Text style={styles.boothBadge}>
-                  S.No. {voter.serialNo ?? voter.id ?? "N/A"}
-                </Text>
-
                 <View style={styles.quickActions}>
                   <Pressable
                     accessibilityLabel="Show voter QR code"
@@ -125,13 +121,18 @@ export const VoterCard = memo(function VoterCard({
             </View>
           </View>
 
-          <Text
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.82}
-            style={styles.guardian}>
-            {voter.guardian}
-          </Text>
+          <View style={styles.guardianRow}>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
+              style={styles.guardian}>
+              {voter.guardian}
+            </Text>
+            <Text style={styles.boothBadge}>
+              S.No. {voter.serialNo ?? voter.id ?? "N/A"}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -305,11 +306,11 @@ const styles = StyleSheet.create({
   },
   guardian: {
     color: "#047857",
+    flex: 1,
     fontWeight: "900",
     fontSize: 12,
-    marginTop: 3,
-    width: "100%",
   },
+  guardianRow: { alignItems: "center", flexDirection: "row", gap: 6, marginTop: 3 },
   cardRightRail: { alignItems: "flex-end", gap: 7 },
   boothActions: { flexDirection: "row", alignItems: "center", gap: 6 },
   quickActions: { flexDirection: "row", alignItems: "center", gap: 5 },
