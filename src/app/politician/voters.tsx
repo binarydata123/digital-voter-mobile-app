@@ -3,12 +3,13 @@ import { router } from "expo-router";
 import {
   LogOut,
   MapPin,
+  Menu,
   Printer,
   RefreshCw,
   Search,
   SlidersHorizontal,
   UsersRound,
-  X,
+  X
 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -26,10 +27,10 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/common/EmptyState";
+import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 import { VoterCard } from "@/features/voters/components/VoterCard";
 import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
 import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleton";
-import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 
 import {
   shareVoterSlipImageFromRef,
@@ -86,6 +87,7 @@ export default function VotersScreen() {
     useState<ThermalPrintRequest | null>(null);
   const [shareImageRequest, setShareImageRequest] =
     useState<ShareImageRequest | null>(null);
+  const [menuVisible, setMenuVisible] = useState(false);
   const [logoutChoiceVisible, setLogoutChoiceVisible] = useState(false);
   const boothSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shareSlipRef = useRef<View>(null);
@@ -291,14 +293,11 @@ export default function VotersScreen() {
     setPrintTypeRequest({ voter, scope: "family" });
   }, []);
 
-  const handleShareVoterSlip = useCallback(
-    async (voter: Voter) => {
-      await new Promise<void>((resolve) => {
-        setShareImageRequest({ voter, resolve });
-      });
-    },
-    [],
-  );
+  const handleShareVoterSlip = useCallback(async (voter: Voter) => {
+    await new Promise<void>((resolve) => {
+      setShareImageRequest({ voter, resolve });
+    });
+  }, []);
 
   const renderVoter = useCallback(
     (voter: Voter) => (
@@ -344,16 +343,14 @@ export default function VotersScreen() {
                 style={[
                   styles.headerIconButton,
                   loading && styles.headerIconButtonDisabled,
-                ]}
-              >
+                ]}>
                 <RefreshCw color="#0F766E" size={18} strokeWidth={2.8} />
               </Pressable>
               <Pressable
-                accessibilityLabel="Logout"
-                onPress={handleLogout}
-                style={[styles.headerIconButton, styles.logoutButton]}
-              >
-                <LogOut color="#FFFFFF" size={18} strokeWidth={2.8} />
+                accessibilityLabel="Open voter menu"
+                onPress={() => setMenuVisible(true)}
+                style={[styles.headerIconButton, styles.menuButton]}>
+                <Menu color="#FFFFFF" size={21} strokeWidth={2.8} />
               </Pressable>
             </View>
           </View>
@@ -396,8 +393,7 @@ export default function VotersScreen() {
           </View>
           <Pressable
             style={styles.filterButton}
-            onPress={() => setModalVisible(true)}
-          >
+            onPress={() => setModalVisible(true)}>
             <SlidersHorizontal color="#FFFFFF" size={15} strokeWidth={2.8} />
             <Text style={styles.filterButtonText}>Filter</Text>
           </Pressable>
@@ -416,8 +412,7 @@ export default function VotersScreen() {
             return (
               <Pressable
                 onPress={() => selectBooth(item)}
-                style={[styles.boothTab, isActive && styles.boothTabActive]}
-              >
+                style={[styles.boothTab, isActive && styles.boothTabActive]}>
                 {item === "All" ? (
                   <UsersRound
                     color={isActive ? "#FFFFFF" : "#087568"}
@@ -429,22 +424,19 @@ export default function VotersScreen() {
                   style={[
                     styles.boothTabText,
                     isActive && styles.boothTabTextActive,
-                  ]}
-                >
+                  ]}>
                   {label}
                 </Text>
                 <View
                   style={[
                     styles.countBadge,
                     isActive && styles.countBadgeActive,
-                  ]}
-                >
+                  ]}>
                   <Text
                     style={[
                       styles.countBadgeText,
                       isActive && styles.countBadgeTextActive,
-                    ]}
-                  >
+                    ]}>
                     {count}
                   </Text>
                 </View>
@@ -551,6 +543,65 @@ export default function VotersScreen() {
         )}
       />
 
+      <Modal
+        transparent
+        visible={menuVisible}
+        animationType="slide"
+        onRequestClose={() => setMenuVisible(false)}>
+        <Pressable
+          style={styles.menuBackdrop}
+          onPress={() => setMenuVisible(false)}>
+          <Pressable
+            style={styles.menuDrawer}
+            onPress={(event) => event.stopPropagation()}>
+            <View style={styles.menuHandle} />
+            <View style={styles.menuHeader}>
+              {/* <Pressable
+                accessibilityLabel="Close voter menu"
+                onPress={() => setMenuVisible(false)}
+                style={styles.menuClose}>
+                <X color="#64748B" size={21} strokeWidth={2.7} />
+              </Pressable> */}
+            </View>
+            {canOpenSurvey ? (
+              <Pressable
+                onPress={() => {
+                  setMenuVisible(false);
+                  openSurveyPage();
+                }}
+                style={styles.menuRow}>
+                <View style={styles.menuIconWrap}>
+                  <UsersRound color="#087568" size={20} strokeWidth={2.6} />
+                </View>
+                <View style={styles.menuCopy}>
+                  <Text style={styles.menuRowTitle}>Open survey page</Text>
+                  <Text style={styles.menuRowSubtitle}>
+                    Manage voter surveys
+                  </Text>
+                </View>
+              </Pressable>
+            ) : null}
+
+            <Pressable
+              onPress={() => {
+                setMenuVisible(false);
+                handleLogout();
+              }}
+              style={[styles.menuRow, styles.logoutMenuRow]}>
+              <View style={[styles.menuIconWrap, styles.logoutMenuIconWrap]}>
+                <LogOut color="#B91C1C" size={20} strokeWidth={2.6} />
+              </View>
+              <View style={styles.menuCopy}>
+                <Text style={styles.logoutMenuTitle}>Logout</Text>
+                <Text style={styles.menuRowSubtitle}>
+                  Sign out from this device
+                </Text>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {logoutChoiceVisible ? (
         <View style={styles.logoutChoiceOverlay}>
           <Pressable
@@ -564,8 +615,7 @@ export default function VotersScreen() {
               <Pressable
                 accessibilityLabel="Close logout options"
                 onPress={() => setLogoutChoiceVisible(false)}
-                style={styles.logoutChoiceClose}
-              >
+                style={styles.logoutChoiceClose}>
                 <X color="#64748B" size={20} strokeWidth={2.6} />
               </Pressable>
             </View>
@@ -580,15 +630,13 @@ export default function VotersScreen() {
               {canOpenSurvey ? (
                 <Pressable
                   onPress={openSurveyPage}
-                  style={styles.surveyChoiceButton}
-                >
+                  style={styles.surveyChoiceButton}>
                   <Text style={styles.surveyChoiceText}>Open Survey Page</Text>
                 </Pressable>
               ) : null}
               <Pressable
                 onPress={confirmLogout}
-                style={styles.logoutConfirmButton}
-              >
+                style={styles.logoutConfirmButton}>
                 <Text style={styles.logoutConfirmText}>Logout</Text>
               </Pressable>
             </View>
@@ -601,13 +649,11 @@ export default function VotersScreen() {
         transparent
         visible={Boolean(printTypeRequest)}
         animationType="fade"
-        onRequestClose={() => setPrintTypeRequest(null)}
-      >
+        onRequestClose={() => setPrintTypeRequest(null)}>
         {printTypeRequest ? (
           <Pressable
             style={styles.printChoiceBackdrop}
-            onPress={() => setPrintTypeRequest(null)}
-          >
+            onPress={() => setPrintTypeRequest(null)}>
             <Pressable style={styles.printChoicePanel}>
               <View style={styles.printChoiceHeader}>
                 <Text style={styles.printChoiceTitle}>
@@ -618,8 +664,7 @@ export default function VotersScreen() {
                 <Pressable
                   accessibilityLabel="Close print type"
                   onPress={() => setPrintTypeRequest(null)}
-                  style={styles.printChoiceClose}
-                >
+                  style={styles.printChoiceClose}>
                   <Text style={styles.printChoiceCloseText}>x</Text>
                 </Pressable>
               </View>
@@ -668,8 +713,7 @@ export default function VotersScreen() {
         transparent
         visible={Boolean(slipPreview)}
         animationType="fade"
-        onRequestClose={() => setSlipPreview(null)}
-      >
+        onRequestClose={() => setSlipPreview(null)}>
         {slipPreview ? (
           <VoterSlipPreview
             voter={slipPreview.voter}
@@ -698,10 +742,7 @@ export default function VotersScreen() {
       ) : null}
 
       {shareImageRequest ? (
-        <View
-          pointerEvents="none"
-          style={styles.shareCaptureHost}
-        >
+        <View pointerEvents="none" style={styles.shareCaptureHost}>
           <View collapsable={false} ref={shareSlipRef}>
             <VoterSlipPaper
               voter={shareImageRequest.voter}
@@ -717,12 +758,10 @@ export default function VotersScreen() {
         transparent
         visible={modalVisible}
         animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
-      >
+        onRequestClose={() => setModalVisible(false)}>
         <Pressable
           style={styles.modalBackdrop}
-          onPress={() => setModalVisible(false)}
-        >
+          onPress={() => setModalVisible(false)}>
           <View style={styles.modalSheet}>
             <View style={styles.handle} />
             <Text style={styles.modalTitle}>Booth Wise Voters</Text>
@@ -734,8 +773,7 @@ export default function VotersScreen() {
                     selectBooth(booth);
                     setModalVisible(false);
                   }}
-                  style={styles.modalCard}
-                >
+                  style={styles.modalCard}>
                   <Text style={styles.modalCardLabel}>{booth}</Text>
                   <Text style={styles.modalCardValue}>{count}</Text>
                 </Pressable>
@@ -834,7 +872,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   headerIconButtonDisabled: { opacity: 0.62 },
-  logoutButton: { backgroundColor: "#087568" },
+  menuButton: { backgroundColor: "#087568" },
   headerCopy: { marginTop: 2 },
   eyebrow: {
     color: "#55718A",
@@ -1042,6 +1080,69 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: "#CBD5E1",
   },
+
+  /* ---------- Header menu drawer ---------- */
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.5)",
+    justifyContent: "flex-end",
+  },
+  menuDrawer: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 18,
+    paddingBottom: 32,
+  },
+  menuHandle: {
+    alignSelf: "center",
+    backgroundColor: "#CBD5E1",
+    borderRadius: 2,
+    height: 4,
+    marginBottom: 14,
+    width: 44,
+  },
+  menuHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  menuTitle: { color: "#0F172A", fontSize: 18, fontWeight: "900" },
+  menuClose: {
+    alignItems: "center",
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  menuRow: {
+    alignItems: "center",
+    borderBottomColor: "#EEF2F7",
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 66,
+    paddingVertical: 10,
+  },
+  menuIconWrap: {
+    alignItems: "center",
+    backgroundColor: "#ECFDF5",
+    borderRadius: 12,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  menuCopy: { flex: 1, minWidth: 0 },
+  menuRowTitle: { color: "#0F172A", fontSize: 14, fontWeight: "900" },
+  menuRowSubtitle: {
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  logoutMenuRow: { borderBottomWidth: 0, marginTop: 4 },
+  logoutMenuIconWrap: { backgroundColor: "#FEF2F2" },
+  logoutMenuTitle: { color: "#B91C1C", fontSize: 14, fontWeight: "900" },
 
   logoutChoiceOverlay: {
     position: "absolute",
