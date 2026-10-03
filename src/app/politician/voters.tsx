@@ -1,6 +1,7 @@
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import {
+  ArrowUp,
   LogOut,
   MapPin,
   Menu,
@@ -8,7 +9,7 @@ import {
   RefreshCw,
   Search,
   SlidersHorizontal,
-  UsersRound
+  UsersRound,
 } from "lucide-react-native";
 import {
   useCallback,
@@ -18,8 +19,10 @@ import {
   useRef,
   useState,
 } from "react";
+import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 import {
   Alert,
+  Animated,
   FlatList,
   Modal,
   Platform,
@@ -94,9 +97,11 @@ export default function VotersScreen() {
   const [shareImageRequest, setShareImageRequest] =
     useState<ShareImageRequest | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const boothSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shareSlipRef = useRef<View>(null);
-  const currentUser = getCurrentUser();
+  const listRef = useRef<SectionList<Voter>>(null);
+const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const currentUser = getCurrentUser();
   const canOpenSurvey = hasPoliticianPageAccess("survey", currentUser);
   const canUseTemplates = hasPoliticianPageAccess("template", currentUser);
   const deferredQuery = useDeferredValue(query);
@@ -198,6 +203,15 @@ export default function VotersScreen() {
       if (timer) clearTimeout(timer);
     };
   }, [canUseTemplates, currentUser?.bannerImage, shareImageRequest]);
+
+  // Animate the scroll-to-top button opacity whenever visibility changes.
+  useEffect(() => {
+    Animated.timing(scrollTopOpacity, {
+      toValue: showScrollTop ? 1 : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [showScrollTop, scrollTopOpacity]);
 
   const refreshAllVoterData = useCallback(async () => {
     setActiveBooth("All");
@@ -342,6 +356,25 @@ export default function VotersScreen() {
     [filteredVoters, isSearchPending, pendingBooth],
   );
 
+  // Toggle scroll-to-top visibility based on how far the user scrolled.
+  const handleListScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const offsetY = event.nativeEvent.contentOffset.y;
+      const shouldShow = offsetY > 400;
+      setShowScrollTop((prev) => (prev === shouldShow ? prev : shouldShow));
+    },
+    [],
+  );
+
+  const scrollToTop = useCallback(() => {
+    listRef.current?.scrollToLocation({
+      sectionIndex: 0,
+      itemIndex: 0,
+      viewOffset: 0,
+      animated: true,
+    });
+  }, []);
+
   const renderScreenHeader = useCallback(
     () => (
       <>
@@ -364,13 +397,15 @@ export default function VotersScreen() {
                 style={[
                   styles.headerIconButton,
                   loading && styles.headerIconButtonDisabled,
-                ]}>
+                ]}
+              >
                 <RefreshCw color="#0F766E" size={18} strokeWidth={2.8} />
               </Pressable>
               <Pressable
                 accessibilityLabel="Open voter menu"
                 onPress={() => setMenuVisible(true)}
-                style={[styles.headerIconButton, styles.menuButton]}>
+                style={[styles.headerIconButton, styles.menuButton]}
+              >
                 <Menu color="#FFFFFF" size={21} strokeWidth={2.8} />
               </Pressable>
             </View>
@@ -414,7 +449,8 @@ export default function VotersScreen() {
           </View>
           <Pressable
             style={styles.filterButton}
-            onPress={() => setModalVisible(true)}>
+            onPress={() => setModalVisible(true)}
+          >
             <SlidersHorizontal color="#FFFFFF" size={15} strokeWidth={2.8} />
             <Text style={styles.filterButtonText}>Filter</Text>
           </Pressable>
@@ -433,7 +469,8 @@ export default function VotersScreen() {
             return (
               <Pressable
                 onPress={() => selectBooth(item)}
-                style={[styles.boothTab, isActive && styles.boothTabActive]}>
+                style={[styles.boothTab, isActive && styles.boothTabActive]}
+              >
                 {item === "All" ? (
                   <UsersRound
                     color={isActive ? "#FFFFFF" : "#087568"}
@@ -445,19 +482,22 @@ export default function VotersScreen() {
                   style={[
                     styles.boothTabText,
                     isActive && styles.boothTabTextActive,
-                  ]}>
+                  ]}
+                >
                   {label}
                 </Text>
                 <View
                   style={[
                     styles.countBadge,
                     isActive && styles.countBadgeActive,
-                  ]}>
+                  ]}
+                >
                   <Text
                     style={[
                       styles.countBadgeText,
                       isActive && styles.countBadgeTextActive,
-                    ]}>
+                    ]}
+                  >
                     {count}
                   </Text>
                 </View>
@@ -546,6 +586,9 @@ export default function VotersScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <SectionList
+        ref={listRef}
+        onScroll={handleListScroll}
+        scrollEventThrottle={16}
         sections={sections}
         keyExtractor={voterKeyExtractor}
         initialNumToRender={8}
@@ -566,13 +609,16 @@ export default function VotersScreen() {
         transparent
         visible={menuVisible}
         animationType="slide"
-        onRequestClose={() => setMenuVisible(false)}>
+        onRequestClose={() => setMenuVisible(false)}
+      >
         <Pressable
           style={styles.menuBackdrop}
-          onPress={() => setMenuVisible(false)}>
+          onPress={() => setMenuVisible(false)}
+        >
           <Pressable
             style={styles.menuDrawer}
-            onPress={(event) => event.stopPropagation()}>
+            onPress={(event) => event.stopPropagation()}
+          >
             <View style={styles.menuHandle} />
             <View style={styles.menuHeader}>
               {/* <Pressable
@@ -588,7 +634,8 @@ export default function VotersScreen() {
                   setMenuVisible(false);
                   openSurveyPage();
                 }}
-                style={styles.menuRow}>
+                style={styles.menuRow}
+              >
                 <View style={styles.menuIconWrap}>
                   <UsersRound color="#087568" size={20} strokeWidth={2.6} />
                 </View>
@@ -606,7 +653,8 @@ export default function VotersScreen() {
                 setMenuVisible(false);
                 void confirmLogout();
               }}
-              style={[styles.menuRow, styles.logoutMenuRow]}>
+              style={[styles.menuRow, styles.logoutMenuRow]}
+            >
               <View style={[styles.menuIconWrap, styles.logoutMenuIconWrap]}>
                 <LogOut color="#B91C1C" size={20} strokeWidth={2.6} />
               </View>
@@ -626,11 +674,13 @@ export default function VotersScreen() {
         transparent
         visible={Boolean(printTypeRequest)}
         animationType="fade"
-        onRequestClose={() => setPrintTypeRequest(null)}>
+        onRequestClose={() => setPrintTypeRequest(null)}
+      >
         {printTypeRequest ? (
           <Pressable
             style={styles.printChoiceBackdrop}
-            onPress={() => setPrintTypeRequest(null)}>
+            onPress={() => setPrintTypeRequest(null)}
+          >
             <Pressable style={styles.printChoicePanel}>
               <View style={styles.printChoiceHeader}>
                 <Text style={styles.printChoiceTitle}>
@@ -641,7 +691,8 @@ export default function VotersScreen() {
                 <Pressable
                   accessibilityLabel="Close print type"
                   onPress={() => setPrintTypeRequest(null)}
-                  style={styles.printChoiceClose}>
+                  style={styles.printChoiceClose}
+                >
                   <Text style={styles.printChoiceCloseText}>x</Text>
                 </Pressable>
               </View>
@@ -690,7 +741,8 @@ export default function VotersScreen() {
         transparent
         visible={Boolean(slipPreview)}
         animationType="fade"
-        onRequestClose={() => setSlipPreview(null)}>
+        onRequestClose={() => setSlipPreview(null)}
+      >
         {slipPreview ? (
           <VoterSlipPreview
             voter={slipPreview.voter}
@@ -735,10 +787,12 @@ export default function VotersScreen() {
         transparent
         visible={modalVisible}
         animationType="slide"
-        onRequestClose={() => setModalVisible(false)}>
+        onRequestClose={() => setModalVisible(false)}
+      >
         <Pressable
           style={styles.modalBackdrop}
-          onPress={() => setModalVisible(false)}>
+          onPress={() => setModalVisible(false)}
+        >
           <View style={styles.modalSheet}>
             <View style={styles.handle} />
             <Text style={styles.modalTitle}>Booth Wise Voters</Text>
@@ -750,7 +804,8 @@ export default function VotersScreen() {
                     selectBooth(booth);
                     setModalVisible(false);
                   }}
-                  style={styles.modalCard}>
+                  style={styles.modalCard}
+                >
                   <Text style={styles.modalCardLabel}>{booth}</Text>
                   <Text style={styles.modalCardValue}>{count}</Text>
                 </Pressable>
@@ -759,6 +814,23 @@ export default function VotersScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      {/* Scroll-to-top floating button */}
+      <Animated.View
+        pointerEvents={showScrollTop ? "auto" : "none"}
+        style={[styles.scrollTopWrap, { opacity: scrollTopOpacity }]}
+      >
+        <Pressable
+          accessibilityLabel="Scroll to top"
+          onPress={scrollToTop}
+          style={({ pressed }) => [
+            styles.scrollTopButton,
+            pressed && { transform: [{ scale: 0.92 }] },
+          ]}
+        >
+          <ArrowUp color="#FFFFFF" size={20} strokeWidth={3} />
+        </Pressable>
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -1020,7 +1092,7 @@ const styles = StyleSheet.create({
   countBadgeTextActive: { color: "#064E3B" },
 
   /* List */
-  listContent: { paddingBottom: 70, backgroundColor: "#F4FBF7" },
+  listContent: { paddingBottom: 96, backgroundColor: "#F4FBF7" },
   voterItemWrap: {
     position: "relative",
     paddingHorizontal: 16,
@@ -1057,6 +1129,30 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
     backgroundColor: "#CBD5E1",
+  },
+
+  /* ---------- Scroll to top ---------- */
+  scrollTopWrap: {
+    position: "absolute",
+    right: 18,
+    bottom: 26,
+    zIndex: 50,
+    elevation: 50,
+  },
+  scrollTopButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#087568",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
   },
 
   /* ---------- Header menu drawer ---------- */
