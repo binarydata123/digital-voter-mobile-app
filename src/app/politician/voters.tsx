@@ -29,6 +29,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { VoterCard } from "@/features/voters/components/VoterCard";
 import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
 import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleton";
+import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 
 import {
   shareVoterSlipImageFromRef,
@@ -47,6 +48,10 @@ import {
   hasLocalVoters,
   replaceLocalVoters,
 } from "@/services/local-voters";
+import {
+  getSavedThermalPrinter,
+  printThermalVoterSlip,
+} from "@/services/thermal-printer";
 import { isLocalVoterDatabaseAvailable } from "@/services/voter-database";
 import { buildVoterStats, fetchVoters, type Voter } from "@/services/voters";
 
@@ -57,6 +62,11 @@ type SlipPreviewRequest = {
   withBanner: boolean;
 };
 type PrintTypeRequest = { voter: Voter; scope: PrintScope };
+type ThermalPrintRequest = {
+  bannerImage?: string;
+  showBanner: boolean;
+  voter: Voter;
+};
 type ShareImageRequest = { voter: Voter; resolve: () => void };
 
 export default function VotersScreen() {
@@ -72,6 +82,8 @@ export default function VotersScreen() {
   );
   const [printTypeRequest, setPrintTypeRequest] =
     useState<PrintTypeRequest | null>(null);
+  const [thermalPrintRequest, setThermalPrintRequest] =
+    useState<ThermalPrintRequest | null>(null);
   const [shareImageRequest, setShareImageRequest] =
     useState<ShareImageRequest | null>(null);
   const [logoutChoiceVisible, setLogoutChoiceVisible] = useState(false);
@@ -163,6 +175,8 @@ export default function VotersScreen() {
           shareImageRequest.voter,
           shareImageRequest.voter.whatsappNumber ||
             shareImageRequest.voter.mobileNumber,
+          canUseTemplates,
+          currentUser?.bannerImage,
         ).finally(() => {
           shareImageRequest.resolve();
           setShareImageRequest(null);
@@ -472,19 +486,44 @@ export default function VotersScreen() {
     setPrintTypeRequest(null);
   }
 
+  const handleSlipPreviewPrint = useCallback(async () => {
+    if (!slipPreview) return;
+    const request = {
+      bannerImage: getCurrentUser()?.bannerImage,
+      showBanner: slipPreview.withBanner,
+      voter: slipPreview.voter,
+    };
+
+    const savedPrinter = await getSavedThermalPrinter();
+    if (!savedPrinter) {
+      setThermalPrintRequest(request);
+      return;
+    }
+
+    try {
+      await printThermalVoterSlip(request.voter, savedPrinter, request);
+      setSlipPreview(null);
+    } catch {
+      // The saved printer is no longer reachable. Let the user reconnect or
+      // choose another device instead of leaving them at a failed print alert.
+      setThermalPrintRequest(request);
+    }
+  }, [slipPreview]);
+
+  const handleChangeThermalPrinter = useCallback(async () => {
+    if (!slipPreview) return;
+    setThermalPrintRequest({
+      bannerImage: getCurrentUser()?.bannerImage,
+      showBanner: slipPreview.withBanner,
+      voter: slipPreview.voter,
+    });
+  }, [slipPreview]);
+
   function handleDownloadSlip() {
     Alert.alert(
       "Download",
       "Slip download will be connected to the print image exporter.",
     );
-  }
-
-  function handlePrintSlip() {
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      window.print();
-      return;
-    }
-    Alert.alert("Print", "Thermal printer integration will print this slip.");
   }
 
   if (loading) {
@@ -638,10 +677,25 @@ export default function VotersScreen() {
             showBanner={slipPreview.withBanner}
             bannerImage={getCurrentUser()?.bannerImage}
             onDownload={handleDownloadSlip}
-            onPrint={handlePrintSlip}
+            onPrint={handleSlipPreviewPrint}
+            onChangeDevice={handleChangeThermalPrinter}
           />
         ) : null}
       </Modal>
+
+      {thermalPrintRequest ? (
+        <ThermalPrinterDialog
+          visible
+          voter={thermalPrintRequest.voter}
+          bannerImage={thermalPrintRequest.bannerImage}
+          showBanner={thermalPrintRequest.showBanner}
+          onClose={() => setThermalPrintRequest(null)}
+          onPrinted={() => {
+            setThermalPrintRequest(null);
+            setSlipPreview(null);
+          }}
+        />
+      ) : null}
 
       {shareImageRequest ? (
         <View

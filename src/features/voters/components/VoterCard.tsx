@@ -1,9 +1,9 @@
 import {
   BadgeCheck,
-  EllipsisVertical,
   House,
   Printer,
   QrCode,
+  Share2,
   UsersRound,
 } from "lucide-react-native";
 import { memo, useState } from "react";
@@ -106,17 +106,17 @@ export const VoterCard = memo(function VoterCard({
                     disabled={sharing}
                     onPress={handleSharePress}
                     style={[
-                      // styles.scanButton,
+                      styles.scanButton,
                       sharing && styles.scanButtonDisabled,
                     ]}
                   >
                     {sharing ? (
                       <ActivityIndicator color="#087568" size="small" />
                     ) : (
-                      <EllipsisVertical
+                      <Share2
                         color="#087568"
-                        size={15}
-                        strokeWidth={3}
+                        size={16}
+                        strokeWidth={2.7}
                       />
                     )}
                   </Pressable>
