@@ -50,6 +50,13 @@ function normalizeFtsQuery(value: string) {
   return terms.map((term) => `\"${term}\"*`).join(" AND ");
 }
 
+// SQLite binds NaN and non-finite numeric values as NULL. The voters table
+// correctly rejects NULL ages, so keep an unknown or malformed age as 0.
+function toDatabaseAge(value: unknown) {
+  const age = Number(value);
+  return Number.isFinite(age) && age >= 0 ? Math.trunc(age) : 0;
+}
+
 function toVoter(row: VoterRow): Voter {
   return {
     id: row.voter_id,
@@ -160,7 +167,7 @@ export async function replaceLocalVoters(politicianId: string, voters: Voter[]) 
           voter.name,
           voter.hindiName ?? "",
           voter.gender,
-          voter.age,
+          toDatabaseAge(voter.age),
           voter.guardian,
           voter.epicNo,
           voter.houseNo,
