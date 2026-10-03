@@ -1,7 +1,6 @@
 import { router } from "expo-router";
 import { useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
@@ -65,10 +64,12 @@ export default function LoginScreen() {
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.container}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          // FIXED: Removed justifyContent: "center" so the button doesn't get pushed off-screen
           contentContainerStyle={styles.scrollContent}
         >
           {/* Header / Logo Section */}
@@ -109,7 +110,7 @@ export default function LoginScreen() {
                 }
                 keyboardType="phone-pad"
                 placeholder="Enter 10 digit number"
-                placeholderTextColor="#718096"
+                placeholderTextColor="#A0AEC0"
                 returnKeyType="next"
                 style={styles.input}
                 maxLength={10}
@@ -141,7 +142,7 @@ export default function LoginScreen() {
                 value={password}
                 onChangeText={setPassword}
                 placeholder="••••••••"
-                placeholderTextColor="#718096"
+                placeholderTextColor="#A0AEC0"
                 secureTextEntry={!showPassword}
                 returnKeyType="done"
                 style={styles.input}
@@ -161,8 +162,10 @@ export default function LoginScreen() {
             </View>
 
             {/* 
-              SIGN IN BUTTON 
-              Ab yeh ek proper button ki tarah dikhega (green background, white text)
+              FIXED SIGN IN BUTTON 
+              - Removed conditional loading text. 
+              - Always renders "Sign in".
+              - Uses simple View/Text structure.
             */}
             <Pressable
               accessibilityRole="button"
@@ -170,22 +173,13 @@ export default function LoginScreen() {
               onPress={handleLogin}
               style={({ pressed }) => [
                 styles.loginButton,
-                (pressed || loading) && styles.loginButtonPressed,
+                pressed && styles.loginButtonPressed,
+                loading && styles.loginButtonDisabled,
               ]}
             >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <Text style={styles.loginButtonText}>Sign in</Text>
-              )}
+              <Text style={styles.loginButtonText}>Sign in</Text>
             </Pressable>
           </View>
-
-          {/* Footer Text */}
-          <Text style={styles.footerText}>
-            Manage voters, booths, and election work securely. Login with your
-            LokSetu politician account to access your assigned voter list.
-          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -195,17 +189,18 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#0A1118",
+    backgroundColor: "#E8F2EF",
   },
   container: {
     flex: 1,
-    backgroundColor: "#0A1118",
+    backgroundColor: "#E8F2EF",
   },
   scrollContent: {
-    flexGrow: 1,
-    justifyContent: "center",
+    // FIXED: Removed flexGrow: 1 and justifyContent: "center"
+    // This ensures the content stays at the top and you can scroll down to see the button
     paddingHorizontal: 24,
-    paddingVertical: 40,
+    paddingTop: 40,
+    paddingBottom: 100, // Extra padding at the bottom so the button clears the keyboard
   },
   header: {
     alignItems: "center",
@@ -220,10 +215,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#0F4C4E",
     borderRadius: 16,
     shadowColor: "#0F4C4E",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 15,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
   },
   logoIcon: {
     width: 48,
@@ -231,55 +226,62 @@ const styles = StyleSheet.create({
   },
   brandTitle: {
     fontSize: 24,
-    color: "#FFFFFF",
+    color: "#1A202C",
     fontWeight: "400",
     letterSpacing: 1,
     marginBottom: 4,
   },
   brandTitleBold: {
     fontWeight: "900",
-    color: "#00B4D8",
+    color: "#0F4C4E",
   },
   brandMeta: {
-    color: "#6EE7B7",
+    color: "#0F4C4E",
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.5,
     marginTop: 4,
   },
   formCard: {
-    backgroundColor: "#131C24",
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 24,
     borderWidth: 1,
-    borderColor: "#1F2E3A",
+    borderColor: "#D1E3DD",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   headline: {
     fontSize: 24,
     fontWeight: "700",
-    color: "#FFFFFF",
+    color: "#1A202C",
     marginBottom: 4,
   },
   subHeadline: {
     fontSize: 14,
-    color: "#A0AEC0",
+    color: "#718096",
     marginBottom: 24,
   },
   label: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#A0AEC0",
+    color: "#4A5568",
     letterSpacing: 1,
     marginBottom: 8,
   },
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F0F4F8",
+    backgroundColor: "#F4F9F8",
     borderRadius: 8,
     height: 52,
     marginBottom: 20,
     paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: "#D1E3DD",
   },
   inputIcon: {
     fontSize: 16,
@@ -299,33 +301,26 @@ const styles = StyleSheet.create({
   eyeButton: {
     padding: 4,
   },
-  // YAHAN BUTTON KA STYLE UPDATE KIYA GAYA HAI
   loginButton: {
     height: 52,
     borderRadius: 8,
-    backgroundColor: "#0F4C4E", // Green background
+    backgroundColor: "#0F4C4E",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 8,
-    marginBottom: 8,
-    width: "100%", // Full width button
+    marginTop: 16, // Added more top margin
+    marginBottom: 16, // Added bottom margin
+    width: "100%",
   },
   loginButtonPressed: {
     opacity: 0.85,
   },
+  loginButtonDisabled: {
+    opacity: 0.7,
+  },
   loginButtonText: {
-    color: "#FFFFFF", // White text
+    color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "700",
-    textAlign: "center", // Text ko horizontally center karega
-    width: "100%", // Poori width lega taaki center align ho sake
-  },
-  footerText: {
     textAlign: "center",
-    fontSize: 11,
-    color: "#4A5568",
-    marginTop: 32,
-    lineHeight: 18,
-    paddingHorizontal: 20,
   },
 });
