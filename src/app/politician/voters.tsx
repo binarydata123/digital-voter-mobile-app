@@ -9,9 +9,15 @@ import {
   Search,
   SlidersHorizontal,
   UsersRound,
-  X
 } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Alert,
   FlatList,
@@ -88,12 +94,13 @@ export default function VotersScreen() {
   const [shareImageRequest, setShareImageRequest] =
     useState<ShareImageRequest | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
-  const [logoutChoiceVisible, setLogoutChoiceVisible] = useState(false);
   const boothSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shareSlipRef = useRef<View>(null);
   const currentUser = getCurrentUser();
   const canOpenSurvey = hasPoliticianPageAccess("survey", currentUser);
   const canUseTemplates = hasPoliticianPageAccess("template", currentUser);
+  const deferredQuery = useDeferredValue(query);
+  const isSearchPending = query !== deferredQuery;
 
   const loadVoters = useCallback(async () => {
     if (currentUser && !hasPoliticianPageAccess("voters", currentUser)) {
@@ -236,18 +243,29 @@ export default function VotersScreen() {
     return counts;
   }, [booths, stats]);
 
+  const voterSearchIndex = useMemo(
+    () =>
+      voters.map((voter) => ({
+        searchText: [voter.name, voter.epicNo, voter.serialNo ?? ""]
+          .join(" ")
+          .toLowerCase(),
+        voter,
+      })),
+    [voters],
+  );
+
   const filteredVoters = useMemo(() => {
-    const lowered = query.trim().toLowerCase();
-    return voters.filter((voter) => {
+    const lowered = deferredQuery.trim().toLowerCase();
+    const matched: Voter[] = [];
+
+    for (const { voter, searchText } of voterSearchIndex) {
       const boothMatch = activeBooth === "All" || voter.booth === activeBooth;
-      const queryMatch =
-        !lowered ||
-        voter.name.toLowerCase().includes(lowered) ||
-        voter.epicNo.toLowerCase().includes(lowered) ||
-        (voter.serialNo ?? "").toLowerCase().includes(lowered);
-      return boothMatch && queryMatch;
-    });
-  }, [activeBooth, query, voters]);
+      const queryMatch = !lowered || searchText.includes(lowered);
+      if (boothMatch && queryMatch) matched.push(voter);
+    }
+
+    return matched;
+  }, [activeBooth, deferredQuery, voterSearchIndex]);
 
   const selectBooth = useCallback(
     (booth: string) => {
@@ -268,19 +286,13 @@ export default function VotersScreen() {
     [activeBooth, pendingBooth],
   );
 
-  function handleLogout() {
-    setLogoutChoiceVisible(true);
-  }
-
   async function confirmLogout() {
-    setLogoutChoiceVisible(false);
     await logoutPolitician();
     router.replace("/login");
   }
 
   function openSurveyPage() {
     if (canOpenSurvey) {
-      setLogoutChoiceVisible(false);
       router.push("/politician/survey");
     }
   }
@@ -311,14 +323,23 @@ export default function VotersScreen() {
     [handleFamily, handlePrint, handleShareVoterSlip],
   );
 
+  const renderVoterItem = useCallback(
+    ({ item }: { item: Voter }) => (
+      <View style={styles.voterItemWrap}>{renderVoter(item)}</View>
+    ),
+    [renderVoter],
+  );
+
+  const voterKeyExtractor = useCallback((item: Voter) => item.id, []);
+
   const sections = useMemo(
     () => [
       {
-        data: pendingBooth ? [] : filteredVoters,
+        data: pendingBooth || isSearchPending ? [] : filteredVoters,
         key: "voters",
       },
     ],
-    [filteredVoters, pendingBooth],
+    [filteredVoters, isSearchPending, pendingBooth],
   );
 
   const renderScreenHeader = useCallback(
@@ -450,7 +471,7 @@ export default function VotersScreen() {
   );
 
   const renderListFooter = useCallback(() => {
-    if (pendingBooth) {
+    if (pendingBooth || isSearchPending) {
       return (
         <View style={styles.listFooterWrap}>
           <VoterListSkeleton />
@@ -470,7 +491,7 @@ export default function VotersScreen() {
     }
 
     return null;
-  }, [filteredVoters.length, pendingBooth]);
+  }, [filteredVoters.length, isSearchPending, pendingBooth]);
 
   function openSlipPreview(withBanner: boolean) {
     if (!printTypeRequest) return;
@@ -526,11 +547,11 @@ export default function VotersScreen() {
     <SafeAreaView style={styles.safe}>
       <SectionList
         sections={sections}
-        keyExtractor={(item) => item.id}
-        initialNumToRender={12}
-        maxToRenderPerBatch={12}
-        updateCellsBatchingPeriod={50}
-        windowSize={7}
+        keyExtractor={voterKeyExtractor}
+        initialNumToRender={8}
+        maxToRenderPerBatch={6}
+        updateCellsBatchingPeriod={80}
+        windowSize={5}
         stickySectionHeadersEnabled
         removeClippedSubviews={Platform.OS === "android"}
         showsVerticalScrollIndicator={false}
@@ -538,9 +559,7 @@ export default function VotersScreen() {
         ListHeaderComponent={renderScreenHeader}
         renderSectionHeader={renderStickyControls}
         renderSectionFooter={renderListFooter}
-        renderItem={({ item }) => (
-          <View style={styles.voterItemWrap}>{renderVoter(item)}</View>
-        )}
+        renderItem={renderVoterItem}
       />
 
       <Modal
@@ -585,7 +604,7 @@ export default function VotersScreen() {
             <Pressable
               onPress={() => {
                 setMenuVisible(false);
-                handleLogout();
+                void confirmLogout();
               }}
               style={[styles.menuRow, styles.logoutMenuRow]}>
               <View style={[styles.menuIconWrap, styles.logoutMenuIconWrap]}>
@@ -601,48 +620,6 @@ export default function VotersScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-
-      {logoutChoiceVisible ? (
-        <View style={styles.logoutChoiceOverlay}>
-          <Pressable
-            accessibilityLabel="Cancel logout"
-            onPress={() => setLogoutChoiceVisible(false)}
-            style={styles.logoutChoiceBackdrop}
-          />
-          <View style={styles.logoutChoicePanel}>
-            <View style={styles.logoutChoiceHeader}>
-              <Text style={styles.logoutChoiceTitle}>Before you leave</Text>
-              <Pressable
-                accessibilityLabel="Close logout options"
-                onPress={() => setLogoutChoiceVisible(false)}
-                style={styles.logoutChoiceClose}>
-                <X color="#64748B" size={20} strokeWidth={2.6} />
-              </Pressable>
-            </View>
-
-            <Text style={styles.logoutChoiceMessage}>
-              {canOpenSurvey
-                ? "Open the survey page or confirm logout from this account."
-                : "Confirm logout from this account."}
-            </Text>
-
-            <View style={styles.logoutChoiceActions}>
-              {canOpenSurvey ? (
-                <Pressable
-                  onPress={openSurveyPage}
-                  style={styles.surveyChoiceButton}>
-                  <Text style={styles.surveyChoiceText}>Open Survey Page</Text>
-                </Pressable>
-              ) : null}
-              <Pressable
-                onPress={confirmLogout}
-                style={styles.logoutConfirmButton}>
-                <Text style={styles.logoutConfirmText}>Logout</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      ) : null}
 
       {/* Print type modal */}
       <Modal

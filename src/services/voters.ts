@@ -1,5 +1,9 @@
 import { api } from "./api";
-import { ensureAuthSession, getCurrentUser, hasPoliticianPageAccess } from "./authentication";
+import {
+  ensureAuthSession,
+  getCurrentUser,
+  hasPoliticianPageAccess,
+} from "./authentication";
 
 export type Voter = {
   id: string;
@@ -37,7 +41,7 @@ export type VoterQuery = {
   state?: string;
 };
 
-const VOTER_PAGE_SIZE = 1000;
+const VOTER_PAGE_SIZE = 200000;
 const MAX_VOTER_PAGES = 500;
 
 let selectedVoter: Voter | null = null;
@@ -122,6 +126,11 @@ function formatGuardian(data: any) {
     : String(guardian);
 }
 
+function normalizeAge(value: unknown) {
+  const age = Number(value);
+  return Number.isFinite(age) && age >= 0 ? Math.trunc(age) : 0;
+}
+
 function normalizeVoter(raw: any, index: number): Voter {
   const data = raw?.voterData ?? raw?.data?.voterData ?? raw;
 
@@ -167,7 +176,7 @@ function normalizeVoter(raw: any, index: number): Voter {
         "Unknown",
       ),
     ),
-    age: Number(
+    age: normalizeAge(
       firstValue(
         data?.Age,
         data?.voter_age,
