@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "LokSetu",
+    "name": "POLITIC EASE",
     "slug": "digital-voter-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/election-icon.png",
+    "icon": "./assets/images/splashIcon.png",
     "scheme": "digitalvotermobile",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -14,9 +14,9 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#def6f0",
-        "foregroundImage": "./assets/images/election-icon.png",
-        "backgroundImage": "./assets/images/election-icon.png",
-        "monochromeImage": "./assets/images/election-icon.png"
+        "foregroundImage": "./assets/images/splashIcon.png",
+        "backgroundImage": "./assets/images/splashIcon.png",
+        "monochromeImage": "./assets/images/splashIcon.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.binarydatasteam.digitalvoter",
@@ -47,7 +47,7 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/election-icon.png"
+      "favicon": "./assets/images/splashIcon.png"
     },
     "plugins": [
       "expo-router",
@@ -55,7 +55,7 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#def6f0",
-          "image": "./assets/images/election-icon.png",
+          "image": "./assets/images/splashIcon.png",
           "imageWidth": 76
         }
       ],

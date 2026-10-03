@@ -34,10 +34,7 @@ export function AnimatedSplashOverlay() {
   });
 
   const image = (
-    <Image
-      style={styles.image}
-      source={require("@/assets/images/election-icon.png")}
-    />
+    <Image style={styles.image} source={require("@/assets/images/image.png")} />
   );
 
   return animate ? (
@@ -111,7 +108,7 @@ export function AnimatedIcon() {
       >
         <Image
           style={styles.glow}
-          source={require("@/assets/images/election-icon.png")}
+          source={require("@/assets/images/image.png")}
         />
       </Animated.View>
 
@@ -125,7 +122,7 @@ export function AnimatedIcon() {
       >
         <Image
           style={styles.image}
-          source={require("@/assets/images/election-icon.png")}
+          source={require("@/assets/images/image.png")}
         />
       </Animated.View>
     </View>

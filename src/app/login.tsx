@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
@@ -64,25 +65,23 @@ export default function LoginScreen() {
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.container}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          // FIXED: Removed justifyContent: "center" so the button doesn't get pushed off-screen
           contentContainerStyle={styles.scrollContent}
         >
           {/* Header / Logo Section */}
           <View style={styles.header}>
             <View style={styles.logoContainer}>
               <Image
-                source={require("../../assets/icons/new-bg.png")}
+                source={require("../../assets/icons/image.png")}
                 style={styles.logoIcon}
                 resizeMode="contain"
               />
             </View>
             <Text style={styles.brandTitle}>
-              Lok<Text style={styles.brandTitleBold}>Setu</Text>
+              Politic<Text style={styles.brandTitleBold}>Ease</Text>
             </Text>
             <Text style={styles.brandMeta}>POLITICIAN APP</Text>
           </View>
@@ -161,23 +160,21 @@ export default function LoginScreen() {
               </Pressable>
             </View>
 
-            {/* 
-              FIXED SIGN IN BUTTON 
-              - Removed conditional loading text. 
-              - Always renders "Sign in".
-              - Uses simple View/Text structure.
-            */}
+            {/* Sign In Button */}
             <Pressable
               accessibilityRole="button"
               disabled={loading}
               onPress={handleLogin}
               style={({ pressed }) => [
                 styles.loginButton,
-                pressed && styles.loginButtonPressed,
-                loading && styles.loginButtonDisabled,
+                (pressed || loading) && styles.loginButtonPressed,
               ]}
             >
-              <Text style={styles.loginButtonText}>Sign in</Text>
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.loginButtonText}>Sign in</Text>
+              )}
             </Pressable>
           </View>
         </ScrollView>
@@ -189,18 +186,17 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#E8F2EF",
+    backgroundColor: "#F4F7F6", // MATCHED: Light background from inner pages
   },
   container: {
     flex: 1,
-    backgroundColor: "#E8F2EF",
+    backgroundColor: "#F4F7F6", // MATCHED
   },
   scrollContent: {
-    // FIXED: Removed flexGrow: 1 and justifyContent: "center"
-    // This ensures the content stays at the top and you can scroll down to see the button
+    flexGrow: 1,
+    justifyContent: "center",
     paddingHorizontal: 24,
-    paddingTop: 40,
-    paddingBottom: 100, // Extra padding at the bottom so the button clears the keyboard
+    paddingVertical: 40,
   },
   header: {
     alignItems: "center",
@@ -212,9 +208,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#0F4C4E",
+    backgroundColor: "#12474B", // Kept dark green for brand identity
     borderRadius: 16,
-    shadowColor: "#0F4C4E",
+    shadowColor: "#12474B",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
@@ -226,28 +222,28 @@ const styles = StyleSheet.create({
   },
   brandTitle: {
     fontSize: 24,
-    color: "#1A202C",
+    color: "#1A202C", // MATCHED: Dark text for light background
     fontWeight: "400",
     letterSpacing: 1,
     marginBottom: 4,
   },
   brandTitleBold: {
     fontWeight: "900",
-    color: "#0F4C4E",
+    color: "#0F4C4E", // MATCHED: Dark green instead of bright cyan
   },
   brandMeta: {
-    color: "#0F4C4E",
+    color: "#0F4C4E", // MATCHED
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.5,
     marginTop: 4,
   },
   formCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#FFFFFF", // MATCHED: White card like inner pages
     borderRadius: 16,
     padding: 24,
     borderWidth: 1,
-    borderColor: "#D1E3DD",
+    borderColor: "#E2E8F0", // MATCHED: Light border
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -257,31 +253,31 @@ const styles = StyleSheet.create({
   headline: {
     fontSize: 24,
     fontWeight: "700",
-    color: "#1A202C",
+    color: "#1A202C", // MATCHED
     marginBottom: 4,
   },
   subHeadline: {
     fontSize: 14,
-    color: "#718096",
+    color: "#718096", // MATCHED
     marginBottom: 24,
   },
   label: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#4A5568",
+    color: "#4A5568", // MATCHED
     letterSpacing: 1,
     marginBottom: 8,
   },
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F4F9F8",
+    backgroundColor: "#F8FAFC", // Slightly lighter gray for inputs
     borderRadius: 8,
     height: 52,
     marginBottom: 20,
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: "#D1E3DD",
+    borderColor: "#E2E8F0",
   },
   inputIcon: {
     fontSize: 16,
@@ -304,23 +300,29 @@ const styles = StyleSheet.create({
   loginButton: {
     height: 52,
     borderRadius: 8,
-    backgroundColor: "#0F4C4E",
+    backgroundColor: "#0F4C4E", // Kept as requested
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 16, // Added more top margin
-    marginBottom: 16, // Added bottom margin
+    marginTop: 8,
+    marginBottom: 8,
     width: "100%",
   },
   loginButtonPressed: {
     opacity: 0.85,
-  },
-  loginButtonDisabled: {
-    opacity: 0.7,
   },
   loginButtonText: {
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "700",
     textAlign: "center",
+    width: "100%",
+  },
+  footerText: {
+    textAlign: "center",
+    fontSize: 11,
+    color: "#718096", // MATCHED: Darker gray so it's readable on light bg
+    marginTop: 32,
+    lineHeight: 18,
+    paddingHorizontal: 20,
   },
 });
