@@ -1,9 +1,8 @@
-import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -20,6 +19,7 @@ import {
   loginPolitician,
   logoutPolitician,
 } from "@/services/authentication";
+import { Eye, EyeOff, Lock, Phone, X } from "lucide-react-native";
 
 export default function LoginScreen() {
   const [phone, setPhone] = useState("");
@@ -76,7 +76,7 @@ export default function LoginScreen() {
               <Image
                 source={require("../../assets/icons/election_icon_192x192.png")}
                 style={styles.logoIcon}
-                contentFit="contain"
+                resizeMode="contain"
               />
             </View>
             <Text style={styles.brandTitle}>
@@ -87,7 +87,7 @@ export default function LoginScreen() {
 
           {/* Form Card Section */}
           <View style={styles.formCard}>
-            <Text style={styles.headline}>Sign in</Text>
+            <Text style={styles.headline}>Welcome Back</Text>
             <Text style={styles.subHeadline}>
               Access your politician portal
             </Text>
@@ -95,7 +95,12 @@ export default function LoginScreen() {
             {/* Phone Input */}
             <Text style={styles.label}>PHONE NUMBER</Text>
             <View style={styles.inputWrapper}>
-              <Text style={styles.inputIcon}>📱</Text>
+              <Phone
+                size={18}
+                color="#4A5568"
+                style={styles.inputIcon}
+                strokeWidth={2}
+              />
               <TextInput
                 value={phone}
                 onChangeText={(value) =>
@@ -116,7 +121,7 @@ export default function LoginScreen() {
                   onPress={() => setPhone("")}
                   style={styles.clearButton}
                 >
-                  <Text style={styles.clearButtonText}>✕</Text>
+                  <X size={20} color="#718096" strokeWidth={2} />
                 </Pressable>
               ) : null}
             </View>
@@ -124,7 +129,12 @@ export default function LoginScreen() {
             {/* Password Input */}
             <Text style={styles.label}>PASSWORD</Text>
             <View style={styles.inputWrapper}>
-              <Text style={styles.inputIcon}>🔒</Text>
+              <Lock
+                size={18}
+                color="#4A5568"
+                style={styles.inputIcon}
+                strokeWidth={2}
+              />
               <TextInput
                 ref={passwordInputRef}
                 value={password}
@@ -141,26 +151,31 @@ export default function LoginScreen() {
                 onPress={() => setShowPassword((value) => !value)}
                 style={styles.eyeButton}
               >
-                <Text style={styles.eyeText}>{showPassword ? "👁️" : "👁️‍🗨️"}</Text>
+                {showPassword ? (
+                  <EyeOff size={20} color="#718096" strokeWidth={2} />
+                ) : (
+                  <Eye size={20} color="#718096" strokeWidth={2} />
+                )}
               </Pressable>
             </View>
 
-            {/* Sign In Button */}
-            <Pressable
-              accessibilityRole="button"
-              disabled={loading}
-              onPress={handleLogin}
-              style={({ pressed }) => [
-                styles.loginButton,
-                (pressed || loading) && styles.loginButtonPressed,
-              ]}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.loginButtonText}>Sign in</Text>
-              )}
-            </Pressable>
+            {/* {(phone || password || loading) && (
+              <Pressable
+                accessibilityRole="button"
+                disabled={loading}
+                onPress={handleLogin}
+                style={({ pressed }) => [
+                  styles.loginButton,
+                  (pressed || loading) && styles.loginButtonPressed,
+                ]}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.loginButtonText}>Sign in</Text>
+                )}
+              </Pressable>
+            )} */}
           </View>
 
           {/* Footer Text */}
@@ -177,7 +192,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#0A1118", // Dark background
+    backgroundColor: "#0A1118",
   },
   container: {
     flex: 1,
@@ -194,13 +209,13 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   logoContainer: {
-    width: 70,
-    height: 70,
+    width: 60,
+    height: 60,
     marginBottom: 16,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#0F4C4E", // Brand color background for logo
-    borderRadius: 20,
+    backgroundColor: "#0F4C4E",
+    borderRadius: 16,
     shadowColor: "#0F4C4E",
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
@@ -208,9 +223,8 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   logoIcon: {
-    width: 40,
-    height: 40,
-    tintColor: "#FFFFFF",
+    width: 48,
+    height: 48,
   },
   brandTitle: {
     fontSize: 24,
@@ -221,7 +235,7 @@ const styles = StyleSheet.create({
   },
   brandTitleBold: {
     fontWeight: "900",
-    color: "#00B4D8", // Cyan accent from image
+    color: "#00B4D8",
   },
   brandMeta: {
     color: "#6EE7B7",
@@ -258,7 +272,7 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F0F4F8", // Light background for inputs
+    backgroundColor: "#F0F4F8",
     borderRadius: 8,
     height: 52,
     marginBottom: 20,
@@ -279,22 +293,13 @@ const styles = StyleSheet.create({
   clearButton: {
     padding: 4,
   },
-  clearButtonText: {
-    color: "#718096",
-    fontSize: 16,
-    fontWeight: "900",
-  },
   eyeButton: {
     padding: 4,
-  },
-  eyeText: {
-    fontSize: 18,
-    color: "#718096",
   },
   loginButton: {
     height: 52,
     borderRadius: 8,
-    backgroundColor: "#0F4C4E", // Your brand color
+    backgroundColor: "#0F4C4E",
     alignItems: "center",
     justifyContent: "center",
     marginTop: 8,
