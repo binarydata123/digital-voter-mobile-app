@@ -23,10 +23,6 @@ import {
   fetchSurveyReport,
   getAssignedSurveyScope,
   isConstituencySurveyElection,
-  type PreferenceByEducationItem,
-  type PreferenceByGenderItem,
-  type PreferenceByIncomeItem,
-  type SupportByAgeGroupItem,
   type SurveyScope,
   type SurveySummary,
 } from "@/services/survey";
@@ -56,6 +52,54 @@ type BarRow = {
   percentage?: number;
   color?: string;
   meta?: string;
+};
+
+/**
+ * Heatmap palettes — one distinct ramp per demographic chart.
+ * Each palette is ordered from weakest → strongest.
+ */
+type HeatPalette = {
+  name: string;
+  /** Weakest → strongest (5 stops). */
+  colors: [string, string, string, string, string];
+  /** Text color used on top of the strongest two stops. */
+  strongText: string;
+  /** Text color used on top of the weakest three stops. */
+  weakText: string;
+  /** Border used to highlight the leading cell. */
+  leaderBorder: string;
+};
+
+const AGE_PALETTE: HeatPalette = {
+  name: "teal",
+  colors: ["#F0FDFA", "#CCFBF1", "#5EEAD4", "#14B8A6", "#0F766E"],
+  weakText: "#115E59",
+  strongText: "#FFFFFF",
+  leaderBorder: "#0F766E",
+};
+
+const GENDER_PALETTE: HeatPalette = {
+  name: "blue",
+  colors: ["#EFF6FF", "#DBEAFE", "#93C5FD", "#3B82F6", "#1D4ED8"],
+  weakText: "#1E3A8A",
+  strongText: "#FFFFFF",
+  leaderBorder: "#1D4ED8",
+};
+
+const EDUCATION_PALETTE: HeatPalette = {
+  name: "purple",
+  colors: ["#F5F3FF", "#EDE9FE", "#C4B5FD", "#8B5CF6", "#6D28D9"],
+  weakText: "#4C1D95",
+  strongText: "#FFFFFF",
+  leaderBorder: "#6D28D9",
+};
+
+const INCOME_PALETTE: HeatPalette = {
+  name: "amber",
+  colors: ["#FFFBEB", "#FEF3C7", "#FCD34D", "#F59E0B", "#B45309"],
+  weakText: "#78350F",
+  strongText: "#FFFFFF",
+  leaderBorder: "#B45309",
 };
 
 function getDefaultScope(): SurveyScope {
@@ -93,11 +137,28 @@ function colorFor(index: number) {
   return COLORS[index % COLORS.length];
 }
 
+/**
+ * Map a 0-100 percentage to a color from the given palette.
+ * Thresholds: 0-5, 5-20, 20-35, 35-55, 55+
+ */
+function heatStop(percentage: number): 0 | 1 | 2 | 3 | 4 {
+  if (percentage >= 55) return 4;
+  if (percentage >= 35) return 3;
+  if (percentage >= 20) return 2;
+  if (percentage >= 5) return 1;
+  return 0;
+}
+
+function heatColor(percentage: number, palette: HeatPalette) {
+  return palette.colors[heatStop(percentage)];
+}
+
+function heatTextColor(percentage: number, palette: HeatPalette) {
+  return heatStop(percentage) >= 3 ? palette.strongText : palette.weakText;
+}
+
 export default function SurveyScreen() {
   const params = useLocalSearchParams();
-  // `useLocalSearchParams()` can return a new object after every render.
-  // Derive stable primitive values before creating the report scope, otherwise
-  // the data-loading callback changes continuously and re-fetches the API.
   const routeElectionType = toRouteValue(params.electionType);
   const routeElectionYear = toRouteValue(params.electionYear);
   const routeState = toRouteValue(params.state);
@@ -321,19 +382,6 @@ export default function SurveyScreen() {
             style={styles.iconButton}>
             <ArrowLeft color="#0F766E" size={21} strokeWidth={3} />
           </Pressable>
-          {/* <Pressable accessibilityLabel="Refresh survey report" onPress={loadReport} disabled={loading} style={styles.refreshButton}>
-            {loading ? <ActivityIndicator color="#FFFFFF" /> : <RefreshCw color="#FFFFFF" size={18} strokeWidth={2.8} />}
-            <Text style={styles.refreshText}>Refresh</Text>
-          </Pressable> */}
-        </View>
-
-        <View style={styles.hero}>
-          <Text style={styles.eyebrow}>SURVEY REPORT</Text>
-          {/* <Text style={styles.title}>Constituency survey signal</Text> */}
-          <Text style={styles.subtitle}>
-            Review assigned-ward party support, demographics, public concerns,
-            and ward signals from saved survey responses.
-          </Text>
         </View>
 
         <View style={styles.scopeSummary}>
@@ -355,7 +403,7 @@ export default function SurveyScreen() {
         </View>
 
         {error ? <Text style={styles.warning}>{error}</Text> : null}
-
+        {/* 
         <View style={styles.summaryCard}>
           <View>
             <Text style={styles.summaryLabel}>Total responses</Text>
@@ -367,7 +415,7 @@ export default function SurveyScreen() {
               {leader?._id ?? "No data"}
             </Text>
           </View>
-        </View>
+        </View> */}
 
         {report.summary.total === 0 && !loading ? (
           <View style={styles.emptyCard}>
@@ -378,7 +426,6 @@ export default function SurveyScreen() {
           </View>
         ) : null}
 
-        <CandidateSupport summary={report.summary} />
         <PieDistribution
           title="Vote share distribution"
           subtitle="Distribution of stated political preferences"
@@ -386,10 +433,65 @@ export default function SurveyScreen() {
           centerLabel="Responses"
           centerValue={String(report.summary.total)}
         />
-        <AgeGroupSupportChart data={report.supportByAgeGroup} />
-        <PreferenceByGenderChart data={report.preferenceByGender} />
-        <PreferenceByEducationChart data={report.preferenceByEducation} />
-        <PreferenceByIncomeChart data={report.preferenceByIncome} />
+
+        <PreferenceHeatmap
+          title="Age-group support"
+          subtitle="Darker cells indicate stronger political preference"
+          rowHeader="Age"
+          palette={AGE_PALETTE}
+          groups={AGE_BRACKETS.map((bracket) => {
+            const found = report.supportByAgeGroup.find(
+              (group) => group.ageBracket === bracket,
+            );
+            return {
+              label: bracket,
+              total: found?.total ?? 0,
+              preferences:
+                found?.support.map((s) => ({
+                  name: s.name,
+                  count: s.count,
+                  percentage: s.percentage,
+                })) ?? [],
+            };
+          })}
+        />
+
+        <PreferenceHeatmap
+          title="Preference by gender"
+          subtitle="Darker cells indicate stronger political preference"
+          rowHeader="Gender"
+          palette={GENDER_PALETTE}
+          groups={report.preferenceByGender.map((item) => ({
+            label: item.gender,
+            total: item.total,
+            preferences: item.preferences,
+          }))}
+        />
+
+        <PreferenceHeatmap
+          title="Preference by education"
+          subtitle="Darker cells indicate stronger political preference"
+          rowHeader="Education"
+          palette={EDUCATION_PALETTE}
+          groups={report.preferenceByEducation.map((item) => ({
+            label: item.education,
+            total: item.total,
+            preferences: item.preferences,
+          }))}
+        />
+
+        <PreferenceHeatmap
+          title="Preference by income"
+          subtitle="Darker cells indicate stronger political preference"
+          rowHeader="Income"
+          palette={INCOME_PALETTE}
+          groups={report.preferenceByIncome.map((item) => ({
+            label: item.incomeBracket,
+            total: item.total,
+            preferences: item.preferences,
+          }))}
+        />
+
         <BarChart
           title="Sector support index"
           subtitle="Support for current lead by occupation"
@@ -397,33 +499,12 @@ export default function SurveyScreen() {
           showPercent
         />
         <MajorPublicConcernsChart data={issueRows} />
-        {/* {isConstituencyElection ? (
-          <WardHeatMapChart wards={report.wardHeatMap} />
-        ) : null} */}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function CandidateSupport({ summary }: { summary: SurveySummary }) {
-  const rows = summary.party.map((item, index) => ({
-    label: item._id,
-    count: item.count,
-    percentage: summary.total ? (item.count / summary.total) * 100 : 0,
-    color: colorFor(index),
-  }));
-
-  return (
-    <PieDistribution
-      title="Politician vote split"
-      subtitle="Votes per politician"
-      rows={rows}
-      centerLabel="Total voters"
-      centerValue={String(summary.total)}
-      showCounts
-    />
-  );
-}
+/* ------------------------------- Pie / Donut ------------------------------- */
 
 type PieDistributionProps = {
   title?: string;
@@ -614,6 +695,8 @@ function PieLegend({
   );
 }
 
+/* --------------------------------- Bars ---------------------------------- */
+
 function BarChart({
   title,
   subtitle,
@@ -666,104 +749,142 @@ function BarChart({
   );
 }
 
-function AgeGroupSupportChart({ data }: { data: SupportByAgeGroupItem[] }) {
-  const rows = AGE_BRACKETS.map((ageBracket, index) => ({
-    label: ageBracket,
-    count: data.find((group) => group.ageBracket === ageBracket)?.total ?? 0,
-    color: colorFor(index),
-  }));
-  const total = rows.reduce((sum, row) => sum + row.count, 0);
+/* ------------------------------ Heatmap ---------------------------------- */
 
-  return (
-    <PieDistribution
-      title="Age-group distribution"
-      subtitle="Overall survey responses by age bracket"
-      rows={rows}
-      centerLabel="Voters"
-      centerValue={String(total)}
-      showCounts
-    />
-  );
-}
+type HeatmapGroup = {
+  label: string;
+  total: number;
+  preferences: { name: string; count: number; percentage?: number }[];
+};
 
-function PreferenceByGenderChart({ data }: { data: PreferenceByGenderItem[] }) {
-  return (
-    <PreferenceChart
-      title="Preference by gender"
-      groups={data.map((item) => ({
-        label: item.gender,
-        total: item.total,
-        preferences: item.preferences,
-      }))}
-    />
-  );
-}
-
-function PreferenceByEducationChart({
-  data,
-}: {
-  data: PreferenceByEducationItem[];
-}) {
-  return (
-    <PreferenceChart
-      title="Preference by education"
-      groups={data.map((item) => ({
-        label: item.education,
-        total: item.total,
-        preferences: item.preferences,
-      }))}
-    />
-  );
-}
-
-function PreferenceByIncomeChart({ data }: { data: PreferenceByIncomeItem[] }) {
-  return (
-    <PreferenceChart
-      title="Preference by income"
-      groups={data.map((item) => ({
-        label: item.incomeBracket,
-        total: item.total,
-        preferences: item.preferences,
-      }))}
-    />
-  );
-}
-
-function PreferenceChart({
+function PreferenceHeatmap({
   title,
+  subtitle,
+  rowHeader,
   groups,
+  palette,
 }: {
   title: string;
-  groups: {
-    label: string;
-    total: number;
-    preferences: { name: string; count: number; percentage?: number }[];
-  }[];
+  subtitle?: string;
+  rowHeader: string;
+  groups: HeatmapGroup[];
+  palette: HeatPalette;
 }) {
+  const politicians = Array.from(
+    new Set(groups.flatMap((group) => group.preferences.map((p) => p.name))),
+  );
+  const visibleGroups = groups.filter((group) => group.total > 0);
+  const hasData = visibleGroups.length > 0 && politicians.length > 0;
+  const tableWidth = Math.max(300, 96 + politicians.length * 68);
+
   return (
     <View style={styles.chartCard}>
-      <ChartHeader title={title} subtitle="Vote share inside each group" />
-      {groups.length === 0 ? <EmptyChartText /> : null}
-      {groups.map((group) => {
-        const rows = group.preferences.map((preference, index) => ({
-          label: preference.name,
-          count: preference.count,
-          percentage:
-            preference.percentage ??
-            (group.total ? (preference.count / group.total) * 100 : 0),
-          color: colorFor(index),
-        }));
-        return (
-          <View key={group.label} style={styles.preferencePieGroup}>
-            <Text style={styles.preferencePieTitle}>{group.label}</Text>
-            <Text style={styles.preferencePieMeta}>{group.total} voters</Text>
-            <PieDistribution title="" rows={rows} compact />
+      <View style={styles.chartHeader}>
+        <View style={styles.chartHeaderRow}>
+          <Text style={styles.chartTitle}>{title}</Text>
+          <View
+            style={[
+              styles.paletteSwatch,
+              { backgroundColor: palette.colors[4] },
+            ]}
+          />
+        </View>
+        {subtitle ? <Text style={styles.chartSubtitle}>{subtitle}</Text> : null}
+      </View>
+      {!hasData ? <EmptyChartText /> : null}
+      {hasData ? (
+        <>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={[styles.heatmapTable, { width: tableWidth }]}>
+              <View style={styles.heatmapHeaderRow}>
+                <Text style={[styles.heatmapHeader, styles.heatmapRowHeader]}>
+                  {rowHeader}
+                </Text>
+                {politicians.map((name) => (
+                  <Text
+                    key={name}
+                    numberOfLines={2}
+                    style={styles.heatmapHeader}>
+                    {name}
+                  </Text>
+                ))}
+              </View>
+              {visibleGroups.map((group) => {
+                const leader = [...group.preferences].sort(
+                  (a, b) => b.count - a.count,
+                )[0];
+                const leaderPct =
+                  leader && group.total
+                    ? (leader.count / group.total) * 100
+                    : 0;
+
+                return (
+                  <View key={group.label} style={styles.heatmapRow}>
+                    <View style={styles.heatmapRowCell}>
+                      <Text style={styles.heatmapRowLabel} numberOfLines={1}>
+                        {group.label}
+                      </Text>
+                      <Text style={styles.heatmapRowTotal}>{group.total}</Text>
+                    </View>
+                    {politicians.map((name) => {
+                      const preference = group.preferences.find(
+                        (item) => item.name === name,
+                      );
+                      const percentage =
+                        preference?.percentage ??
+                        (preference && group.total
+                          ? (preference.count / group.total) * 100
+                          : 0);
+                      const isLeader = leader?.name === name && leaderPct > 0;
+                      return (
+                        <View
+                          key={name}
+                          style={[
+                            styles.heatmapCell,
+                            {
+                              backgroundColor: heatColor(percentage, palette),
+                            },
+                            isLeader && {
+                              borderWidth: 2,
+                              borderColor: palette.leaderBorder,
+                            },
+                          ]}>
+                          <Text
+                            style={[
+                              styles.heatmapValue,
+                              {
+                                color: heatTextColor(percentage, palette),
+                              },
+                            ]}>
+                            {percentage > 0
+                              ? `${Math.round(percentage)}%`
+                              : "–"}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                );
+              })}
+            </View>
+          </ScrollView>
+          <View style={styles.heatmapLegend}>
+            <Text style={styles.heatmapLegendText}>Low</Text>
+            {palette.colors.map((color) => (
+              <View
+                key={color}
+                style={[styles.heatmapLegendSwatch, { backgroundColor: color }]}
+              />
+            ))}
+            <Text style={styles.heatmapLegendText}>High</Text>
           </View>
-        );
-      })}
+        </>
+      ) : null}
     </View>
   );
 }
+
+/* ------------------------- Concerns bar chart ---------------------------- */
 
 function MajorPublicConcernsChart({ data }: { data: BarRow[] }) {
   return (
@@ -815,59 +936,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "#DDE7E3",
-  },
-  refreshButton: {
-    height: 42,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    backgroundColor: "#087568",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  refreshText: { color: "#FFFFFF", fontSize: 13, fontWeight: "900" },
-  hero: { backgroundColor: "#0B2020", borderRadius: 8, padding: 18 },
-  eyebrow: {
-    color: "#6EE7B7",
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 1.2,
-  },
-  title: {
-    color: "#FFFFFF",
-    fontSize: 26,
-    lineHeight: 32,
-    fontWeight: "900",
-    marginTop: 5,
-  },
-  subtitle: {
-    color: "#CCFBF1",
-    fontSize: 13,
-    lineHeight: 20,
-    fontWeight: "700",
-    marginTop: 8,
-  },
-  filterCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    padding: 14,
-    gap: 10,
-  },
-  filterField: { gap: 6 },
-  filterLabel: { color: "#334155", fontSize: 12, fontWeight: "900" },
-  filterInput: {
-    minHeight: 44,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#DDE7E3",
-    backgroundColor: "#F8FAFC",
-    paddingHorizontal: 12,
-    color: "#0F172A",
-    fontWeight: "800",
-    outlineWidth: 0,
-    outlineColor: "transparent",
   },
   scopeSummary: {
     backgroundColor: "#FFFFFF",
@@ -944,73 +1012,6 @@ const styles = StyleSheet.create({
     marginTop: 5,
     textAlign: "center",
   },
-  darkCard: {
-    backgroundColor: "#153C3A",
-    borderRadius: 8,
-    padding: 16,
-    gap: 14,
-  },
-  darkHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
-  },
-  darkEyebrow: {
-    color: "#A7F3D0",
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 1.1,
-  },
-  darkTitle: {
-    color: "#FFFFFF",
-    fontSize: 20,
-    fontWeight: "900",
-    marginTop: 3,
-  },
-  darkPill: {
-    color: "#6EE7B7",
-    fontSize: 11,
-    fontWeight: "900",
-    borderWidth: 1,
-    borderColor: "#34D399",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  candidateGrid: { gap: 10 },
-  candidateCard: {
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderRadius: 8,
-    padding: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  leadingCandidate: {
-    borderColor: "#34D399",
-    backgroundColor: "rgba(52,211,153,0.12)",
-  },
-  avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "rgba(255,255,255,0.14)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { color: "#FFFFFF", fontWeight: "900" },
-  candidateCopy: { flex: 1, minWidth: 0 },
-  candidateName: { color: "#FFFFFF", fontSize: 14, fontWeight: "900" },
-  candidateMeta: {
-    color: "#CBD5E1",
-    fontSize: 10,
-    fontWeight: "900",
-    marginTop: 2,
-  },
-  candidatePercent: { color: "#6EE7B7", fontSize: 20, fontWeight: "900" },
   chartCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 8,
@@ -1048,7 +1049,61 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   pieLegendValue: { color: "#225451", fontSize: 12, fontWeight: "900" },
+
+  /* Heatmap */
+  heatmapTable: { gap: 6 },
+  heatmapHeaderRow: { flexDirection: "row", gap: 6 },
+  heatmapHeader: {
+    width: 62,
+    color: "#64748B",
+    fontSize: 10,
+    fontWeight: "900",
+    lineHeight: 13,
+    textAlign: "center",
+  },
+  heatmapRowHeader: { width: 96, textAlign: "left" },
+  heatmapRow: { flexDirection: "row", gap: 6 },
+  heatmapRowCell: {
+    width: 96,
+    minHeight: 54,
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  heatmapRowLabel: { color: "#0F172A", fontSize: 12, fontWeight: "900" },
+  heatmapRowTotal: {
+    color: "#94A3B8",
+    fontSize: 10,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+  heatmapCell: {
+    alignItems: "center",
+    borderRadius: 8,
+    height: 54,
+    justifyContent: "center",
+    width: 62,
+  },
+  heatmapValue: { fontSize: 12, fontWeight: "900" },
+  heatmapLegend: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 4,
+  },
+  heatmapLegendSwatch: { borderRadius: 3, height: 10, width: 22 },
+  heatmapLegendText: { color: "#64748B", fontSize: 10, fontWeight: "800" },
+
   chartHeader: { gap: 3 },
+  chartHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  paletteSwatch: {
+    width: 14,
+    height: 14,
+    borderRadius: 4,
+  },
   chartTitle: { color: "#0F172A", fontSize: 17, fontWeight: "900" },
   chartSubtitle: { color: "#64748B", fontSize: 12, fontWeight: "700" },
   emptyChartText: {
@@ -1073,101 +1128,5 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   barFill: { height: "100%", borderRadius: 999 },
-  legend: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  legendItem: {
-    maxWidth: "48%",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
   legendSwatch: { width: 10, height: 10, borderRadius: 2 },
-  legendText: { color: "#475569", fontSize: 11, fontWeight: "800" },
-  groupBlock: {
-    borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
-    paddingTop: 10,
-    gap: 8,
-  },
-  groupHeader: { flexDirection: "row", justifyContent: "space-between" },
-  groupTitle: { color: "#0F172A", fontWeight: "900" },
-  groupMeta: { color: "#94A3B8", fontSize: 11, fontWeight: "800" },
-  miniBarRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  miniBarLabel: {
-    width: 88,
-    color: "#475569",
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  miniTrack: {
-    flex: 1,
-    height: 7,
-    backgroundColor: "#EEF2F7",
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-  miniFill: { height: "100%", borderRadius: 999 },
-  miniValue: {
-    width: 42,
-    color: "#0F766E",
-    fontSize: 11,
-    fontWeight: "900",
-    textAlign: "right",
-  },
-  preferenceRow: {
-    gap: 7,
-    borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
-    paddingTop: 10,
-  },
-  preferenceTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  preferenceLabel: { color: "#0F172A", fontSize: 13, fontWeight: "900" },
-  preferenceMeta: {
-    color: "#94A3B8",
-    fontSize: 11,
-    fontWeight: "700",
-    marginTop: 2,
-  },
-  preferenceRight: { flex: 1, alignItems: "flex-end", minWidth: 0 },
-  preferenceName: {
-    color: "#225451",
-    fontSize: 12,
-    fontWeight: "900",
-    maxWidth: "100%",
-  },
-  preferencePercent: {
-    color: "#0F766E",
-    fontSize: 12,
-    fontWeight: "900",
-    marginTop: 2,
-  },
-  preferencePieGroup: {
-    borderTopWidth: 1,
-    borderTopColor: "#EEF2F7",
-    paddingTop: 14,
-    alignItems: "center",
-  },
-  preferencePieTitle: { color: "#334155", fontSize: 14, fontWeight: "900" },
-  preferencePieMeta: {
-    color: "#94A3B8",
-    fontSize: 11,
-    fontWeight: "700",
-    marginTop: 2,
-    marginBottom: 8,
-  },
-  wardGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  wardCell: {
-    width: "31.7%",
-    minHeight: 86,
-    borderRadius: 8,
-    padding: 8,
-    justifyContent: "space-between",
-  },
-  wardNo: { color: "#0F172A", fontSize: 12, fontWeight: "900" },
-  wardPct: { color: "#0F172A", fontSize: 22, fontWeight: "900" },
-  wardLeader: { color: "#334155", fontSize: 10, fontWeight: "800" },
-  wardNoLight: { color: "#FFFFFF" },
 });
