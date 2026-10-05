@@ -50,6 +50,7 @@ export default function RootLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="login" />
         <Stack.Screen name="politician/voters" />
+        <Stack.Screen name="politician/templates" />
         <Stack.Screen name="politician/voter-slip" />
         <Stack.Screen name="politician/survey" />
         <Stack.Screen name="politician/survey-report" />

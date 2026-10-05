@@ -21,7 +21,6 @@ import {
 } from "react";
 import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 import {
-  Alert,
   Animated,
   FlatList,
   Modal,
@@ -572,13 +571,6 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
     });
   }, [slipPreview]);
 
-  function handleDownloadSlip() {
-    Alert.alert(
-      "Download",
-      "Slip download will be connected to the print image exporter.",
-    );
-  }
-
   if (loading) {
     return <VoterDataSetup />;
   }
@@ -643,6 +635,26 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
                   <Text style={styles.menuRowTitle}>Open survey page</Text>
                   <Text style={styles.menuRowSubtitle}>
                     Manage voter surveys
+                  </Text>
+                </View>
+              </Pressable>
+            ) : null}
+
+            {canUseTemplates ? (
+              <Pressable
+                onPress={() => {
+                  setMenuVisible(false);
+                  router.push("/politician/templates");
+                }}
+                style={styles.menuRow}
+              >
+                <View style={styles.menuIconWrap}>
+                  <Printer color="#087568" size={20} strokeWidth={2.6} />
+                </View>
+                <View style={styles.menuCopy}>
+                  <Text style={styles.menuRowTitle}>Open templates</Text>
+                  <Text style={styles.menuRowSubtitle}>
+                    Build booth voter banner templates
                   </Text>
                 </View>
               </Pressable>
@@ -749,7 +761,6 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
             onClose={() => setSlipPreview(null)}
             showBanner={slipPreview.withBanner}
             bannerImage={getCurrentUser()?.bannerImage}
-            onDownload={handleDownloadSlip}
             onPrint={handleSlipPreviewPrint}
             onChangeDevice={handleChangeThermalPrinter}
           />

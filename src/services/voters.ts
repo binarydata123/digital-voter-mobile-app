@@ -39,6 +39,13 @@ export type VoterQuery = {
   ward?: string;
   district?: string;
   state?: string;
+  city?: string;
+};
+
+export type VoterTemplateSelection = {
+  template: "studio";
+  canvasLayout: "top" | "bottom" | "left" | "right" | "floating" | "dual";
+  recordsPerRow: 2 | 3 | 4;
 };
 
 const VOTER_PAGE_SIZE = 200000;
@@ -357,8 +364,11 @@ export function buildVoterStats(voters: Voter[]): VoterStats {
 
 export async function fetchVoters(query: VoterQuery = {}): Promise<Voter[]> {
   const { user } = await ensureAuthSession();
-  if (!hasPoliticianPageAccess("voters", user)) {
-    throw new Error("Voter page is disabled for this account.");
+  if (
+    !hasPoliticianPageAccess("voters", user) &&
+    !hasPoliticianPageAccess("template", user)
+  ) {
+    throw new Error("Voter data is disabled for this account.");
   }
   const politician = getCurrentUser();
   const baseParams = {
@@ -409,6 +419,58 @@ export async function fetchVoters(query: VoterQuery = {}): Promise<Voter[]> {
   }
 
   return voters;
+}
+
+export async function fetchTemplateVoters(query: VoterQuery): Promise<Voter[]> {
+  const { user } = await ensureAuthSession();
+  if (!hasPoliticianPageAccess("template", user)) {
+    throw new Error("Template page is disabled for this account.");
+  }
+
+  if (!query.district) {
+    throw new Error("District is required to load booth voters.");
+  }
+
+  const response = await api.get("/politician/voters/list", {
+    params: {
+      page: 1,
+      limit: 10000,
+      state: query.state || undefined,
+      district: query.district,
+      city: query.city || undefined,
+      boothNo: query.booth || undefined,
+      search: query.search || undefined,
+    },
+  });
+
+  return unwrapList(response.data).map((item, index) =>
+    normalizeVoter(item, index),
+  );
+}
+
+export async function logVoterTemplatePrint({
+  booth,
+  district,
+  printCount = 1,
+  state,
+  templateSelection,
+}: {
+  booth: string;
+  district?: string;
+  printCount?: number;
+  state?: string;
+  templateSelection: VoterTemplateSelection;
+}) {
+  await ensureAuthSession();
+  await api.post("/politician/notifications/activity-log", {
+    action: "printed_voter_template",
+    district,
+    state,
+    voterId: booth,
+    voterName: `Booth ${booth} voter template`,
+    printCount,
+    templateSelection,
+  });
 }
 
 export async function fetchVoterById(epicNo: string): Promise<Voter | null> {
