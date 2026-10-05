@@ -23,7 +23,6 @@ import {
 import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   FlatList,
   Modal,
