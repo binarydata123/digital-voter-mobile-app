@@ -12,9 +12,12 @@ export type AuthUser = {
   ward?: string;
   booth?: string;
   assignedBooths?: string[];
+  city?: string;
   constituency?: string;
   district?: string;
   state?: string;
+  electionType?: string;
+  electionYear?: string | number;
   imageUrl?: string;
   bannerImage?: string;
   showVoterPage: boolean;
@@ -49,6 +52,7 @@ function normalizeUser(raw: any): AuthUser {
   const profile = source?.profile ?? {};
   const states = firstArrayValue(source?.states, profile?.states);
   const districts = firstArrayValue(source?.districts, profile?.districts);
+  const cities = firstArrayValue(source?.cities, profile?.cities);
 
   return {
     id: String(source?.id ?? source?._id ?? source?.politicianId ?? "politician"),
@@ -67,9 +71,12 @@ function normalizeUser(raw: any): AuthUser {
       profile?.assignedBoothName ??
       firstArrayValue(source?.boothNumbers, profile?.boothNumbers)?.[0],
     assignedBooths: normalizeAssignedBooths({ ...profile, ...source }),
+    city: source?.city ?? profile?.city ?? cities?.[0],
     constituency: source?.constituency ?? source?.assemblyName ?? profile?.constituency ?? profile?.assemblyName,
     district: source?.district ?? profile?.district ?? districts?.[0],
     state: source?.state ?? profile?.state ?? states?.[0],
+    electionType: source?.electionType ?? profile?.electionType,
+    electionYear: source?.electionYear ?? profile?.electionYear,
     imageUrl: source?.imageUrl ?? source?.profileImage ?? source?.photo ?? profile?.profileImage,
     bannerImage:
       source?.bannerImage ??
@@ -244,6 +251,18 @@ export async function ensureAuthSession() {
 
   await loadStoredUser();
   return { token, user: currentUser };
+}
+
+export async function refreshCurrentUser() {
+  const { token } = await ensureAuthSession();
+  const response = await api.get("/auth/user", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const user = normalizeUser(response.data);
+
+  currentUser = user;
+  saveStoredUser(user);
+  return user;
 }
 
 export async function loginPolitician(payload: LoginPayload): Promise<LoginResult> {

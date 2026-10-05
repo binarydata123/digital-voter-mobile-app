@@ -7,7 +7,7 @@ import {
   ClipboardList,
   LogOut,
   MapPin,
-  X,
+  Menu,
 } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -29,8 +29,11 @@ import {
 } from "@/services/authentication";
 import {
   buildAssignedSurveyScope,
+  fetchSurveyPoliticianOptions,
+  fetchSurveyWardOptions,
   getAssignedSurveyScope,
   saveSurveyResponse,
+  type SurveyPoliticianOption,
   type SurveyResponseInput,
   type SurveyScope,
 } from "@/services/survey";
@@ -43,7 +46,8 @@ const EDUCATION = [
   "Graduate",
   "PG / Professional",
 ];
-const INCOME = ["< ₹15k", "₹15k-35k", "₹35k-75k", "₹75k+"];
+// These values are persisted directly and must match the backend enum.
+const INCOME = ["< ₹15k", "₹15k–35k", "₹35k–75k", "₹75k+"];
 const OCCUPATIONS = [
   "Private Job / Staff",
   "State Government",
@@ -64,10 +68,41 @@ const CONCERNS = [
   "Safety & Crime",
   "Farming & Agriculture",
 ];
-const POLITICIANS = [
-  { name: "Ram", party: "Congress" },
-  { name: "Testing", party: "BJP" },
+const ELECTION_TYPES = [
+  "Lok Sabha",
+  "Vidhan Sabha",
+  "Rajya Sabha",
+  "Vidhan Parishad",
+  "Municipal Corporation",
+  "Municipal Council",
+  "Nagar Panchayat",
+  "Gram Panchayat",
+  "Panchayat Samiti",
+  "Zila Parishad",
+  "Other",
 ];
+
+function isConstituencyElection(electionType: string) {
+  return electionType === "Lok Sabha" || electionType === "Vidhan Sabha";
+}
+
+// Keep this identical to the Next.js survey: two previous years, the current
+// year, and the next nine years. An assigned year is retained even if it falls
+// outside that range.
+function getElectionYearOptions(selectedYear?: string) {
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 12 }, (_, index) =>
+    String(currentYear - 2 + index),
+  );
+
+  if (selectedYear && !years.includes(selectedYear)) {
+    years.push(selectedYear);
+  }
+
+  return Array.from(new Set(years)).sort(
+    (first, second) => Number(second) - Number(first),
+  );
+}
 
 type ScopeField = keyof SurveyScope;
 type FormState = Omit<
@@ -98,6 +133,13 @@ const scopeLabels: Record<ScopeField, string> = {
   wardNo: "Ward *",
 };
 
+function getScopeLabel(field: ScopeField, electionType: string) {
+  if (field !== "district") return scopeLabels[field];
+  if (electionType === "Lok Sabha") return "Lok Sabha constituency *";
+  if (electionType === "Vidhan Sabha") return "Vidhan Sabha constituency *";
+  return "Constituency / District *";
+}
+
 export default function SurveyScreen() {
   const [scope, setScope] = useState<SurveyScope>(() =>
     buildAssignedSurveyScope(),
@@ -106,9 +148,15 @@ export default function SurveyScreen() {
   const [activeDropdown, setActiveDropdown] = useState<ScopeField | null>(null);
   const [loadingScope, setLoadingScope] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [politicianOptions, setPoliticianOptions] = useState<
+    SurveyPoliticianOption[]
+  >([]);
+  const [loadingPoliticians, setLoadingPoliticians] = useState(false);
+  const [wardOptions, setWardOptions] = useState<string[]>([]);
+  const [loadingWards, setLoadingWards] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [logoutChoiceVisible, setLogoutChoiceVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -149,33 +197,124 @@ export default function SurveyScreen() {
 
   const scopeOptions = useMemo<Record<ScopeField, string[]>>(
     () => ({
-      electionType: uniqueValues(
-        scope.electionType,
-        "Rajya Sabha",
-        "Vidhan Sabha",
-        "Lok Sabha",
-      ),
-      electionYear: uniqueValues(scope.electionYear, "2026", "2025", "2024"),
+      electionType: uniqueValues(scope.electionType, ...ELECTION_TYPES),
+      electionYear: getElectionYearOptions(scope.electionYear),
       state: uniqueValues(scope.state),
       district: uniqueValues(scope.district),
       city: uniqueValues(scope.city),
-      wardNo: uniqueValues(scope.wardNo),
+      wardNo: uniqueValues(scope.wardNo, ...wardOptions),
     }),
-    [scope],
+    [scope, wardOptions],
   );
 
-  const candidateOptions = useMemo(() => {
-    const userName = currentUser?.name?.trim();
-    if (!userName || POLITICIANS.some((item) => item.name === userName)) {
-      return POLITICIANS;
-    }
-    return [{ name: userName, party: "Assigned" }, ...POLITICIANS];
-  }, [currentUser?.name]);
+  const constituencyElection = isConstituencyElection(scope.electionType);
+  const visibleScopeFields = useMemo<ScopeField[]>(
+    () => [
+      "electionType",
+      "electionYear",
+      "state",
+      "district",
+      ...(constituencyElection ? [] : ["city" as const]),
+    ],
+    [constituencyElection],
+  );
+  const politicianLocationReady = Boolean(
+    scope.electionType &&
+    scope.state &&
+    scope.district &&
+    (constituencyElection || scope.city),
+  );
+
+  useEffect(() => {
+    if (!constituencyElection || !scope.state || !scope.district) return;
+
+    let active = true;
+    const timer = setTimeout(() => {
+      setLoadingWards(true);
+      fetchSurveyWardOptions({ state: scope.state, district: scope.district })
+        .then((options) => {
+          if (active) setWardOptions(options);
+        })
+        .catch(() => {
+          if (active) setWardOptions([]);
+        })
+        .finally(() => {
+          if (active) setLoadingWards(false);
+        });
+    }, 0);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [constituencyElection, scope.district, scope.state]);
+
+  useEffect(() => {
+    if (!politicianLocationReady) return;
+
+    let active = true;
+    const timer = setTimeout(() => {
+      setLoadingPoliticians(true);
+      fetchSurveyPoliticianOptions({
+        electionType: scope.electionType,
+        state: scope.state,
+        district: scope.district,
+        city: constituencyElection ? "" : scope.city,
+        wardNo: constituencyElection ? scope.wardNo : "",
+      })
+        .then((options) => {
+          if (active) setPoliticianOptions(options);
+        })
+        .catch((loadError: any) => {
+          if (active) {
+            setPoliticianOptions([]);
+            setError(
+              loadError?.response?.data?.message ??
+                loadError?.message ??
+                "Could not load politicians.",
+            );
+          }
+        })
+        .finally(() => {
+          if (active) setLoadingPoliticians(false);
+        });
+    }, 0);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [
+    constituencyElection,
+    politicianLocationReady,
+    scope.city,
+    scope.district,
+    scope.electionType,
+    scope.state,
+    scope.wardNo,
+  ]);
 
   function updateScope(field: ScopeField, value: string) {
     setMessage("");
     setError("");
-    setScope((current) => ({ ...current, [field]: value }));
+    setScope((current) => {
+      if (field !== "electionType") return { ...current, [field]: value };
+
+      const nextIsConstituency = isConstituencyElection(value);
+      return {
+        ...current,
+        electionType: value,
+        city: nextIsConstituency ? "" : current.city || currentUser?.city || "",
+        wardNo: nextIsConstituency
+          ? current.wardNo || currentUser?.ward || ""
+          : "",
+      };
+    });
+    setForm((current) => ({
+      ...current,
+      preferredPolitician: "",
+      preferredParty: "",
+    }));
     setActiveDropdown(null);
   }
 
@@ -196,13 +335,13 @@ export default function SurveyScreen() {
     }));
   }
 
-  function choosePolitician(name: string, party: string) {
+  function choosePolitician(option: SurveyPoliticianOption) {
     setMessage("");
     setError("");
     setForm((current) => ({
       ...current,
-      preferredPolitician: name,
-      preferredParty: party,
+      preferredPolitician: option.name,
+      preferredParty: option.party,
     }));
   }
 
@@ -212,7 +351,8 @@ export default function SurveyScreen() {
       !scope.electionYear ||
       !scope.state ||
       !scope.district ||
-      !scope.wardNo
+      (!constituencyElection && !scope.city) ||
+      (constituencyElection && !scope.wardNo)
     ) {
       return "Election location and assigned ward are required.";
     }
@@ -245,7 +385,7 @@ export default function SurveyScreen() {
     try {
       await saveSurveyResponse({ ...scope, ...form });
       setForm(emptyForm);
-      setMessage("Survey response saved for assigned ward.");
+      setMessage("Survey response saved.");
       setError("");
     } catch (saveError: any) {
       if (saveError?.message === "Please sign in again to continue.") {
@@ -263,21 +403,29 @@ export default function SurveyScreen() {
     }
   }
 
-  function handleLogout() {
-    setLogoutChoiceVisible(true);
-  }
-
   function confirmLogout() {
-    setLogoutChoiceVisible(false);
     logoutPolitician();
     router.replace("/login");
   }
 
   function openVoterPage() {
     if (canOpenVoters) {
-      setLogoutChoiceVisible(false);
       router.push("/politician/voters");
     }
+  }
+
+  function openSurveyReport() {
+    // The report must use the exact location selected in this survey form.
+    // Passing it through the route avoids falling back to an empty assigned
+    // ward on the report screen.
+    router.push({
+      pathname: "/politician/survey-report",
+      params: {
+        ...scope,
+        city: constituencyElection ? "" : scope.city,
+        wardNo: "",
+      },
+    });
   }
 
   return (
@@ -297,15 +445,15 @@ export default function SurveyScreen() {
           <View style={styles.headerActions}>
             <Pressable
               accessibilityLabel="Survey report"
-              onPress={() => router.push("/politician/survey-report")}
+              onPress={openSurveyReport}
               style={styles.headerIconButton}>
               <BarChart3 color="#0F766E" size={18} strokeWidth={2.8} />
             </Pressable>
             <Pressable
-              accessibilityLabel="Logout"
-              onPress={handleLogout}
+              accessibilityLabel="Open survey menu"
+              onPress={() => setMenuVisible(true)}
               style={[styles.headerIconButton, styles.logoutButton]}>
-              <LogOut color="#FFFFFF" size={18} strokeWidth={2.8} />
+              <Menu color="#FFFFFF" size={21} strokeWidth={2.8} />
             </Pressable>
           </View>
         </View>
@@ -335,16 +483,47 @@ export default function SurveyScreen() {
           showsVerticalScrollIndicator={false}>
           <View style={styles.scopeCard}>
             <View style={styles.scopeGrid}>
-              {(Object.keys(scopeLabels) as ScopeField[]).map((field) => (
+              {visibleScopeFields.map((field) => (
                 <DropdownField
                   key={field}
-                  label={scopeLabels[field]}
+                  label={getScopeLabel(field, scope.electionType)}
                   value={scope[field]}
                   onPress={() => setActiveDropdown(field)}
                 />
               ))}
             </View>
           </View>
+
+          {constituencyElection ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Ward No. *</Text>
+              {loadingWards ? (
+                <ActivityIndicator color="#0F766E" style={styles.wardLoader} />
+              ) : null}
+              {!loadingWards && scopeOptions.wardNo.length ? (
+                <View style={styles.optionGrid}>
+                  {scopeOptions.wardNo.map((ward) => (
+                    <OptionButton
+                      key={ward}
+                      label={
+                        ward.toLowerCase().startsWith("ward")
+                          ? ward
+                          : `Ward ${ward}`
+                      }
+                      selected={scope.wardNo === ward}
+                      onPress={() => updateScope("wardNo", ward)}
+                      columns={2}
+                    />
+                  ))}
+                </View>
+              ) : null}
+              {!loadingWards && !scopeOptions.wardNo.length ? (
+                <Text style={styles.politicianHint}>
+                  No ward options are available for this constituency.
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
 
           {loadingScope ? (
             <ActivityIndicator color="#0F766E" style={styles.scopeLoader} />
@@ -409,38 +588,56 @@ export default function SurveyScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Likely preferred politician</Text>
             <View style={styles.optionGrid}>
-              {candidateOptions.map((candidate) => (
-                <Pressable
-                  key={`${candidate.name}-${candidate.party}`}
-                  onPress={() =>
-                    choosePolitician(candidate.name, candidate.party)
-                  }
-                  style={[
-                    styles.optionButton,
-                    styles.twoColumn,
-                    form.preferredPolitician === candidate.name &&
-                      styles.optionButtonActive,
-                  ]}>
-                  <Text
-                    numberOfLines={1}
+              {politicianLocationReady && loadingPoliticians ? (
+                <ActivityIndicator
+                  color="#0F766E"
+                  style={styles.politicianLoader}
+                />
+              ) : null}
+              {!politicianLocationReady ? (
+                <Text style={styles.politicianHint}>
+                  Select a valid survey location to load active politicians.
+                </Text>
+              ) : null}
+              {politicianLocationReady &&
+              !loadingPoliticians &&
+              politicianOptions.length === 0 ? (
+                <Text style={styles.politicianHint}>
+                  No active politicians are available for this location.
+                </Text>
+              ) : null}
+              {politicianLocationReady &&
+                !loadingPoliticians &&
+                politicianOptions.map((candidate) => (
+                  <Pressable
+                    key={candidate.id}
+                    onPress={() => choosePolitician(candidate)}
                     style={[
-                      styles.optionText,
+                      styles.optionButton,
+                      styles.twoColumn,
                       form.preferredPolitician === candidate.name &&
-                        styles.optionTextActive,
+                        styles.optionButtonActive,
                     ]}>
-                    {candidate.name}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.partyText,
-                      form.preferredPolitician === candidate.name &&
-                        styles.optionTextActive,
-                    ]}>
-                    {candidate.party}
-                  </Text>
-                </Pressable>
-              ))}
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.optionText,
+                        form.preferredPolitician === candidate.name &&
+                          styles.optionTextActive,
+                      ]}>
+                      {candidate.name}
+                    </Text>
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.partyText,
+                        form.preferredPolitician === candidate.name &&
+                          styles.optionTextActive,
+                      ]}>
+                      {candidate.party}
+                    </Text>
+                  </Pressable>
+                ))}
             </View>
           </View>
 
@@ -460,7 +657,7 @@ export default function SurveyScreen() {
           </Pressable>
 
           <Pressable
-            onPress={() => router.push("/politician/survey-report")}
+            onPress={openSurveyReport}
             style={styles.reportButton}>
             <ClipboardList color="#087568" size={17} strokeWidth={2.7} />
             <Text style={styles.reportText}>View report</Text>
@@ -468,47 +665,51 @@ export default function SurveyScreen() {
         </ScrollView>
       </View>
 
-      {logoutChoiceVisible ? (
-        <View style={styles.logoutChoiceOverlay}>
+      <Modal
+        transparent
+        visible={menuVisible}
+        animationType="slide"
+        onRequestClose={() => setMenuVisible(false)}>
+        <Pressable
+          style={styles.menuBackdrop}
+          onPress={() => setMenuVisible(false)}>
           <Pressable
-            accessibilityLabel="Cancel logout"
-            onPress={() => setLogoutChoiceVisible(false)}
-            style={styles.logoutChoiceBackdrop}
-          />
-          <View style={styles.logoutChoicePanel}>
-            <View style={styles.logoutChoiceHeader}>
-              <Text style={styles.logoutChoiceTitle}>Before you leave</Text>
+            style={styles.menuDrawer}
+            onPress={(event) => event.stopPropagation()}>
+            <View style={styles.menuHandle} />
+            {canOpenVoters ? (
               <Pressable
-                accessibilityLabel="Close logout options"
-                onPress={() => setLogoutChoiceVisible(false)}
-                style={styles.logoutChoiceClose}>
-                <X color="#64748B" size={20} strokeWidth={2.6} />
+                onPress={() => {
+                  setMenuVisible(false);
+                  openVoterPage();
+                }}
+                style={styles.menuRow}>
+                <View style={styles.menuIconWrap}>
+                  <ClipboardList color="#087568" size={20} strokeWidth={2.6} />
+                </View>
+                <View style={styles.menuCopy}>
+                  <Text style={styles.menuRowTitle}>Open voter page</Text>
+                  <Text style={styles.menuRowSubtitle}>Manage voter records</Text>
+                </View>
               </Pressable>
-            </View>
-
-            <Text style={styles.logoutChoiceMessage}>
-              {canOpenVoters
-                ? "Open the voter page or confirm logout from this account."
-                : "Confirm logout from this account."}
-            </Text>
-
-            <View style={styles.logoutChoiceActions}>
-              {canOpenVoters ? (
-                <Pressable
-                  onPress={openVoterPage}
-                  style={styles.voterChoiceButton}>
-                  <Text style={styles.voterChoiceText}>Open Voter Page</Text>
-                </Pressable>
-              ) : null}
-              <Pressable
-                onPress={confirmLogout}
-                style={styles.logoutConfirmButton}>
-                <Text style={styles.logoutConfirmText}>Logout</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      ) : null}
+            ) : null}
+            <Pressable
+              onPress={() => {
+                setMenuVisible(false);
+                confirmLogout();
+              }}
+              style={[styles.menuRow, styles.logoutMenuRow]}>
+              <View style={[styles.menuIconWrap, styles.logoutMenuIconWrap]}>
+                <LogOut color="#B91C1C" size={20} strokeWidth={2.6} />
+              </View>
+              <View style={styles.menuCopy}>
+                <Text style={styles.logoutMenuTitle}>Logout</Text>
+                <Text style={styles.menuRowSubtitle}>Sign out from this device</Text>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         transparent
@@ -522,7 +723,7 @@ export default function SurveyScreen() {
             <Pressable style={styles.dropdownSheet}>
               <View style={styles.handle} />
               <Text style={styles.dropdownTitle}>
-                {scopeLabels[activeDropdown]}
+                {getScopeLabel(activeDropdown, scope.electionType)}
               </Text>
               {scopeOptions[activeDropdown].map((option) => {
                 const selected = scope[activeDropdown] === option;
@@ -680,6 +881,54 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   headerActions: { flexDirection: "row", gap: 10 },
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.5)",
+    justifyContent: "flex-end",
+  },
+  menuDrawer: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 18,
+    paddingBottom: 32,
+  },
+  menuHandle: {
+    alignSelf: "center",
+    backgroundColor: "#CBD5E1",
+    borderRadius: 2,
+    height: 4,
+    marginBottom: 14,
+    width: 44,
+  },
+  menuRow: {
+    alignItems: "center",
+    borderBottomColor: "#EEF2F7",
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 66,
+    paddingVertical: 10,
+  },
+  menuIconWrap: {
+    alignItems: "center",
+    backgroundColor: "#ECFDF5",
+    borderRadius: 12,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  menuCopy: { flex: 1, minWidth: 0 },
+  menuRowTitle: { color: "#0F172A", fontSize: 14, fontWeight: "900" },
+  menuRowSubtitle: {
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  logoutMenuRow: { borderBottomWidth: 0, marginTop: 4 },
+  logoutMenuIconWrap: { backgroundColor: "#FEF2F2" },
+  logoutMenuTitle: { color: "#B91C1C", fontSize: 14, fontWeight: "900" },
   headerIconButton: {
     width: 36,
     height: 36,
@@ -771,6 +1020,7 @@ const styles = StyleSheet.create({
   },
   dropdownText: { flex: 1, color: "#1E293B", fontSize: 14, fontWeight: "700" },
   scopeLoader: { alignSelf: "flex-start", marginTop: -2 },
+  wardLoader: { alignSelf: "flex-start", marginVertical: 6 },
   section: { gap: 9 },
   sectionTitle: { color: "#334155", fontSize: 14, fontWeight: "900" },
   hint: { color: "#94A3B8", fontWeight: "700" },
@@ -804,6 +1054,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
     textAlign: "center",
   },
+  politicianHint: {
+    color: "#64748B",
+    fontSize: 13,
+    fontWeight: "700",
+    paddingVertical: 8,
+  },
+  politicianLoader: { alignSelf: "flex-start", marginVertical: 8 },
   saveButton: {
     minHeight: 50,
     borderRadius: 14,

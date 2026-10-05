@@ -3,6 +3,7 @@ import {
   ensureAuthSession,
   getCurrentUser,
   hasPoliticianPageAccess,
+  refreshCurrentUser,
   type AuthUser,
 } from "./authentication";
 
@@ -27,6 +28,13 @@ export type SurveyScope = Pick<
   SurveyResponseInput,
   "electionType" | "electionYear" | "state" | "district" | "city" | "wardNo"
 >;
+
+export type SurveyPoliticianOption = {
+  id: string;
+  name: string;
+  party: string;
+  profileImage?: string;
+};
 
 export type SurveySummary = {
   total: number;
@@ -89,6 +97,23 @@ export type WardHeatMapPayload = {
 const SURVEY_BASE_PATH = "/politician/survey";
 const currentYear = String(new Date().getFullYear());
 
+/**
+ * The web survey uses wards only for constituency elections.  Keeping this
+ * rule in the service prevents a stale City/Ward value from changing a report
+ * query when the user changes the election type.
+ */
+export function isConstituencySurveyElection(electionType: string) {
+  return electionType === "Lok Sabha" || electionType === "Vidhan Sabha";
+}
+
+function normalizeReportScope(scope: SurveyScope): SurveyScope {
+  // Reports aggregate the selected constituency/district. Ward is a response
+  // entry field, not a required report filter.
+  return isConstituencySurveyElection(scope.electionType)
+    ? { ...scope, city: "", wardNo: "" }
+    : { ...scope, wardNo: "" };
+}
+
 function surveyEndpoint(path: string) {
   return `${SURVEY_BASE_PATH}/${path.replace(/^\/+/, "")}`;
 }
@@ -116,17 +141,17 @@ export function buildAssignedSurveyScope(
   user: AuthUser | null = getCurrentUser(),
 ): SurveyScope {
   return {
-    electionType: "Rajya Sabha",
-    electionYear: currentYear,
+    electionType: user?.electionType ?? "Rajya Sabha",
+    electionYear: String(user?.electionYear ?? currentYear),
     state: user?.state ?? "",
     district: user?.district ?? "",
-    city: user?.constituency ?? "",
+    city: user?.city ?? user?.constituency ?? "",
     wardNo: user?.ward ?? "",
   };
 }
 
 export async function getAssignedSurveyScope() {
-  const { user } = await ensureAuthSession();
+  const user = await refreshCurrentUser();
   if (!hasPoliticianPageAccess("survey", user)) {
     throw new Error("Survey page is disabled for this account.");
   }
@@ -151,8 +176,47 @@ export async function saveSurveyResponse(input: SurveyResponseInput) {
   if (!hasPoliticianPageAccess("survey", user)) {
     throw new Error("Survey page is disabled for this account.");
   }
-  const response = await api.post(SURVEY_BASE_PATH, input);
+
+  // Support a value that was selected before the app changed from a hyphen to
+  // the API's required en dash. This also protects callers outside the screen.
+  const incomeBracket = input.incomeBracket
+    .replace("₹15k-35k", "₹15k–35k")
+    .replace("₹35k-75k", "₹35k–75k");
+  const response = await api.post(surveyEndpoint("responses"), {
+    ...input,
+    incomeBracket,
+  });
   return unwrapData(response.data, { success: true });
+}
+
+export async function fetchSurveyPoliticianOptions(
+  scope: Pick<SurveyScope, "electionType" | "state" | "district" | "city" | "wardNo">,
+) {
+  const { user } = await ensureAuthSession();
+  if (!hasPoliticianPageAccess("survey", user)) {
+    throw new Error("Survey page is disabled for this account.");
+  }
+
+  const response = await api.get(surveyEndpoint("politicians"), {
+    params: compactParams(scope),
+  });
+  const data = unwrapData<{ options?: SurveyPoliticianOption[] }>(response.data, {});
+  return data.options ?? [];
+}
+
+export async function fetchSurveyWardOptions(scope: Pick<SurveyScope, "state" | "district">) {
+  const { user } = await ensureAuthSession();
+  if (!hasPoliticianPageAccess("survey", user)) {
+    throw new Error("Survey page is disabled for this account.");
+  }
+
+  const response = await api.get("/politician/dashboard/ward-options", {
+    params: compactParams(scope),
+  });
+  const data = unwrapData<{ options?: { value?: string; label?: string }[] }>(response.data, {});
+  return (data.options ?? [])
+    .map((option) => String(option.value ?? option.label ?? "").trim())
+    .filter(Boolean);
 }
 
 export async function fetchSupportByAgeGroup(scope: SurveyScope) {
@@ -213,15 +277,21 @@ export async function fetchWardHeatMap(scope: SurveyScope) {
 }
 
 export async function fetchSurveyReport(scope: SurveyScope) {
+  const reportScope = normalizeReportScope(scope);
+  const isConstituencyElection = isConstituencySurveyElection(
+    reportScope.electionType,
+  );
   const [summary, supportByAgeGroup, preferenceByGender, preferenceByEducation, preferenceByIncome, majorPublicConcerns, wardHeatMap] =
     await Promise.all([
-      fetchSurveySummary(scope),
-      fetchSupportByAgeGroup(scope).catch(() => []),
-      fetchPreferenceByGender(scope).catch(() => []),
-      fetchPreferenceByEducation(scope).catch(() => []),
-      fetchPreferenceByIncome(scope).catch(() => []),
-      fetchMajorPublicConcerns(scope).catch(() => []),
-      fetchWardHeatMap(scope).catch(() => []),
+      fetchSurveySummary(reportScope),
+      fetchSupportByAgeGroup(reportScope).catch(() => []),
+      fetchPreferenceByGender(reportScope).catch(() => []),
+      fetchPreferenceByEducation(reportScope).catch(() => []),
+      fetchPreferenceByIncome(reportScope).catch(() => []),
+      fetchMajorPublicConcerns(reportScope).catch(() => []),
+      isConstituencyElection
+        ? fetchWardHeatMap(reportScope).catch(() => [])
+        : Promise.resolve([]),
     ]);
 
   return {
