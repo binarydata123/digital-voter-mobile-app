@@ -404,18 +404,15 @@ export default function SurveyScreen() {
 
         {error ? <Text style={styles.warning}>{error}</Text> : null}
         {/* 
-        <View style={styles.summaryCard}>
-          <View>
-            <Text style={styles.summaryLabel}>Total responses</Text>
-            <Text style={styles.summaryValue}>{report.summary.total}</Text>
-          </View>
-          <View style={styles.leaderBadge}>
-            <Text style={styles.leaderBadgeLabel}>Leading</Text>
-            <Text style={styles.leaderBadgeText}>
-              {leader?._id ?? "No data"}
-            </Text>
-          </View>
-        </View> */}
+          
+          
+          
+          
+          
+          
+          
+          
+          */}
 
         {report.summary.total === 0 && !loading ? (
           <View style={styles.emptyCard}>
