@@ -652,7 +652,7 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
                   <Printer color="#087568" size={20} strokeWidth={2.6} />
                 </View>
                 <View style={styles.menuCopy}>
-                  <Text style={styles.menuRowTitle}>Open templates</Text>
+                  <Text style={styles.menuRowTitle}>Open template page</Text>
                   <Text style={styles.menuRowSubtitle}>
                     Build booth voter banner templates
                   </Text>
