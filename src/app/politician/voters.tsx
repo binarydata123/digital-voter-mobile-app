@@ -23,7 +23,6 @@ import {
 import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   FlatList,
   Modal,
@@ -695,13 +694,6 @@ export default function VotersScreen() {
     });
   }, [slipPreview]);
 
-  function handleDownloadSlip() {
-    Alert.alert(
-      "Download",
-      "Slip download will be connected to the print image exporter.",
-    );
-  }
-
   if (initialLoading) {
     return <VoterDataSetup />;
   }
@@ -754,6 +746,26 @@ export default function VotersScreen() {
                   <Text style={styles.menuRowTitle}>Open survey page</Text>
                   <Text style={styles.menuRowSubtitle}>
                     Manage voter surveys
+                  </Text>
+                </View>
+              </Pressable>
+            ) : null}
+
+            {canUseTemplates ? (
+              <Pressable
+                onPress={() => {
+                  setMenuVisible(false);
+                  router.push("/politician/templates");
+                }}
+                style={styles.menuRow}
+              >
+                <View style={styles.menuIconWrap}>
+                  <Printer color="#087568" size={20} strokeWidth={2.6} />
+                </View>
+                <View style={styles.menuCopy}>
+                  <Text style={styles.menuRowTitle}>Open templates</Text>
+                  <Text style={styles.menuRowSubtitle}>
+                    Build booth voter banner templates
                   </Text>
                 </View>
               </Pressable>
@@ -855,7 +867,6 @@ export default function VotersScreen() {
             onClose={() => setSlipPreview(null)}
             showBanner={slipPreview.withBanner}
             bannerImage={getCurrentUser()?.bannerImage}
-            onDownload={handleDownloadSlip}
             onPrint={handleSlipPreviewPrint}
             onChangeDevice={handleChangeThermalPrinter}
           />
