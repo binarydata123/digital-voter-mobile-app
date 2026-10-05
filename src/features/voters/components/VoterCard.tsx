@@ -6,7 +6,7 @@ import {
   Share2,
   UsersRound,
 } from "lucide-react-native";
-import { memo, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -32,33 +32,30 @@ function buildVoterQrValue(voter: Voter): string {
   return `https://votersakha.tech/voter-slip.html?epicNo=${encodeURIComponent(epicNo)}`;
 }
 
-export const VoterCard = memo(function VoterCard({
-  voter,
-  onScan,
-  onPrint,
-  onFamily,
-  onShare,
-}: {
+type VoterCardProps = {
   voter: Voter;
   onScan?: (voter: Voter) => void;
   onPrint?: (voter: Voter) => void;
   onFamily?: (voter: Voter) => void;
   onShare?: (voter: Voter) => Promise<void> | void;
-}) {
+};
+
+function VoterCardComponent({
+  voter,
+  onScan,
+  onPrint,
+  onFamily,
+  onShare,
+}: VoterCardProps) {
   const [qrVisible, setQrVisible] = useState(false);
-  const [qrValue, setQrValue] = useState("");
   const [sharing, setSharing] = useState(false);
 
-  function handleQrPress() {
-    const value = buildVoterQrValue(voter);
-
-    setQrValue(value);
+  const handleQrPress = useCallback(() => {
     setQrVisible(true);
-
     onScan?.(voter);
-  }
+  }, [onScan, voter]);
 
-  async function handleSharePress() {
+  const handleSharePress = useCallback(async () => {
     if (!onShare || sharing) return;
 
     setSharing(true);
@@ -67,8 +64,16 @@ export const VoterCard = memo(function VoterCard({
     } finally {
       setSharing(false);
     }
-  }
+  }, [onShare, sharing, voter]);
 
+  const handlePrintPress = useCallback(
+    () => onPrint?.(voter),
+    [onPrint, voter],
+  );
+  const handleFamilyPress = useCallback(
+    () => onFamily?.(voter),
+    [onFamily, voter],
+  );
 
   return (
     <View style={styles.voterCard}>
@@ -92,8 +97,7 @@ export const VoterCard = memo(function VoterCard({
                   <Pressable
                     accessibilityLabel="Show voter QR code"
                     onPress={handleQrPress}
-                    style={styles.scanButton}
-                  >
+                    style={styles.scanButton}>
                     <QrCode color="#087568" size={15} strokeWidth={2.8} />
                   </Pressable>
 
@@ -104,16 +108,11 @@ export const VoterCard = memo(function VoterCard({
                     style={[
                       styles.scanButton,
                       sharing && styles.scanButtonDisabled,
-                    ]}
-                  >
+                    ]}>
                     {sharing ? (
                       <ActivityIndicator color="#087568" size="small" />
                     ) : (
-                      <Share2
-                        color="#087568"
-                        size={16}
-                        strokeWidth={2.7}
-                      />
+                      <Share2 color="#087568" size={16} strokeWidth={2.7} />
                     )}
                   </Pressable>
                 </View>
@@ -124,8 +123,7 @@ export const VoterCard = memo(function VoterCard({
           <View style={styles.guardianRow}>
             <Text
               numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.82}
+              ellipsizeMode="tail"
               style={styles.guardian}>
               {voter.guardian}
             </Text>
@@ -138,32 +136,25 @@ export const VoterCard = memo(function VoterCard({
 
       <View style={styles.cardFooter}>
         <InfoTile
-          icon={<BadgeCheck color="#087568" size={17} strokeWidth={2.5} />}
+          icon={BadgeCheck}
           label="EPIC No."
           value={voter.epicNo}
           priority
         />
 
-        <InfoTile
-          icon={<House color="#087568" size={17} strokeWidth={2.5} />}
-          label="House No."
-          value={voter.houseNo}
-        />
+        <InfoTile icon={House} label="House No." value={voter.houseNo} />
 
-        <Pressable onPress={() => onPrint?.(voter)} style={styles.printButton}>
+        <Pressable onPress={handlePrintPress} style={styles.printButton}>
           <Printer color="#087568" size={17} strokeWidth={2.5} />
           <Text style={styles.printText}>Print</Text>
         </Pressable>
 
-        <Pressable
-          onPress={() => onFamily?.(voter)}
-          style={styles.familyButton}>
+        <Pressable onPress={handleFamilyPress} style={styles.familyButton}>
           <UsersRound color="#087568" size={17} strokeWidth={2.5} />
           <Text style={styles.printText}>Family</Text>
         </Pressable>
       </View>
 
-      {/* Mount the expensive QR SVG only when the voter asks to see it. */}
       {qrVisible ? (
         <Modal
           transparent
@@ -180,7 +171,7 @@ export const VoterCard = memo(function VoterCard({
               </Text>
 
               <View style={styles.qrWrap}>
-                <QRCode value={qrValue} size={200} />
+                <QRCode value={buildVoterQrValue(voter)} size={200} />
               </View>
 
               <Text style={styles.qrHint}>
@@ -198,24 +189,73 @@ export const VoterCard = memo(function VoterCard({
       ) : null}
     </View>
   );
-});
+}
+
+/**
+ * SQLite filtering may return new object instances for the same voter. A
+ * default React.memo comparison would re-render every visible card in that
+ * case, so compare only the fields this card actually displays or uses.
+ */
+function areVoterCardPropsEqual(
+  previous: Readonly<VoterCardProps>,
+  next: Readonly<VoterCardProps>,
+) {
+  const before = previous.voter;
+  const after = next.voter;
+
+  return (
+    previous.onScan === next.onScan &&
+    previous.onPrint === next.onPrint &&
+    previous.onFamily === next.onFamily &&
+    previous.onShare === next.onShare &&
+    before.id === after.id &&
+    before.name === after.name &&
+    before.gender === after.gender &&
+    before.age === after.age &&
+    before.guardian === after.guardian &&
+    before.epicNo === after.epicNo &&
+    before.houseNo === after.houseNo &&
+    before.booth === after.booth &&
+    before.serialNo === after.serialNo
+  );
+}
+
+export const VoterCard = memo(VoterCardComponent, areVoterCardPropsEqual);
 
 /* -------------------------------------------------------------
    AVATAR
    ------------------------------------------------------------- */
 
-function Avatar({ gender, age }: { gender: string; age: number }) {
+const AGE_IMAGES = {
+  maleYoung: boyImage,
+  femaleYoung: girlImage,
+  maleAdult: manImage,
+  femaleAdult: womenImage,
+  maleOld: oldMenImage,
+  femaleOld: oldWomenImage,
+};
+
+const Avatar = memo(function Avatar({
+  gender,
+  age,
+}: {
+  gender: string;
+  age: number;
+}) {
   const isFemale = gender.toLowerCase().startsWith("f");
 
-  let imageSource;
-
-  if (age < 35) {
-    imageSource = isFemale ? girlImage : boyImage;
-  } else if (age <= 70) {
-    imageSource = isFemale ? womenImage : manImage;
-  } else {
-    imageSource = isFemale ? oldWomenImage : oldMenImage;
-  }
+  const imageSource =
+    age < 35
+      ? isFemale
+        ? AGE_IMAGES.femaleYoung
+        : AGE_IMAGES.maleYoung
+      : age <= 70
+        ? isFemale
+          ? AGE_IMAGES.femaleAdult
+          : AGE_IMAGES.maleAdult
+        : isFemale
+          ? AGE_IMAGES.femaleOld
+          : AGE_IMAGES.maleOld;
 
   return (
     <View style={styles.avatar}>
@@ -226,39 +266,43 @@ function Avatar({ gender, age }: { gender: string; age: number }) {
       />
     </View>
   );
-}
+});
 
 /* -------------------------------------------------------------
    INFO TILE
    ------------------------------------------------------------- */
 
-function InfoTile({
-  icon,
+const InfoTile = memo(function InfoTile({
+  icon: Icon,
   label,
   value,
   priority = false,
 }: {
-  icon: React.ReactNode;
+  icon: React.ComponentType<{
+    color?: string;
+    size?: number;
+    strokeWidth?: number;
+  }>;
   label: string;
   value: string;
   priority?: boolean;
 }) {
   return (
     <View style={[styles.infoTile, priority && styles.priorityInfoTile]}>
-      <View style={styles.tileIcon}>{icon}</View>
+      <View style={styles.tileIcon}>
+        <Icon color="#087568" size={17} strokeWidth={2.5} />
+      </View>
+
       <View style={styles.tileTextWrap}>
         <Text style={styles.infoLabel}>{label}</Text>
-        <Text
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.82}
-          style={styles.infoValue}>
+
+        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.infoValue}>
           {value}
         </Text>
       </View>
     </View>
   );
-}
+});
 
 /* -------------------------------------------------------------
    STYLES
@@ -272,9 +316,9 @@ const styles = StyleSheet.create({
     borderColor: "#DDE8EF",
     padding: 12,
     shadowColor: "#718096",
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 2,
+    shadowOpacity: 0.06,
+    shadowRadius: 5,
+    elevation: 1,
   },
   voterTop: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   avatar: {
@@ -310,7 +354,12 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 12,
   },
-  guardianRow: { alignItems: "center", flexDirection: "row", gap: 6, marginTop: 3 },
+  guardianRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 3,
+  },
   cardRightRail: { alignItems: "flex-end", gap: 7 },
   boothActions: { flexDirection: "row", alignItems: "center", gap: 6 },
   quickActions: { flexDirection: "row", alignItems: "center", gap: 5 },

@@ -1,3 +1,4 @@
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import {
@@ -21,13 +22,12 @@ import {
 } from "react";
 import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   FlatList,
   Modal,
-  Platform,
   Pressable,
-  SectionList,
   StyleSheet,
   Text,
   TextInput,
@@ -54,16 +54,24 @@ import {
   logoutPolitician,
 } from "@/services/authentication";
 import {
-  getLocalVoters,
+  getLocalVoterOverview,
+  getLocalVoterPage,
   hasLocalVoters,
-  replaceLocalVoters,
+  replaceLocalVotersFromPages,
 } from "@/services/local-voters";
 import {
   getSavedThermalPrinter,
   printThermalVoterSlip,
 } from "@/services/thermal-printer";
 import { isLocalVoterDatabaseAvailable } from "@/services/voter-database";
-import { buildVoterStats, fetchVoters, type Voter } from "@/services/voters";
+import {
+  buildVoterStats,
+  fetchVoters,
+  forEachVoterPage,
+  type Voter,
+} from "@/services/voters";
+
+const VOTER_PAGE_SIZE = 50;
 
 type PrintScope = "single" | "family";
 type SlipPreviewRequest = {
@@ -81,10 +89,19 @@ type ShareImageRequest = { voter: Voter; resolve: () => void };
 
 export default function VotersScreen() {
   const [voters, setVoters] = useState<Voter[]>([]);
+  const [localPoliticianId, setLocalPoliticianId] = useState<string | null>(
+    null,
+  );
+  const [localTotal, setLocalTotal] = useState(0);
+  const [localBoothCounts, setLocalBoothCounts] = useState<
+    Record<string, number>
+  >({});
+  const [loadingMore, setLoadingMore] = useState(false);
   const [query, setQuery] = useState("");
   const [activeBooth, setActiveBooth] = useState("All");
   const [pendingBooth, setPendingBooth] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [slipPreview, setSlipPreview] = useState<SlipPreviewRequest | null>(
@@ -100,43 +117,60 @@ export default function VotersScreen() {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const boothSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shareSlipRef = useRef<View>(null);
-  const listRef = useRef<SectionList<Voter>>(null);
-const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const currentUser = getCurrentUser();
+  const listRef = useRef<FlashListRef<Voter>>(null);
+  const [scrollTopOpacity] = useState(() => new Animated.Value(0));
+  const lastLocalQueryKey = useRef("");
+  const localRequestId = useRef(0);
+  const currentUser = getCurrentUser();
   const canOpenSurvey = hasPoliticianPageAccess("survey", currentUser);
   const canUseTemplates = hasPoliticianPageAccess("template", currentUser);
   const deferredQuery = useDeferredValue(query);
   const isSearchPending = query !== deferredQuery;
+  const localMode = Boolean(localPoliticianId);
+
+  const loadInitialLocalPage = useCallback(async (politicianId: string) => {
+    const [page, overview] = await Promise.all([
+      getLocalVoterPage(politicianId, {}, VOTER_PAGE_SIZE),
+      getLocalVoterOverview(politicianId),
+    ]);
+    lastLocalQueryKey.current = `${politicianId}|All|`;
+    setVoters(page.voters);
+    setLocalTotal(page.total);
+    setLocalBoothCounts(overview.boothCounts);
+    setLocalPoliticianId(politicianId);
+  }, []);
 
   const loadVoters = useCallback(async () => {
-    if (currentUser && !hasPoliticianPageAccess("voters", currentUser)) {
-      const nextRoute = getDefaultPoliticianRoute(currentUser);
+    const signedInUser = getCurrentUser();
+    if (signedInUser && !hasPoliticianPageAccess("voters", signedInUser)) {
+      const nextRoute = getDefaultPoliticianRoute(signedInUser);
       router.replace(nextRoute ?? "/login");
-      setLoading(false);
+      setInitialLoading(false);
       return;
     }
 
-    setLoading(true);
+    setInitialLoading(true);
     try {
       const session = await ensureAuthSession();
       const currentPoliticianId = session.user?.id ?? null;
 
       if (isLocalVoterDatabaseAvailable() && currentPoliticianId) {
         if (await hasLocalVoters(currentPoliticianId)) {
-          const localVoters = await getLocalVoters(currentPoliticianId);
-          setVoters(localVoters);
+          await loadInitialLocalPage(currentPoliticianId);
           setError("");
           return;
         }
 
-        const downloadedVoters = await fetchVoters();
-        await replaceLocalVoters(currentPoliticianId, downloadedVoters);
-        const localVoters = await getLocalVoters(currentPoliticianId);
-        setVoters(localVoters);
+        await replaceLocalVotersFromPages(currentPoliticianId, (savePage) =>
+          forEachVoterPage({}, savePage),
+        );
+        await loadInitialLocalPage(currentPoliticianId);
         setError("");
         return;
       }
 
       const list = await fetchVoters();
+      setLocalPoliticianId(null);
       setVoters(list);
       setError("");
     } catch (loadError: any) {
@@ -148,9 +182,9 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
       setVoters([]);
       setError(loadError?.message ?? "Unable to load voters from the backend.");
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
     }
-  }, [currentUser]);
+  }, [loadInitialLocalPage]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -216,16 +250,19 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
   const refreshAllVoterData = useCallback(async () => {
     setActiveBooth("All");
     setQuery("");
-    setLoading(true);
+    setRefreshing(true);
     try {
       const session = await ensureAuthSession();
-      const downloadedVoters = await fetchVoters();
       const currentPoliticianId = session.user?.id ?? null;
 
       if (isLocalVoterDatabaseAvailable() && currentPoliticianId) {
-        await replaceLocalVoters(currentPoliticianId, downloadedVoters);
-        setVoters(await getLocalVoters(currentPoliticianId));
+        await replaceLocalVotersFromPages(currentPoliticianId, (savePage) =>
+          forEachVoterPage({}, savePage),
+        );
+        await loadInitialLocalPage(currentPoliticianId);
       } else {
+        const downloadedVoters = await fetchVoters();
+        setLocalPoliticianId(null);
         setVoters(downloadedVoters);
       }
 
@@ -238,14 +275,92 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
       }
       setError(refreshError?.message ?? "Unable to refresh voter data.");
     } finally {
-      setLoading(false);
+      setRefreshing(false);
     }
-  }, []);
+  }, [loadInitialLocalPage]);
 
-  const stats = useMemo(() => buildVoterStats(voters), [voters]);
+  useEffect(() => {
+    if (!localPoliticianId) return;
+
+    const normalizedSearch = deferredQuery.trim();
+    const queryKey = `${localPoliticianId}|${activeBooth}|${normalizedSearch}`;
+    if (lastLocalQueryKey.current === queryKey) return;
+
+    const requestId = ++localRequestId.current;
+    setLoadingMore(true);
+    getLocalVoterPage(
+      localPoliticianId,
+      { booth: activeBooth, search: normalizedSearch || undefined },
+      VOTER_PAGE_SIZE,
+    )
+      .then((page) => {
+        if (requestId !== localRequestId.current) return;
+        lastLocalQueryKey.current = queryKey;
+        setVoters(page.voters);
+        setLocalTotal(page.total);
+      })
+      .catch((pageError: any) => {
+        if (requestId === localRequestId.current) {
+          setError(pageError?.message ?? "Unable to load local voters.");
+        }
+      })
+      .finally(() => {
+        if (requestId === localRequestId.current) setLoadingMore(false);
+      });
+  }, [activeBooth, deferredQuery, localPoliticianId]);
+
+  const loadMoreLocalVoters = useCallback(async () => {
+    if (!localPoliticianId || loadingMore || voters.length >= localTotal) {
+      return;
+    }
+
+    const requestId = ++localRequestId.current;
+    setLoadingMore(true);
+    try {
+      const page = await getLocalVoterPage(
+        localPoliticianId,
+        { booth: activeBooth, search: deferredQuery.trim() || undefined },
+        VOTER_PAGE_SIZE,
+        voters.length,
+      );
+      if (requestId !== localRequestId.current) return;
+      setVoters((current) => [...current, ...page.voters]);
+      setLocalTotal(page.total);
+    } catch (pageError: any) {
+      if (requestId === localRequestId.current) {
+        setError(pageError?.message ?? "Unable to load more voters.");
+      }
+    } finally {
+      if (requestId === localRequestId.current) setLoadingMore(false);
+    }
+  }, [
+    activeBooth,
+    deferredQuery,
+    loadingMore,
+    localPoliticianId,
+    localTotal,
+    voters.length,
+  ]);
+
+  const stats = useMemo(
+    () =>
+      localMode
+        ? {
+            total: localTotal,
+            boothCounts: localBoothCounts,
+            male: 0,
+            female: 0,
+            senior: 0,
+          }
+        : buildVoterStats(voters),
+    [localBoothCounts, localMode, localTotal, voters],
+  );
   const booths = useMemo(
-    () => ["All", ...Array.from(new Set(voters.map((voter) => voter.booth)))],
-    [voters],
+    () =>
+      localMode
+        ? ["All", ...Object.keys(localBoothCounts)]
+        : ["All", ...Array.from(new Set(voters.map((voter) => voter.booth)))],
+    [localBoothCounts, localMode, voters],
   );
 
   const boothCounts = useMemo(() => {
@@ -259,16 +374,19 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
 
   const voterSearchIndex = useMemo(
     () =>
-      voters.map((voter) => ({
-        searchText: [voter.name, voter.epicNo, voter.serialNo ?? ""]
-          .join(" ")
-          .toLowerCase(),
-        voter,
-      })),
-    [voters],
+      localMode
+        ? []
+        : voters.map((voter) => ({
+            searchText: [voter.name, voter.epicNo, voter.serialNo ?? ""]
+              .join(" ")
+              .toLowerCase(),
+            voter,
+          })),
+    [localMode, voters],
   );
 
   const filteredVoters = useMemo(() => {
+    if (localMode) return voters;
     const lowered = deferredQuery.trim().toLowerCase();
     const matched: Voter[] = [];
 
@@ -279,7 +397,7 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
     }
 
     return matched;
-  }, [activeBooth, deferredQuery, voterSearchIndex]);
+  }, [activeBooth, deferredQuery, localMode, voterSearchIndex, voters]);
 
   const selectBooth = useCallback(
     (booth: string) => {
@@ -346,14 +464,11 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
 
   const voterKeyExtractor = useCallback((item: Voter) => item.id, []);
 
-  const sections = useMemo(
-    () => [
-      {
-        data: pendingBooth || isSearchPending ? [] : filteredVoters,
-        key: "voters",
-      },
-    ],
-    [filteredVoters, isSearchPending, pendingBooth],
+  const listData = useMemo(
+    // `deferredQuery` keeps the previous result visible during a search. Do
+    // not clear it here: unmounting every card on each key press is expensive.
+    () => (pendingBooth ? [] : filteredVoters),
+    [filteredVoters, pendingBooth],
   );
 
   // Toggle scroll-to-top visibility based on how far the user scrolled.
@@ -367,10 +482,8 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
   );
 
   const scrollToTop = useCallback(() => {
-    listRef.current?.scrollToLocation({
-      sectionIndex: 0,
-      itemIndex: 0,
-      viewOffset: 0,
+    listRef.current?.scrollToOffset({
+      offset: 0,
       animated: true,
     });
   }, []);
@@ -393,19 +506,21 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
               <Pressable
                 accessibilityLabel="Refresh offline voter data"
                 onPress={refreshAllVoterData}
-                disabled={loading}
+                disabled={refreshing}
                 style={[
                   styles.headerIconButton,
-                  loading && styles.headerIconButtonDisabled,
-                ]}
-              >
-                <RefreshCw color="#0F766E" size={18} strokeWidth={2.8} />
+                  refreshing && styles.headerIconButtonDisabled,
+                ]}>
+                {refreshing ? (
+                  <ActivityIndicator color="#0F766E" size="small" />
+                ) : (
+                  <RefreshCw color="#0F766E" size={18} strokeWidth={2.8} />
+                )}
               </Pressable>
               <Pressable
                 accessibilityLabel="Open voter menu"
                 onPress={() => setMenuVisible(true)}
-                style={[styles.headerIconButton, styles.menuButton]}
-              >
+                style={[styles.headerIconButton, styles.menuButton]}>
                 <Menu color="#FFFFFF" size={21} strokeWidth={2.8} />
               </Pressable>
             </View>
@@ -429,7 +544,7 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
         ) : null}
       </>
     ),
-    [error, loading, refreshAllVoterData],
+    [error, refreshAllVoterData, refreshing],
   );
 
   const renderStickyControls = useCallback(
@@ -449,8 +564,7 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
           </View>
           <Pressable
             style={styles.filterButton}
-            onPress={() => setModalVisible(true)}
-          >
+            onPress={() => setModalVisible(true)}>
             <SlidersHorizontal color="#FFFFFF" size={15} strokeWidth={2.8} />
             <Text style={styles.filterButtonText}>Filter</Text>
           </Pressable>
@@ -469,8 +583,7 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
             return (
               <Pressable
                 onPress={() => selectBooth(item)}
-                style={[styles.boothTab, isActive && styles.boothTabActive]}
-              >
+                style={[styles.boothTab, isActive && styles.boothTabActive]}>
                 {item === "All" ? (
                   <UsersRound
                     color={isActive ? "#FFFFFF" : "#087568"}
@@ -482,22 +595,19 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
                   style={[
                     styles.boothTabText,
                     isActive && styles.boothTabTextActive,
-                  ]}
-                >
+                  ]}>
                   {label}
                 </Text>
                 <View
                   style={[
                     styles.countBadge,
                     isActive && styles.countBadgeActive,
-                  ]}
-                >
+                  ]}>
                   <Text
                     style={[
                       styles.countBadgeText,
                       isActive && styles.countBadgeTextActive,
-                    ]}
-                  >
+                    ]}>
                     {count}
                   </Text>
                 </View>
@@ -511,7 +621,7 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
   );
 
   const renderListFooter = useCallback(() => {
-    if (pendingBooth || isSearchPending) {
+    if (pendingBooth || isSearchPending || loadingMore) {
       return (
         <View style={styles.listFooterWrap}>
           <VoterListSkeleton />
@@ -531,7 +641,20 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
     }
 
     return null;
-  }, [filteredVoters.length, isSearchPending, pendingBooth]);
+  }, [filteredVoters.length, isSearchPending, loadingMore, pendingBooth]);
+
+  // Keep this as an element, not a callback passed as ListHeaderComponent.
+  // FlashList can reconcile the existing TextInput while `query` changes,
+  // preserving Android keyboard focus during a search.
+  const listHeader = useMemo(
+    () => (
+      <>
+        {renderScreenHeader()}
+        {renderStickyControls()}
+      </>
+    ),
+    [renderScreenHeader, renderStickyControls],
+  );
 
   function openSlipPreview(withBanner: boolean) {
     if (!printTypeRequest) return;
@@ -579,63 +702,51 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
     );
   }
 
-  if (loading) {
+  if (initialLoading) {
     return <VoterDataSetup />;
   }
 
   return (
     <SafeAreaView style={styles.safe}>
-      <SectionList
+      <FlashList
         ref={listRef}
+        data={listData}
+        keyExtractor={voterKeyExtractor}
+        renderItem={renderVoterItem}
+        onEndReached={localMode ? loadMoreLocalVoters : undefined}
+        onEndReachedThreshold={0.25}
         onScroll={handleListScroll}
         scrollEventThrottle={16}
-        sections={sections}
-        keyExtractor={voterKeyExtractor}
-        initialNumToRender={8}
-        maxToRenderPerBatch={6}
-        updateCellsBatchingPeriod={80}
-        windowSize={5}
-        stickySectionHeadersEnabled
-        removeClippedSubviews={Platform.OS === "android"}
+        decelerationRate={0.8}
+        drawDistance={500}
+        keyboardDismissMode="none"
+        keyboardShouldPersistTaps="always"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
-        ListHeaderComponent={renderScreenHeader}
-        renderSectionHeader={renderStickyControls}
-        renderSectionFooter={renderListFooter}
-        renderItem={renderVoterItem}
+        ListHeaderComponent={listHeader}
+        ListFooterComponent={renderListFooter}
       />
 
       <Modal
         transparent
         visible={menuVisible}
         animationType="slide"
-        onRequestClose={() => setMenuVisible(false)}
-      >
+        onRequestClose={() => setMenuVisible(false)}>
         <Pressable
           style={styles.menuBackdrop}
-          onPress={() => setMenuVisible(false)}
-        >
+          onPress={() => setMenuVisible(false)}>
           <Pressable
             style={styles.menuDrawer}
-            onPress={(event) => event.stopPropagation()}
-          >
+            onPress={(event) => event.stopPropagation()}>
             <View style={styles.menuHandle} />
-            <View style={styles.menuHeader}>
-              {/* <Pressable
-                accessibilityLabel="Close voter menu"
-                onPress={() => setMenuVisible(false)}
-                style={styles.menuClose}>
-                <X color="#64748B" size={21} strokeWidth={2.7} />
-              </Pressable> */}
-            </View>
+            <View style={styles.menuHeader}></View>
             {canOpenSurvey ? (
               <Pressable
                 onPress={() => {
                   setMenuVisible(false);
                   openSurveyPage();
                 }}
-                style={styles.menuRow}
-              >
+                style={styles.menuRow}>
                 <View style={styles.menuIconWrap}>
                   <UsersRound color="#087568" size={20} strokeWidth={2.6} />
                 </View>
@@ -653,8 +764,7 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
                 setMenuVisible(false);
                 void confirmLogout();
               }}
-              style={[styles.menuRow, styles.logoutMenuRow]}
-            >
+              style={[styles.menuRow, styles.logoutMenuRow]}>
               <View style={[styles.menuIconWrap, styles.logoutMenuIconWrap]}>
                 <LogOut color="#B91C1C" size={20} strokeWidth={2.6} />
               </View>
@@ -674,13 +784,11 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
         transparent
         visible={Boolean(printTypeRequest)}
         animationType="fade"
-        onRequestClose={() => setPrintTypeRequest(null)}
-      >
+        onRequestClose={() => setPrintTypeRequest(null)}>
         {printTypeRequest ? (
           <Pressable
             style={styles.printChoiceBackdrop}
-            onPress={() => setPrintTypeRequest(null)}
-          >
+            onPress={() => setPrintTypeRequest(null)}>
             <Pressable style={styles.printChoicePanel}>
               <View style={styles.printChoiceHeader}>
                 <Text style={styles.printChoiceTitle}>
@@ -691,8 +799,7 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
                 <Pressable
                   accessibilityLabel="Close print type"
                   onPress={() => setPrintTypeRequest(null)}
-                  style={styles.printChoiceClose}
-                >
+                  style={styles.printChoiceClose}>
                   <Text style={styles.printChoiceCloseText}>x</Text>
                 </Pressable>
               </View>
@@ -741,8 +848,7 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
         transparent
         visible={Boolean(slipPreview)}
         animationType="fade"
-        onRequestClose={() => setSlipPreview(null)}
-      >
+        onRequestClose={() => setSlipPreview(null)}>
         {slipPreview ? (
           <VoterSlipPreview
             voter={slipPreview.voter}
@@ -787,12 +893,10 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
         transparent
         visible={modalVisible}
         animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
-      >
+        onRequestClose={() => setModalVisible(false)}>
         <Pressable
           style={styles.modalBackdrop}
-          onPress={() => setModalVisible(false)}
-        >
+          onPress={() => setModalVisible(false)}>
           <View style={styles.modalSheet}>
             <View style={styles.handle} />
             <Text style={styles.modalTitle}>Booth Wise Voters</Text>
@@ -804,8 +908,7 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
                     selectBooth(booth);
                     setModalVisible(false);
                   }}
-                  style={styles.modalCard}
-                >
+                  style={styles.modalCard}>
                   <Text style={styles.modalCardLabel}>{booth}</Text>
                   <Text style={styles.modalCardValue}>{count}</Text>
                 </Pressable>
@@ -818,16 +921,14 @@ const [scrollTopOpacity] = useState(() => new Animated.Value(0));  const current
       {/* Scroll-to-top floating button */}
       <Animated.View
         pointerEvents={showScrollTop ? "auto" : "none"}
-        style={[styles.scrollTopWrap, { opacity: scrollTopOpacity }]}
-      >
+        style={[styles.scrollTopWrap, { opacity: scrollTopOpacity }]}>
         <Pressable
           accessibilityLabel="Scroll to top"
           onPress={scrollToTop}
           style={({ pressed }) => [
             styles.scrollTopButton,
             pressed && { transform: [{ scale: 0.92 }] },
-          ]}
-        >
+          ]}>
           <ArrowUp color="#FFFFFF" size={20} strokeWidth={3} />
         </Pressable>
       </Animated.View>
