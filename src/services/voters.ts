@@ -48,8 +48,8 @@ export type VoterTemplateSelection = {
   recordsPerRow: 2 | 3 | 4;
 };
 
-const VOTER_PAGE_SIZE = 200000;
-const MAX_VOTER_PAGES = 500;
+const VOTER_PAGE_SIZE = 10;
+const MAX_VOTER_PAGES = 50000;
 
 let selectedVoter: Voter | null = null;
 
@@ -362,7 +362,10 @@ export function buildVoterStats(voters: Voter[]): VoterStats {
   );
 }
 
-export async function fetchVoters(query: VoterQuery = {}): Promise<Voter[]> {
+export async function forEachVoterPage(
+  query: VoterQuery = {},
+  onPage: (voters: Voter[]) => Promise<void> | void,
+): Promise<number> {
   const { user } = await ensureAuthSession();
   if (
     !hasPoliticianPageAccess("voters", user) &&
@@ -380,8 +383,7 @@ export async function fetchVoters(query: VoterQuery = {}): Promise<Voter[]> {
     boothNo: query.booth || undefined,
     includeCounts: false,
   };
-  const voters: Voter[] = [];
-  const seenVoterIds = new Set<string>();
+  let voterCount = 0;
   let totalCount: number | null = null;
 
   for (let page = 1; page <= MAX_VOTER_PAGES; page += 1) {
@@ -400,24 +402,37 @@ export async function fetchVoters(query: VoterQuery = {}): Promise<Voter[]> {
       break;
     }
 
-    const previousCount = voters.length;
-    pageItems
-      .map((item, index) => normalizeVoter(item, voters.length + index))
-      .forEach((voter) => {
-        if (!seenVoterIds.has(voter.id)) {
-          seenVoterIds.add(voter.id);
-          voters.push(voter);
-        }
-      });
+    const voters = Array.from(
+      new Map(
+        pageItems
+          .map((item, index) => normalizeVoter(item, voterCount + index))
+          .map((voter) => [voter.id, voter]),
+      ).values(),
+    );
 
-    if (totalCount !== null && voters.length >= totalCount) {
+    if (voters.length === 0) {
       break;
     }
-    if (voters.length === previousCount) {
+
+    await onPage(voters);
+    voterCount += voters.length;
+
+    if (totalCount !== null && voterCount >= totalCount) {
+      break;
+    }
+    if (pageItems.length < VOTER_PAGE_SIZE) {
       break;
     }
   }
 
+  return voterCount;
+}
+
+export async function fetchVoters(query: VoterQuery = {}): Promise<Voter[]> {
+  const voters: Voter[] = [];
+  await forEachVoterPage(query, (page) => {
+    voters.push(...page);
+  });
   return voters;
 }
 

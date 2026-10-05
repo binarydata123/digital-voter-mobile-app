@@ -9,6 +9,11 @@ export type LocalVoterQuery = {
   maxAge?: number;
   houseNo?: string;
 };
+export type LocalVoterPage = { voters: Voter[]; total: number };
+export type LocalVoterOverview = { total: number; boothCounts: Record<string, number> };
+export type LocalVoterPageLoader = (
+  savePage: (voters: Voter[]) => Promise<void>,
+) => Promise<number>;
 
 // The voter screen uses its in-memory online fallback on web. These exports keep
 // the shared screen interface platform-safe without bundling expo-sqlite.
@@ -23,9 +28,31 @@ export async function getLocalVoters(
   return [];
 }
 
+export async function getLocalVoterPage(
+  _politicianId: string,
+  _query: LocalVoterQuery = {},
+  _limit = 50,
+  _offset = 0,
+): Promise<LocalVoterPage> {
+  return { voters: [], total: 0 };
+}
+
+export async function getLocalVoterOverview(
+  _politicianId: string,
+): Promise<LocalVoterOverview> {
+  return { total: 0, boothCounts: {} };
+}
+
 export async function replaceLocalVoters(
   _politicianId: string,
   _voters: Voter[],
+) {
+  // Voter data is never cached locally by the web build.
+}
+
+export async function replaceLocalVotersFromPages(
+  _politicianId: string,
+  _loadPages: LocalVoterPageLoader,
 ) {
   // Voter data is never cached locally by the web build.
 }
