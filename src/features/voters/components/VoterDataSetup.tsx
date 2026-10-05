@@ -39,10 +39,7 @@ export function VoterDataSetup() {
   const [statusIndex, setStatusIndex] = useState(0);
 
   useEffect(() => {
-    // --- Reset all animation values to their starting point ---
-    // This is critical: React Strict Mode double-invokes effects in dev,
-    // and any remount of this screen would otherwise leave values at their
-    // final state (e.g. spin = 1), making the loop appear frozen.
+  
     spin.setValue(0);
     spinReverse.setValue(0);
     pulse.setValue(1);
@@ -60,9 +57,7 @@ export function VoterDataSetup() {
     titleSlide.setValue(16);
     statusFade.setValue(1);
 
-    // --- Continuous animations ---
-    // `resetBeforeIteration: true` guarantees the value snaps back to its
-    // start before every loop cycle, so the arc never sticks at 360°.
+
     const spinLoop = Animated.loop(
       Animated.timing(spin, {
         toValue: 1,
