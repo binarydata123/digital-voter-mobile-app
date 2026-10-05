@@ -24,6 +24,7 @@ import {
   Alert,
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -376,6 +377,41 @@ function buildTemplateHtml({
 </html>`;
 }
 
+function openWebTemplatePrint(html: string) {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    Alert.alert(
+      "Popup blocked",
+      "Please allow popups so the template can open for printing.",
+    );
+    return false;
+  }
+
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+
+  const printWhenReady = () => {
+    printWindow.focus();
+    printWindow.print();
+  };
+
+  if (printWindow.document.readyState === "complete") {
+    window.setTimeout(printWhenReady, 100);
+  } else {
+    printWindow.addEventListener("load", () => window.setTimeout(printWhenReady, 100), {
+      once: true,
+    });
+  }
+
+  return true;
+}
+
 export default function TemplatesScreen() {
   const [voters, setVoters] = useState<Voter[]>([]);
   const [loading, setLoading] = useState(true);
@@ -648,6 +684,9 @@ export default function TemplatesScreen() {
     setSaving(true);
     try {
       await saveTemplateSelection();
+      if (Platform.OS === "web" && openWebTemplatePrint(html)) {
+        return;
+      }
       const { uri } = await Print.printToFileAsync({ html });
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, {
@@ -672,6 +711,9 @@ export default function TemplatesScreen() {
 
     try {
       await saveTemplateSelection();
+      if (Platform.OS === "web" && openWebTemplatePrint(html)) {
+        return;
+      }
       await Print.printAsync({ html });
     } catch (printError: any) {
       Alert.alert(
