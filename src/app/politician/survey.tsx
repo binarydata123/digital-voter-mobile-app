@@ -1,13 +1,21 @@
 import { Image } from "expo-image";
 import { router } from "expo-router";
+import type { LucideIcon } from "lucide-react-native";
 import {
   BarChart3,
+  BriefcaseBusiness,
+  CalendarDays,
   CheckCircle2,
   ChevronDown,
+  CircleAlert,
   ClipboardList,
+  FileText,
+  GraduationCap,
   LogOut,
   MapPin,
   Menu,
+  UserRound,
+  WalletCards,
 } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -185,6 +193,7 @@ export default function SurveyScreen() {
 
   const currentUser = getCurrentUser();
   const canOpenVoters = hasPoliticianPageAccess("voters", currentUser);
+  const canOpenTemplates = hasPoliticianPageAccess("template", currentUser);
   const politicianName = currentUser?.name ?? "Testing";
   const locationLabel = [scope.city, scope.state].filter(Boolean).join(", ");
 
@@ -414,6 +423,12 @@ export default function SurveyScreen() {
     }
   }
 
+  function openTemplatePage() {
+    if (canOpenTemplates) {
+      router.push("/politician/templates");
+    }
+  }
+
   function openSurveyReport() {
     // The report must use the exact location selected in this survey form.
     // Passing it through the route avoids falling back to an empty assigned
@@ -446,13 +461,15 @@ export default function SurveyScreen() {
             <Pressable
               accessibilityLabel="Survey report"
               onPress={openSurveyReport}
-              style={styles.headerIconButton}>
+              style={styles.headerIconButton}
+            >
               <BarChart3 color="#0F766E" size={18} strokeWidth={2.8} />
             </Pressable>
             <Pressable
               accessibilityLabel="Open survey menu"
               onPress={() => setMenuVisible(true)}
-              style={[styles.headerIconButton, styles.logoutButton]}>
+              style={[styles.headerIconButton, styles.logoutButton]}
+            >
               <Menu color="#FFFFFF" size={21} strokeWidth={2.8} />
             </Pressable>
           </View>
@@ -480,7 +497,8 @@ export default function SurveyScreen() {
       <View style={styles.body}>
         <ScrollView
           contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}>
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.scopeCard}>
             <View style={styles.scopeGrid}>
               {visibleScopeFields.map((field) => (
@@ -489,6 +507,7 @@ export default function SurveyScreen() {
                   label={getScopeLabel(field, scope.electionType)}
                   value={scope[field]}
                   onPress={() => setActiveDropdown(field)}
+                  fullWidth={field === "electionType"}
                 />
               ))}
             </View>
@@ -537,13 +556,15 @@ export default function SurveyScreen() {
             value={form.gender}
             onSelect={(value) => setSingle("gender", value)}
             columns={3}
+            icon={UserRound}
           />
           <OptionSection
             title="Age bracket"
             options={AGE_BRACKETS}
             value={form.ageBracket}
             onSelect={(value) => setSingle("ageBracket", value)}
-            columns={2}
+            columns={4}
+            icon={CalendarDays}
           />
           <OptionSection
             title="Education"
@@ -551,6 +572,7 @@ export default function SurveyScreen() {
             value={form.education}
             onSelect={(value) => setSingle("education", value)}
             columns={2}
+            icon={GraduationCap}
           />
           <OptionSection
             title="Monthly household income"
@@ -558,6 +580,7 @@ export default function SurveyScreen() {
             value={form.incomeBracket}
             onSelect={(value) => setSingle("incomeBracket", value)}
             columns={2}
+            icon={WalletCards}
           />
           <OptionSection
             title="Occupation"
@@ -565,6 +588,7 @@ export default function SurveyScreen() {
             value={form.occupation}
             onSelect={(value) => setSingle("occupation", value)}
             columns={2}
+            icon={BriefcaseBusiness}
           />
 
           <View style={styles.section}>
@@ -580,6 +604,7 @@ export default function SurveyScreen() {
                   selected={form.issues.includes(issue)}
                   onPress={() => toggleConcern(issue)}
                   columns={2}
+                  icon={CircleAlert}
                 />
               ))}
             </View>
@@ -617,14 +642,16 @@ export default function SurveyScreen() {
                       styles.twoColumn,
                       form.preferredPolitician === candidate.name &&
                         styles.optionButtonActive,
-                    ]}>
+                    ]}
+                  >
                     <Text
                       numberOfLines={1}
                       style={[
                         styles.optionText,
                         form.preferredPolitician === candidate.name &&
                           styles.optionTextActive,
-                      ]}>
+                      ]}
+                    >
                       {candidate.name}
                     </Text>
                     <Text
@@ -633,7 +660,8 @@ export default function SurveyScreen() {
                         styles.partyText,
                         form.preferredPolitician === candidate.name &&
                           styles.optionTextActive,
-                      ]}>
+                      ]}
+                    >
                       {candidate.party}
                     </Text>
                   </Pressable>
@@ -647,7 +675,8 @@ export default function SurveyScreen() {
             style={[
               styles.saveButton,
               (saving || loadingScope) && styles.disabledButton,
-            ]}>
+            ]}
+          >
             {saving ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
@@ -656,12 +685,12 @@ export default function SurveyScreen() {
             <Text style={styles.saveText}>Save</Text>
           </Pressable>
 
-          <Pressable
+          {/* <Pressable
             onPress={openSurveyReport}
             style={styles.reportButton}>
             <ClipboardList color="#087568" size={17} strokeWidth={2.7} />
             <Text style={styles.reportText}>View report</Text>
-          </Pressable>
+          </Pressable> */}
         </ScrollView>
       </View>
 
@@ -669,13 +698,16 @@ export default function SurveyScreen() {
         transparent
         visible={menuVisible}
         animationType="slide"
-        onRequestClose={() => setMenuVisible(false)}>
+        onRequestClose={() => setMenuVisible(false)}
+      >
         <Pressable
           style={styles.menuBackdrop}
-          onPress={() => setMenuVisible(false)}>
+          onPress={() => setMenuVisible(false)}
+        >
           <Pressable
             style={styles.menuDrawer}
-            onPress={(event) => event.stopPropagation()}>
+            onPress={(event) => event.stopPropagation()}
+          >
             <View style={styles.menuHandle} />
             {canOpenVoters ? (
               <Pressable
@@ -683,13 +715,35 @@ export default function SurveyScreen() {
                   setMenuVisible(false);
                   openVoterPage();
                 }}
-                style={styles.menuRow}>
+                style={styles.menuRow}
+              >
                 <View style={styles.menuIconWrap}>
                   <ClipboardList color="#087568" size={20} strokeWidth={2.6} />
                 </View>
                 <View style={styles.menuCopy}>
                   <Text style={styles.menuRowTitle}>Open voter page</Text>
-                  <Text style={styles.menuRowSubtitle}>Manage voter records</Text>
+                  <Text style={styles.menuRowSubtitle}>
+                    Manage voter records
+                  </Text>
+                </View>
+              </Pressable>
+            ) : null}
+            {canOpenTemplates ? (
+              <Pressable
+                onPress={() => {
+                  setMenuVisible(false);
+                  openTemplatePage();
+                }}
+                style={styles.menuRow}
+              >
+                <View style={styles.menuIconWrap}>
+                  <FileText color="#087568" size={20} strokeWidth={2.6} />
+                </View>
+                <View style={styles.menuCopy}>
+                  <Text style={styles.menuRowTitle}>Open template page</Text>
+                  <Text style={styles.menuRowSubtitle}>
+                    Build voter templates
+                  </Text>
                 </View>
               </Pressable>
             ) : null}
@@ -698,13 +752,16 @@ export default function SurveyScreen() {
                 setMenuVisible(false);
                 confirmLogout();
               }}
-              style={[styles.menuRow, styles.logoutMenuRow]}>
+              style={[styles.menuRow, styles.logoutMenuRow]}
+            >
               <View style={[styles.menuIconWrap, styles.logoutMenuIconWrap]}>
                 <LogOut color="#B91C1C" size={20} strokeWidth={2.6} />
               </View>
               <View style={styles.menuCopy}>
                 <Text style={styles.logoutMenuTitle}>Logout</Text>
-                <Text style={styles.menuRowSubtitle}>Sign out from this device</Text>
+                <Text style={styles.menuRowSubtitle}>
+                  Sign out from this device
+                </Text>
               </View>
             </Pressable>
           </Pressable>
@@ -715,11 +772,13 @@ export default function SurveyScreen() {
         transparent
         visible={Boolean(activeDropdown)}
         animationType="fade"
-        onRequestClose={() => setActiveDropdown(null)}>
+        onRequestClose={() => setActiveDropdown(null)}
+      >
         {activeDropdown ? (
           <Pressable
             style={styles.dropdownBackdrop}
-            onPress={() => setActiveDropdown(null)}>
+            onPress={() => setActiveDropdown(null)}
+          >
             <Pressable style={styles.dropdownSheet}>
               <View style={styles.handle} />
               <Text style={styles.dropdownTitle}>
@@ -734,12 +793,14 @@ export default function SurveyScreen() {
                     style={[
                       styles.dropdownOption,
                       selected && styles.dropdownOptionActive,
-                    ]}>
+                    ]}
+                  >
                     <Text
                       style={[
                         styles.dropdownOptionText,
                         selected && styles.dropdownOptionTextActive,
-                      ]}>
+                      ]}
+                    >
                       {option || "Assigned after login"}
                     </Text>
                     {selected ? (
@@ -766,16 +827,18 @@ function uniqueValues(...values: string[]) {
 }
 
 function DropdownField({
+  fullWidth = false,
   label,
   value,
   onPress,
 }: {
+  fullWidth?: boolean;
   label: string;
   value: string;
   onPress: () => void;
 }) {
   return (
-    <View style={styles.fieldWrap}>
+    <View style={[styles.fieldWrap, fullWidth && styles.fullFieldWrap]}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <Pressable onPress={onPress} style={styles.dropdownField}>
         <Text numberOfLines={1} style={styles.dropdownText}>
@@ -793,12 +856,14 @@ function OptionSection({
   value,
   onSelect,
   columns,
+  icon,
 }: {
   title: string;
   options: string[];
   value: string;
   onSelect: (value: string) => void;
-  columns: 2 | 3;
+  columns: 2 | 3 | 4;
+  icon?: LucideIcon;
 }) {
   return (
     <View style={styles.section}>
@@ -811,6 +876,7 @@ function OptionSection({
             selected={value === option}
             onPress={() => onSelect(option)}
             columns={columns}
+            icon={icon}
           />
         ))}
       </View>
@@ -823,23 +889,38 @@ function OptionButton({
   selected,
   onPress,
   columns,
+  icon: Icon,
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
-  columns: 2 | 3;
+  columns: 2 | 3 | 4;
+  icon?: LucideIcon;
 }) {
   return (
     <Pressable
       onPress={onPress}
       style={[
         styles.optionButton,
-        columns === 2 ? styles.twoColumn : styles.threeColumn,
+        columns === 4
+          ? styles.fourColumn
+          : columns === 2
+            ? styles.twoColumn
+            : styles.threeColumn,
         selected && styles.optionButtonActive,
-      ]}>
+      ]}
+    >
+      {Icon ? (
+        <Icon
+          color={selected ? "#FFFFFF" : "#087568"}
+          size={15}
+          strokeWidth={2.7}
+        />
+      ) : null}
       <Text
         numberOfLines={2}
-        style={[styles.optionText, selected && styles.optionTextActive]}>
+        style={[styles.optionText, selected && styles.optionTextActive]}
+      >
         {label}
       </Text>
     </Pressable>
@@ -1003,8 +1084,14 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
-  scopeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  fieldWrap: { width: "100%", gap: 6 },
+  scopeGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: 10,
+  },
+  fieldWrap: { width: "47.8%", gap: 6 },
+  fullFieldWrap: { width: "100%" },
   fieldLabel: { color: "#334155", fontSize: 12, fontWeight: "900" },
   dropdownField: {
     minHeight: 42,
@@ -1033,13 +1120,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
     paddingHorizontal: 9,
     paddingVertical: 8,
   },
   optionButtonActive: { backgroundColor: "#064E3B", borderColor: "#064E3B" },
   twoColumn: { width: "48.7%" },
   threeColumn: { width: "31.8%" },
+  fourColumn: { width: "23.2%" },
   optionText: {
+    flexShrink: 1,
     color: "#475569",
     fontSize: 13,
     lineHeight: 17,
