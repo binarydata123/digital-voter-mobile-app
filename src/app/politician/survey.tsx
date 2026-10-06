@@ -640,6 +640,7 @@ export default function SurveyScreen() {
                     style={[
                       styles.optionButton,
                       styles.twoColumn,
+                      styles.politicianOption,
                       form.preferredPolitician === candidate.name &&
                         styles.optionButtonActive,
                     ]}
@@ -1126,6 +1127,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   optionButtonActive: { backgroundColor: "#064E3B", borderColor: "#064E3B" },
+  politicianOption: {
+    flexDirection: "column",
+    minHeight: 60,
+    gap: 2,
+  },
   twoColumn: { width: "48.7%" },
   threeColumn: { width: "31.8%" },
   fourColumn: { width: "23.2%" },

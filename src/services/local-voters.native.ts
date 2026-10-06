@@ -60,7 +60,7 @@ function placeholders(rowCount: number, columnCount: number) {
 }
 
 function normalizeFtsQuery(value: string) {
-  const terms = value.match(/[\p{L}\p{N}]+/gu) ?? [];
+  const terms = value.match(/[\p{L}\p{M}\p{N}]+/gu) ?? [];
   return terms.map((term) => `\"${term}\"*`).join(" AND ");
 }
 
@@ -170,6 +170,14 @@ export async function getLocalVoterPage(
   const { where, params } = buildWhereClause(politicianId, query);
   const safeLimit = Math.max(1, Math.min(Math.trunc(limit), 100));
   const safeOffset = Math.max(0, Math.trunc(offset));
+  const search = query.search?.trim().toLowerCase() ?? "";
+  const searchFields = ["name", "hindi_name", "epic_no", "serial_no"];
+  const ranking = search
+    ? `CASE WHEN ${searchFields.map((field) => `lower(${field}) = ?`).join(" OR ")} THEN 0
+       WHEN ${searchFields.map((field) => `substr(lower(${field}), 1, length(?)) = ?`).join(" OR ")} THEN 1
+       ELSE 2 END, `
+    : "";
+  const rankingParams = search ? Array<string>(searchFields.length * 3).fill(search) : [];
   const [count, rows] = await Promise.all([
     database.getFirstAsync<{ total: number }>(
       `SELECT COUNT(*) AS total FROM voters WHERE ${where}`,
@@ -180,9 +188,9 @@ export async function getLocalVoterPage(
         booth, ward, district, state, serial_no, polling_station
        FROM voters
        WHERE ${where}
-       ORDER BY name COLLATE NOCASE, voter_id
+       ORDER BY ${ranking}name COLLATE NOCASE, voter_id
        LIMIT ? OFFSET ?`,
-      [...params, safeLimit, safeOffset],
+      [...params, ...rankingParams, safeLimit, safeOffset],
     ),
   ]);
 
