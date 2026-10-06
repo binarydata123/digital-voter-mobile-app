@@ -116,6 +116,7 @@ export default function VotersScreen() {
     useState<PrintTypeRequest | null>(null);
   const [thermalPrintRequest, setThermalPrintRequest] =
     useState<ThermalPrintRequest | null>(null);
+  const [printerSelectionVersion, setPrinterSelectionVersion] = useState(0);
   const [shareImageRequest, setShareImageRequest] =
     useState<ShareImageRequest | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -127,6 +128,7 @@ export default function VotersScreen() {
   const lastLocalQueryKey = useRef("");
   const localRequestId = useRef(0);
   const currentUser = getCurrentUser();
+  const accountBannerImage = currentUser?.bannerImage;
   const canOpenSurvey = hasPoliticianPageAccess("survey", currentUser);
   const canUseTemplates = hasPoliticianPageAccess("template", currentUser);
   const deferredQuery = useDeferredValue(query);
@@ -221,7 +223,7 @@ export default function VotersScreen() {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const frame = requestAnimationFrame(() => {
       const waitForBanner =
-        canUseTemplates && currentUser?.bannerImage ? 250 : 0;
+        canUseTemplates && accountBannerImage ? 250 : 0;
 
       timer = setTimeout(() => {
         shareVoterSlipImageFromRef(
@@ -230,7 +232,7 @@ export default function VotersScreen() {
           shareImageRequest.voter.whatsappNumber ||
             shareImageRequest.voter.mobileNumber,
           canUseTemplates,
-          currentUser?.bannerImage,
+          accountBannerImage,
         ).finally(() => {
           shareImageRequest.resolve();
           setShareImageRequest(null);
@@ -242,7 +244,7 @@ export default function VotersScreen() {
       cancelAnimationFrame(frame);
       if (timer) clearTimeout(timer);
     };
-  }, [canUseTemplates, currentUser?.bannerImage, shareImageRequest]);
+  }, [canUseTemplates, accountBannerImage, shareImageRequest]);
 
   // Animate the scroll-to-top button opacity whenever visibility changes.
   useEffect(() => {
@@ -884,6 +886,7 @@ export default function VotersScreen() {
             bannerImage={getCurrentUser()?.bannerImage}
             onPrint={handleSlipPreviewPrint}
             onChangeDevice={handleChangeThermalPrinter}
+            printerSelectionVersion={printerSelectionVersion}
           />
         ) : null}
       </Modal>
@@ -895,6 +898,7 @@ export default function VotersScreen() {
           bannerImage={thermalPrintRequest.bannerImage}
           showBanner={thermalPrintRequest.showBanner}
           onClose={() => setThermalPrintRequest(null)}
+          onSelected={() => setPrinterSelectionVersion((version) => version + 1)}
           onPrinted={() => {
             setThermalPrintRequest(null);
             setSlipPreview(null);
@@ -908,7 +912,7 @@ export default function VotersScreen() {
             <VoterSlipPaper
               voter={shareImageRequest.voter}
               showBanner={canUseTemplates}
-              bannerImage={currentUser?.bannerImage}
+              bannerImage={accountBannerImage}
             />
           </View>
         </View>

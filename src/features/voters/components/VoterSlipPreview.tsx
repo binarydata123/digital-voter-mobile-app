@@ -33,6 +33,7 @@ export type VoterSlipPreviewProps = {
   onDownload?: () => void;
   onPrint?: () => Promise<void> | void;
   onChangeDevice?: () => Promise<void> | void;
+  printerSelectionVersion?: number;
   variant?: "modal" | "page";
 };
 
@@ -462,6 +463,7 @@ export function VoterSlipPreview({
   onDownload,
   onPrint,
   onChangeDevice,
+  printerSelectionVersion = 0,
   variant = "modal",
 }: VoterSlipPreviewProps) {
   const [savedPrinter, setSavedPrinter] = useState<ThermalPrinterDevice | null>(
@@ -472,7 +474,7 @@ export function VoterSlipPreview({
     void getSavedThermalPrinter().then(setSavedPrinter).catch(() => {
       setSavedPrinter(null);
     });
-  }, []);
+  }, [printerSelectionVersion]);
   async function handleDownload() {
     await downloadSlip(voter, showBanner, bannerImage);
     onDownload?.();
@@ -544,7 +546,7 @@ export function VoterSlipPreview({
                 <View style={styles.printerCopy}>
                   <Text style={styles.printerLabel}>Selected printer</Text>
                   <Text numberOfLines={1} style={styles.printerName}>
-                    {savedPrinter?.name || "No printer selected"}
+                    {savedPrinter?.name || savedPrinter?.address || "No printer selected"}
                   </Text>
                 </View>
               </View>

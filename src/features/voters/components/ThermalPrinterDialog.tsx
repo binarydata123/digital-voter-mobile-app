@@ -34,6 +34,7 @@ import type { Voter } from "@/services/voters";
 type ThermalPrinterDialogProps = {
   onClose: () => void;
   onPrinted?: () => void;
+  onSelected?: () => void;
   visible: boolean;
   voter: Voter | null;
   bannerImage?: string;
@@ -43,6 +44,7 @@ type ThermalPrinterDialogProps = {
 export function ThermalPrinterDialog({
   onClose,
   onPrinted,
+  onSelected,
   visible,
   voter,
   bannerImage,
@@ -134,6 +136,7 @@ export function ThermalPrinterDialog({
       await pairThermalPrinter(selected);
       const pairedDevice = { ...selected, isPaired: true };
       setSelected(pairedDevice);
+      onSelected?.();
       setDevices((current) =>
         current.map((device) =>
           device.address === pairedDevice.address ? pairedDevice : device,
@@ -148,6 +151,23 @@ export function ThermalPrinterDialog({
         "Pairing failed",
         error?.message ?? "Unable to pair with this Bluetooth device.",
       );
+    } finally {
+      setPrinting(false);
+    }
+  }
+
+  async function selectPrinter(device: ThermalPrinterDevice) {
+    if (loadingDevices || printing) return;
+    const previous = selected;
+    setSelected(device);
+    if (!device.isPaired) return;
+    setPrinting(true);
+    try {
+      await pairThermalPrinter(device);
+      onSelected?.();
+    } catch (error: any) {
+      setSelected(previous);
+      Alert.alert("Unable to select printer", error?.message ?? "Please try again.");
     } finally {
       setPrinting(false);
     }
@@ -224,6 +244,7 @@ export function ThermalPrinterDialog({
           <Pressable
             disabled={isBusy}
             onPress={loadPrinters}
+            cssInterop={false}
             style={({ pressed }) => [
               styles.scanButton,
               isBusy && styles.disabled,
@@ -246,6 +267,7 @@ export function ThermalPrinterDialog({
               <Pressable
                 onPress={openBluetoothPairing}
                 hitSlop={6}
+                cssInterop={false}
                 style={({ pressed }) => [
                   styles.pairNewButton,
                   pressed && styles.pairNewButtonPressed,
@@ -300,7 +322,9 @@ export function ThermalPrinterDialog({
                   return (
                     <Pressable
                       key={device.address}
-                      onPress={() => setSelected(device)}
+                      disabled={isBusy}
+                      onPress={() => void selectPrinter(device)}
+                      cssInterop={false}
                       style={({ pressed }) => [
                         styles.deviceRow,
                         isSelected && styles.deviceRowSelected,
@@ -354,7 +378,9 @@ export function ThermalPrinterDialog({
                   return (
                     <Pressable
                       key={device.address}
-                      onPress={() => setSelected(device)}
+                      disabled={isBusy}
+                      onPress={() => void selectPrinter(device)}
+                      cssInterop={false}
                       style={({ pressed }) => [
                         styles.deviceRow,
                         isSelected && styles.deviceRowSelected,
@@ -408,6 +434,7 @@ export function ThermalPrinterDialog({
               <Pressable
                 disabled={!selected || printing}
                 onPress={handlePairDevice}
+                cssInterop={false}
                 style={({ pressed }) => [
                   styles.primaryButton,
                   (!selected || printing) && styles.disabled,
@@ -428,6 +455,7 @@ export function ThermalPrinterDialog({
                 <Pressable
                   disabled={printing}
                   onPress={handleTestPrint}
+                  cssInterop={false}
                   style={({ pressed }) => [
                     styles.secondaryButton,
                     printing && styles.disabled,
@@ -438,6 +466,7 @@ export function ThermalPrinterDialog({
                 <Pressable
                   disabled={!voter || printing}
                   onPress={handlePrintVoter}
+                  cssInterop={false}
                   style={({ pressed }) => [
                     styles.primaryButton,
                     styles.primaryButtonFlex,
@@ -497,6 +526,7 @@ const styles = StyleSheet.create({
   },
   deviceCopy: {
     flex: 1,
+    minWidth: 0,
   },
   deviceIcon: {
     alignItems: "center",
@@ -615,6 +645,7 @@ const styles = StyleSheet.create({
   },
   headerCopy: {
     flex: 1,
+    minWidth: 0,
   },
   headerIconWrap: {
     alignItems: "center",
@@ -651,6 +682,8 @@ const styles = StyleSheet.create({
   pairNewRow: {
     alignItems: "center",
     flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
     justifyContent: "space-between",
     marginTop: 12,
   },

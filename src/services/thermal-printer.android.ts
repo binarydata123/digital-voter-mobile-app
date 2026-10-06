@@ -6,7 +6,7 @@ import type {
   BluetoothEscposPrinterType,
   BluetoothManagerType,
 } from "@vardrz/react-native-bluetooth-escpos-printer";
-import { getApiAuthToken } from "@/services/api";
+import { api, getApiAuthToken } from "@/services/api";
 import type { Voter } from "@/services/voters";
 
 const SAVED_PRINTER_KEY = "digital-voter.thermal-printer";
@@ -222,12 +222,13 @@ function buildVoterReceipt(voter: Voter) {
 }
 
 async function readBannerBase64(bannerImage?: string) {
+  bannerImage = bannerImage?.trim();
   if (!bannerImage) return null;
   if (bannerImage.startsWith("data:")) return bannerImage.split(",", 2)[1] ?? null;
 
-  const resolvedBannerImage = bannerImage.startsWith("/")
-    ? `https://api.votersakha.tech${bannerImage}`
-    : bannerImage;
+  const resolvedBannerImage = /^(https?:|file:|content:)/i.test(bannerImage)
+    ? bannerImage
+    : new URL(bannerImage, new URL(api.defaults.baseURL!).origin + "/").toString();
   let uri = resolvedBannerImage;
   let temporaryUri: string | null = null;
   try {
@@ -350,16 +351,15 @@ export async function printThermalVoterSlip(
 
     if (options.showBanner) {
       const bannerBase64 = await readBannerBase64(options.bannerImage);
-      if (!bannerBase64) {
-        throw new Error("Banner image could not be loaded for this voter slip.");
+      if (bannerBase64) {
+        await printer.printerAlign(printer.ALIGN.CENTER);
+        await printer.printPic(bannerBase64, {
+          width: 350,
+          center: true,
+          paperSize: 58,
+          autoCut: false,
+        });
       }
-      await printer.printerAlign(printer.ALIGN.CENTER);
-      await printer.printPic(bannerBase64, {
-        width: 350,
-        center: true,
-        paperSize: 58,
-        autoCut: false,
-      });
     }
 
     // Android draws this receipt with its Unicode font before sending it to
