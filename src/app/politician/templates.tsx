@@ -27,15 +27,16 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  SectionList,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 import { VoterCard } from "@/features/voters/components/VoterCard";
 import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
-import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 import {
   shareVoterSlipImageFromRef,
   VoterSlipPaper,
@@ -52,15 +53,15 @@ import {
   type AuthUser,
 } from "@/services/authentication";
 import {
+  getSavedThermalPrinter,
+  printThermalVoterSlip,
+} from "@/services/thermal-printer";
+import {
   fetchTemplateVoters,
   logVoterTemplatePrint,
   type Voter,
   type VoterTemplateSelection,
 } from "@/services/voters";
-import {
-  getSavedThermalPrinter,
-  printThermalVoterSlip,
-} from "@/services/thermal-printer";
 
 type TemplateLayout = "top" | "bottom" | "left" | "right" | "floating" | "dual";
 type PrintScope = "single" | "family";
@@ -404,9 +405,13 @@ function openWebTemplatePrint(html: string) {
   if (printWindow.document.readyState === "complete") {
     window.setTimeout(printWhenReady, 100);
   } else {
-    printWindow.addEventListener("load", () => window.setTimeout(printWhenReady, 100), {
-      once: true,
-    });
+    printWindow.addEventListener(
+      "load",
+      () => window.setTimeout(printWhenReady, 100),
+      {
+        once: true,
+      },
+    );
   }
 
   return true;
@@ -489,10 +494,11 @@ export default function TemplatesScreen() {
         setColumns(
           clampRecordsPerRow(user.selectedVoterTemplate?.recordsPerRow),
         );
-        setLayout(clampTemplateLayout(user.selectedVoterTemplate?.canvasLayout));
+        setLayout(
+          clampTemplateLayout(user.selectedVoterTemplate?.canvasLayout),
+        );
         setSelectedBooth(
-          (current) =>
-            current || user.assignedBooths?.[0] || user.booth || "",
+          (current) => current || user.assignedBooths?.[0] || user.booth || "",
         );
       })
       .catch(() => undefined);
@@ -577,6 +583,10 @@ export default function TemplatesScreen() {
   }, [shareImageRequest, templateBannerImage]);
 
   const filteredVoters = voters;
+  const voterSections = useMemo(
+    () => [{ key: "voters", data: filteredVoters }],
+    [filteredVoters],
+  );
 
   const boothOptions =
     assignedBooths.length > 0
@@ -794,13 +804,9 @@ export default function TemplatesScreen() {
     router.push("/politician/voters");
   }
 
-  if (loading) {
-    return <VoterDataSetup />;
-  }
-
-  return (
-    <SafeAreaView style={styles.safe} edges={["left", "right", "bottom"]}>
-      <ScrollView contentContainerStyle={styles.content}>
+  function renderScreenHeader() {
+    return (
+      <>
         {/* ================= BANNER TOP ================= */}
         <View style={styles.header}>
           <Image
@@ -862,7 +868,13 @@ export default function TemplatesScreen() {
         {/* =============== / BANNER TOP ================= */}
 
         {error ? <Text style={styles.warning}>{error}</Text> : null}
+      </>
+    );
+  }
 
+  function renderStickyControls() {
+    return (
+      <View style={styles.stickyControls}>
         <View style={styles.panel}>
           <View style={styles.filterGrid}>
             <SelectChip
@@ -886,21 +898,44 @@ export default function TemplatesScreen() {
             </Pressable>
           </View>
         </View>
+      </View>
+    );
+  }
 
-        <View style={styles.votersSection}>
-          <View style={styles.voterCardList}>
-            {filteredVoters.slice(0, 24).map((voter) => (
-              <VoterCard
-                key={voter.id}
-                voter={voter}
-                onPrint={handlePrint}
-                onFamily={handleFamily}
-                onShare={handleShareVoterSlip}
-              />
-            ))}
-          </View>
-        </View>
-      </ScrollView>
+  function renderVoterItem({ item }: { item: Voter }) {
+    return (
+      <View style={styles.voterItem}>
+        <VoterCard
+          voter={item}
+          onPrint={handlePrint}
+          onFamily={handleFamily}
+          onShare={handleShareVoterSlip}
+        />
+      </View>
+    );
+  }
+
+  if (loading) {
+    return <VoterDataSetup />;
+  }
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      <SectionList
+        sections={voterSections}
+        keyExtractor={(item) => item.id}
+        initialNumToRender={8}
+        maxToRenderPerBatch={6}
+        updateCellsBatchingPeriod={80}
+        windowSize={5}
+        stickySectionHeadersEnabled
+        removeClippedSubviews={Platform.OS === "android"}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={renderScreenHeader}
+        renderSectionHeader={renderStickyControls}
+        renderItem={renderVoterItem}
+      />
 
       {/* ===================== FILTER DRAWER ===================== */}
       <Modal
@@ -1125,9 +1160,7 @@ export default function TemplatesScreen() {
 
               <PrintChoiceRow
                 icon={
-                  printTypeRequest.scope === "family"
-                    ? "family-print"
-                    : "print"
+                  printTypeRequest.scope === "family" ? "family-print" : "print"
                 }
                 title={
                   printTypeRequest.scope === "family"
@@ -1482,6 +1515,7 @@ function PrintChoiceRow({
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#f1f5f9" },
   content: { paddingBottom: 34 },
+  listContent: { paddingBottom: 34 },
   centerState: {
     flex: 1,
     alignItems: "center",
@@ -1603,6 +1637,12 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 14,
   },
+  stickyControls: {
+    backgroundColor: "#f1f5f9",
+    paddingBottom: 2,
+    zIndex: 10,
+    elevation: 10,
+  },
   filterGrid: {
     flexDirection: "row",
     alignItems: "center",
@@ -1711,6 +1751,10 @@ const styles = StyleSheet.create({
   votersSection: {
     marginTop: 14,
     paddingHorizontal: 16,
+  },
+  voterItem: {
+    paddingHorizontal: 16,
+    paddingBottom: 10,
   },
   tableTitle: { color: "#020617", fontSize: 18, fontWeight: "900" },
   tableSubtitle: {
