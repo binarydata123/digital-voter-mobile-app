@@ -53,11 +53,19 @@ import {
   type AuthUser,
 } from "@/services/authentication";
 import {
+  getLocalVoterPage,
+  hasLocalVoters,
+  replaceLocalVotersFromPages,
+} from "@/services/local-voters";
+import {
   getSavedThermalPrinter,
   printThermalVoterSlip,
 } from "@/services/thermal-printer";
+import { isLocalVoterDatabaseAvailable } from "@/services/voter-database";
 import {
   fetchTemplateVoters,
+  forEachVoterPage,
+  isVoterInBooth,
   logVoterTemplatePrint,
   type Voter,
   type VoterTemplateSelection,
@@ -120,6 +128,7 @@ const DEFAULT_FIELDS = FIELD_OPTIONS.reduce(
   (fields, option) => ({ ...fields, [option.key]: true }),
   {} as Record<FieldKey, boolean>,
 );
+const LOCAL_TEMPLATE_PAGE_SIZE = 100;
 
 function uniqueValues(values: (string | undefined)[] = []) {
   return Array.from(
@@ -417,6 +426,42 @@ function openWebTemplatePrint(html: string) {
   return true;
 }
 
+async function getAllLocalTemplateVoters(
+  politicianId: string,
+  booth: string,
+) {
+  async function readLocalPages(query: { booth?: string }) {
+    const pageVoters: Voter[] = [];
+    let total = 0;
+
+    do {
+      const page = await getLocalVoterPage(
+        politicianId,
+        query,
+        LOCAL_TEMPLATE_PAGE_SIZE,
+        pageVoters.length,
+      );
+
+      total = page.total;
+      pageVoters.push(...page.voters);
+
+      if (page.voters.length === 0) {
+        break;
+      }
+    } while (pageVoters.length < total);
+
+    return pageVoters;
+  }
+
+  const exactBoothVoters = await readLocalPages({ booth });
+  if (exactBoothVoters.length > 0 || booth === "All") {
+    return exactBoothVoters.filter((voter) => isVoterInBooth(voter, booth));
+  }
+
+  const voters = await readLocalPages({});
+  return voters.filter((voter) => isVoterInBooth(voter, booth));
+}
+
 export default function TemplatesScreen() {
   const [voters, setVoters] = useState<Voter[]>([]);
   const [loading, setLoading] = useState(true);
@@ -517,15 +562,36 @@ export default function TemplatesScreen() {
         router.replace(getDefaultPoliticianRoute(user) ?? "/login");
         return;
       }
-      if (!selectedBooth || assignedDistricts.length === 0) {
+      if (!selectedBooth) {
         setVoters([]);
-        setError(
-          assignedDistricts.length === 0
-            ? "District is required to load booth voters."
-            : "No booth is assigned to this account.",
-        );
+        setError("No booth is assigned to this account.");
         return;
       }
+
+      const currentPoliticianId = sessionUser?.id ?? null;
+
+      if (isLocalVoterDatabaseAvailable() && currentPoliticianId) {
+        if (!(await hasLocalVoters(currentPoliticianId))) {
+          await replaceLocalVotersFromPages(currentPoliticianId, (savePage) =>
+            forEachVoterPage({}, savePage),
+          );
+        }
+
+        const localVoters = await getAllLocalTemplateVoters(
+          currentPoliticianId,
+          selectedBooth,
+        );
+        setVoters(localVoters);
+        setError("");
+        return;
+      }
+
+      if (assignedDistricts.length === 0) {
+        setVoters([]);
+        setError("District is required to load booth voters.");
+        return;
+      }
+
       const districtResults = await Promise.all(
         assignedDistricts.map((district) =>
           fetchTemplateVoters({

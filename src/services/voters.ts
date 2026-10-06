@@ -138,6 +138,25 @@ function normalizeAge(value: unknown) {
   return Number.isFinite(age) && age >= 0 ? Math.trunc(age) : 0;
 }
 
+function normalizeBoothForMatch(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^booth[\s-_]*/i, "")
+    .replace(/^0+(\d)/, "$1");
+}
+
+export function isVoterInBooth(voter: Voter, booth?: string) {
+  if (!booth || booth === "All") {
+    return true;
+  }
+
+  const voterBooth = normalizeBoothForMatch(voter.booth);
+  const selectedBooth = normalizeBoothForMatch(booth);
+
+  return voterBooth === selectedBooth || voter.booth === booth;
+}
+
 function normalizeVoter(raw: any, index: number): Voter {
   const data = raw?.voterData ?? raw?.data?.voterData ?? raw;
 
@@ -446,21 +465,12 @@ export async function fetchTemplateVoters(query: VoterQuery): Promise<Voter[]> {
     throw new Error("District is required to load booth voters.");
   }
 
-  const response = await api.get("/politician/voters/list`", {
-    params: {
-      page: 1,
-      limit: 10000,
-      state: query.state || undefined,
-      district: query.district,
-      city: query.city || undefined,
-      boothNo: query.booth || undefined,
-      search: query.search || undefined,
-    },
+  const voters: Voter[] = [];
+  await forEachVoterPage(query, (page) => {
+    voters.push(...page);
   });
 
-  return unwrapList(response.data).map((item, index) =>
-    normalizeVoter(item, index),
-  );
+  return voters.filter((voter) => isVoterInBooth(voter, query.booth));
 }
 
 export async function logVoterTemplatePrint({
