@@ -48,8 +48,8 @@ export type VoterTemplateSelection = {
   recordsPerRow: 2 | 3 | 4;
 };
 
-const VOTER_PAGE_SIZE = 10;
-const MAX_VOTER_PAGES = 50000;
+const VOTER_PAGE_SIZE = 10000;
+const MAX_VOTER_PAGES = 500;
 
 let selectedVoter: Voter | null = null;
 
@@ -387,7 +387,7 @@ export async function forEachVoterPage(
   let totalCount: number | null = null;
 
   for (let page = 1; page <= MAX_VOTER_PAGES; page += 1) {
-    const response = await api.get("/politician/voters", {
+    const response = await api.get("/politician/voters/assigned-data", {
       params: {
         ...baseParams,
         page,
@@ -446,7 +446,7 @@ export async function fetchTemplateVoters(query: VoterQuery): Promise<Voter[]> {
     throw new Error("District is required to load booth voters.");
   }
 
-  const response = await api.get("/politician/voters/list", {
+  const response = await api.get("/politician/voters/list`", {
     params: {
       page: 1,
       limit: 10000,
@@ -496,7 +496,7 @@ export async function fetchVoterById(epicNo: string): Promise<Voter | null> {
     }
 
     const response = await api.get(
-      `/politician/voters/epic/${encodeURIComponent(epicNo)}`,
+      `/politician/voters/epic/api/politician/voters?${encodeURIComponent(epicNo)}`,
     );
 
     return normalizeVoter(response.data, 0);

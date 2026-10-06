@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "POLITIC EASE",
-    "slug": "digital-voter-mobile",
+    "slug": "digital-voter",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/splashIcon.png",
