@@ -4,7 +4,7 @@
     "slug": "digital-voter",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/splashIcon.png",
+    "icon": "./assets/icons/logo.png",
     "scheme": "digitalvotermobile",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -13,10 +13,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#def6f0",
-        "foregroundImage": "./assets/images/splashIcon.png",
-        "backgroundImage": "./assets/images/splashIcon.png",
-        "monochromeImage": "./assets/images/splashIcon.png"
+        "backgroundColor": "#0F4C4E",
+        "foregroundImage": "./assets/icons/logo.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.binarydatasteam.digitalvoter",
@@ -41,7 +39,10 @@
               "pathPrefix": "/politician/voter-slip"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },

@@ -34,7 +34,7 @@ export function AnimatedSplashOverlay() {
   });
 
   const image = (
-    <Image style={styles.image} source={require("@/assets/images/image.png")} />
+    <Image style={styles.image} source={require("../../assets/icons/logo.png")} />
   );
 
   return animate ? (
@@ -108,7 +108,7 @@ export function AnimatedIcon() {
       >
         <Image
           style={styles.glow}
-          source={require("@/assets/images/image.png")}
+          source={require("../../assets/icons/logo.png")}
         />
       </Animated.View>
 
@@ -122,7 +122,7 @@ export function AnimatedIcon() {
       >
         <Image
           style={styles.image}
-          source={require("@/assets/images/image.png")}
+          source={require("../../assets/icons/logo.png")}
         />
       </Animated.View>
     </View>
