@@ -2,7 +2,6 @@ import { router } from "expo-router";
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -27,16 +26,23 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [loginError, setLoginError] = useState("");
   const passwordInputRef = useRef<TextInput>(null);
 
   async function handleLogin() {
-    if (phone.trim().length < 10 || !password) {
-      Alert.alert(
-        "Login required",
-        "Enter politician phone number and password.",
-      );
-      return;
-    }
+    if (loading) return;
+    const nextPhoneError = !phone.trim()
+      ? "Phone number is required."
+      : phone.trim().length !== 10
+        ? "Enter a valid 10 digit phone number."
+        : "";
+    const nextPasswordError = !password ? "Password is required." : "";
+    setPhoneError(nextPhoneError);
+    setPasswordError(nextPasswordError);
+    setLoginError("");
+    if (nextPhoneError || nextPasswordError) return;
 
     setLoading(true);
     try {
@@ -45,8 +51,7 @@ export default function LoginScreen() {
 
       if (!nextRoute) {
         logoutPolitician();
-        Alert.alert(
-          "Access disabled",
+        setLoginError(
           "No mobile pages are enabled for this politician account.",
         );
         return;
@@ -54,7 +59,7 @@ export default function LoginScreen() {
 
       router.replace(nextRoute);
     } catch (error: any) {
-      Alert.alert("Unable to login", error?.message ?? "Please try again.");
+      setLoginError(error?.message ?? "Unable to login. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -63,119 +68,150 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.container}
-      >
+        behavior={
+          Platform.OS === "ios"
+            ? "padding"
+            : Platform.OS === "android"
+              ? "height"
+              : undefined
+        }
+        style={styles.container}>
         <ScrollView
+          style={styles.container}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
-          {/* Header / Logo Section */}
-          <View style={styles.header}>
-            <View style={styles.logoContainer}>
-              <Image
-                source={require("../../assets/icons/image.png")}
-                style={styles.logoIcon}
-                resizeMode="contain"
-              />
+          contentContainerStyle={styles.scrollContent}>
+          <View style={styles.content}>
+            {/* Header / Logo Section */}
+            <View style={styles.header}>
+              <View style={styles.logoContainer}>
+                <Image
+                  source={require("../../assets/icons/image.png")}
+                  style={styles.logoIcon}
+                  resizeMode="contain"
+                />
+              </View>
+              <Text style={styles.brandTitle}>
+                Politic<Text style={styles.brandTitleBold}>Ease</Text>
+              </Text>
+              <Text style={styles.brandMeta}>POLITICIAN APP</Text>
             </View>
-            <Text style={styles.brandTitle}>
-              Politic<Text style={styles.brandTitleBold}>Ease</Text>
-            </Text>
-            <Text style={styles.brandMeta}>POLITICIAN APP</Text>
-          </View>
 
-          {/* Form Card Section */}
-          <View style={styles.formCard}>
-            <Text style={styles.headline}>Welcome Back</Text>
-            <Text style={styles.subHeadline}>
-              Access your politician portal
-            </Text>
+            {/* Form Card Section */}
+            <View style={styles.formCard}>
+              <Text style={styles.headline}>Welcome Back</Text>
+              <Text style={styles.subHeadline}>
+                Access your politician portal
+              </Text>
 
-            {/* Phone Input */}
-            <Text style={styles.label}>PHONE NUMBER</Text>
-            <View style={styles.inputWrapper}>
-              <Phone
-                size={18}
-                color="#4A5568"
-                style={styles.inputIcon}
-                strokeWidth={2}
-              />
-              <TextInput
-                value={phone}
-                onChangeText={(value) =>
-                  setPhone(value.replace(/\D/g, "").slice(0, 10))
-                }
-                keyboardType="phone-pad"
-                placeholder="Enter 10 digit number"
-                placeholderTextColor="#A0AEC0"
-                returnKeyType="next"
-                style={styles.input}
-                maxLength={10}
-                onSubmitEditing={() => passwordInputRef.current?.focus()}
-              />
-              {phone ? (
-                <Pressable
-                  accessibilityLabel="Clear phone number"
-                  accessibilityRole="button"
-                  onPress={() => setPhone("")}
-                  style={styles.clearButton}
-                >
-                  <X size={20} color="#718096" strokeWidth={2} />
-                </Pressable>
+              {/* Phone Input */}
+              <Text style={styles.label}>PHONE NUMBER</Text>
+              <View style={styles.inputWrapper}>
+                <Phone
+                  size={18}
+                  color="#4A5568"
+                  style={styles.inputIcon}
+                  strokeWidth={2}
+                />
+                <TextInput
+                  value={phone}
+                  onChangeText={(value) => {
+                    setPhone(value.replace(/\D/g, "").slice(0, 10));
+                    setPhoneError("");
+                    setLoginError("");
+                  }}
+                  keyboardType="phone-pad"
+                  placeholder="Enter 10 digit number"
+                  placeholderTextColor="#A0AEC0"
+                  returnKeyType="next"
+                  style={styles.input}
+                  maxLength={10}
+                  onSubmitEditing={() => passwordInputRef.current?.focus()}
+                />
+                {phone ? (
+                  <Pressable
+                    accessibilityLabel="Clear phone number"
+                    accessibilityRole="button"
+                    onPress={() => {
+                      setPhone("");
+                      setPhoneError("");
+                      setLoginError("");
+                    }}
+                    style={styles.clearButton}>
+                    <X size={20} color="#718096" strokeWidth={2} />
+                  </Pressable>
+                ) : null}
+              </View>
+              {phoneError ? (
+                <Text accessibilityRole="alert" style={styles.fieldError}>
+                  {phoneError}
+                </Text>
               ) : null}
-            </View>
 
-            {/* Password Input */}
-            <Text style={styles.label}>PASSWORD</Text>
-            <View style={styles.inputWrapper}>
-              <Lock
-                size={18}
-                color="#4A5568"
-                style={styles.inputIcon}
-                strokeWidth={2}
-              />
-              <TextInput
-                ref={passwordInputRef}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                placeholderTextColor="#A0AEC0"
-                secureTextEntry={!showPassword}
-                returnKeyType="done"
-                style={styles.input}
-                onSubmitEditing={handleLogin}
-              />
+              {/* Password Input */}
+              <Text style={styles.label}>PASSWORD</Text>
+              <View style={styles.inputWrapper}>
+                <Lock
+                  size={18}
+                  color="#4A5568"
+                  style={styles.inputIcon}
+                  strokeWidth={2}
+                />
+                <TextInput
+                  ref={passwordInputRef}
+                  value={password}
+                  onChangeText={(value) => {
+                    setPassword(value);
+                    setPasswordError("");
+                    setLoginError("");
+                  }}
+                  placeholder="••••••••"
+                  placeholderTextColor="#A0AEC0"
+                  secureTextEntry={!showPassword}
+                  returnKeyType="done"
+                  style={styles.input}
+                  onSubmitEditing={handleLogin}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setShowPassword((value) => !value)}
+                  style={styles.eyeButton}>
+                  {showPassword ? (
+                    <EyeOff size={20} color="#718096" strokeWidth={2} />
+                  ) : (
+                    <Eye size={20} color="#718096" strokeWidth={2} />
+                  )}
+                </Pressable>
+              </View>
+              {passwordError ? (
+                <Text accessibilityRole="alert" style={styles.fieldError}>
+                  {passwordError}
+                </Text>
+              ) : null}
+
+              {/* Sign In Button */}
               <Pressable
+                // Keep NativeWind from processing Pressable's style callback.
+                cssInterop={false}
                 accessibilityRole="button"
-                onPress={() => setShowPassword((value) => !value)}
-                style={styles.eyeButton}
-              >
-                {showPassword ? (
-                  <EyeOff size={20} color="#718096" strokeWidth={2} />
+                disabled={loading}
+                onPress={handleLogin}
+                style={({ pressed }) => [
+                  styles.loginButton,
+                  (pressed || loading) && styles.loginButtonPressed,
+                ]}>
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
-                  <Eye size={20} color="#718096" strokeWidth={2} />
+                  <Text style={styles.loginButtonText}>Sign in</Text>
                 )}
               </Pressable>
+              {loginError ? (
+                <Text accessibilityRole="alert" style={styles.errorText}>
+                  {loginError}
+                </Text>
+              ) : null}
             </View>
-
-            {/* Sign In Button */}
-            <Pressable
-              accessibilityRole="button"
-              disabled={loading}
-              onPress={handleLogin}
-              style={({ pressed }) => [
-                styles.loginButton,
-                (pressed || loading) && styles.loginButtonPressed,
-              ]}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <Text style={styles.loginButtonText}>Sign in</Text>
-              )}
-            </Pressable>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -184,6 +220,18 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  errorText: {
+    color: "#B91C1C",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  fieldError: {
+    color: "#B91C1C",
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: -12,
+    marginBottom: 20,
+  },
   safe: {
     flex: 1,
     backgroundColor: "#F4F7F6", // MATCHED: Light background from inner pages
@@ -194,9 +242,13 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+  },
+  content: {
+    flexGrow: 1,
     justifyContent: "center",
     paddingHorizontal: 24,
-    paddingVertical: 40,
+    paddingTop: 24,
+    paddingBottom: 120,
   },
   header: {
     alignItems: "center",

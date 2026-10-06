@@ -694,8 +694,6 @@ export default function VotersScreen() {
     });
   }, [slipPreview]);
 
- 
-
   if (initialLoading) {
     return <VoterDataSetup />;
   }
@@ -711,8 +709,8 @@ export default function VotersScreen() {
         onEndReachedThreshold={0.25}
         onScroll={handleListScroll}
         scrollEventThrottle={16}
-        decelerationRate={0.8}
-        drawDistance={500}
+        // decelerationRate={1}
+        drawDistance={400}
         keyboardDismissMode="none"
         keyboardShouldPersistTaps="always"
         showsVerticalScrollIndicator={false}
@@ -759,8 +757,7 @@ export default function VotersScreen() {
                   setMenuVisible(false);
                   router.push("/politician/templates");
                 }}
-                style={styles.menuRow}
-              >
+                style={styles.menuRow}>
                 <View style={styles.menuIconWrap}>
                   <Printer color="#087568" size={20} strokeWidth={2.6} />
                 </View>
