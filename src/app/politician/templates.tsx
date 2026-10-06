@@ -1083,13 +1083,13 @@ export default function TemplatesScreen() {
         <View style={styles.previewBackdrop}>
           <View style={styles.previewPanel}>
             <View style={styles.previewHeader}>
-              <View style={styles.previewHeaderCopy}>
+              <SafeAreaView style={styles.previewHeaderCopy}>
                 <Text style={styles.previewTitle}>Template Preview</Text>
                 <Text style={styles.previewSubtitle}>
                   Showing {previewVoters.length} sample voters. PDF includes all{" "}
                   {filteredVoters.length} voters.
                 </Text>
-              </View>
+              </SafeAreaView>
               <Pressable
                 onPress={() => setPreviewVisible(false)}
                 style={styles.previewCloseButton}
@@ -1201,14 +1201,16 @@ export default function TemplatesScreen() {
         onRequestClose={() => setSlipPreview(null)}
       >
         {slipPreview ? (
-          <VoterSlipPreview
-            voter={slipPreview.voter}
-            onClose={() => setSlipPreview(null)}
-            showBanner={slipPreview.withBanner}
-            bannerImage={templateBannerImage}
-            onPrint={handleSlipPreviewPrint}
-            onChangeDevice={handleChangeThermalPrinter}
-          />
+          <SafeAreaView style={styles.slipPreviewSafeArea}>
+            <VoterSlipPreview
+              voter={slipPreview.voter}
+              onClose={() => setSlipPreview(null)}
+              showBanner={slipPreview.withBanner}
+              bannerImage={templateBannerImage}
+              onPrint={handleSlipPreviewPrint}
+              onChangeDevice={handleChangeThermalPrinter}
+            />
+          </SafeAreaView>
         ) : null}
       </Modal>
 
@@ -1514,6 +1516,7 @@ function PrintChoiceRow({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#f1f5f9" },
+  slipPreviewSafeArea: { flex: 1, backgroundColor: "#f8fafc" },
   content: { paddingBottom: 34 },
   listContent: { paddingBottom: 34 },
   centerState: {
