@@ -1,3 +1,4 @@
+import { getTemplatePages } from "@/utils/templatePages";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import * as Print from "expo-print";
 import { router } from "expo-router";
@@ -249,18 +250,17 @@ function buildTemplateHtml({
       return `<article class="voter-card ${layout}">
         ${bannerBlock}
         <div class="detail">
-          <div class="serial">#${escapeHtml(voter.serialNo || voter.id)}</div>
-          <h2>${escapeHtml(voter.name.toUpperCase())}</h2>
+          <div class="card-heading"><h2>${escapeHtml(voter.name.toUpperCase())}</h2><div class="serial">#${escapeHtml(voter.serialNo || voter.id)}</div></div>
           ${fields.epicNo ? `<div class="epic">EPIC: ${escapeHtml(displayValue(voter.epicNo))}</div>` : ""}
           ${fields.relation ? `<div class="relation"><span class="relation-prefix">पति:</span> ${escapeHtml(relationLine)}</div>` : ""}
           <div class="meta-grid">${metaCells}</div>
         </div>
       </article>`;
     });
-  const pages = Array.from({ length: Math.max(1, Math.ceil(voterCards.length / (columns * 2))) }, (_, index) => `<main class="sheet">
+  const pages = getTemplatePages(voterCards, columns * 3).map((pageCards) => `<main class="sheet">
     <h1 class="title">Booth ${escapeHtml(booth)} Voter Template</h1>
-    <p class="sub">${voters.length} voters</p><div class="rule"></div>
-    <section class="grid">${voterCards.slice(index * columns * 2, (index + 1) * columns * 2).join("")}</section>
+    <p class="sub">${pageCards.length} voters</p><div class="rule"></div>
+    <section class="grid">${getTemplatePages(pageCards, 3).map((columnCards) => `<div class="card-column">${columnCards.join("")}</div>`).join("")}</section>
   </main>`).join("");
 
   return `<!DOCTYPE html>
@@ -279,6 +279,7 @@ function buildTemplateHtml({
     .sub { color: #0f172a; font-size: 12px; font-weight: 900; margin: 4px 0 0; }
     .rule { height: 2px; background: #075e54; margin: 10px 0; }
     .grid { display: grid; grid-template-columns: repeat(${columns}, 1fr); gap: 10px; }
+    .card-column { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
     .voter-card {
       min-height: 190px;
       border: 1px solid #e2e8f0;
@@ -377,6 +378,12 @@ function buildTemplateHtml({
     .dual { display: grid; grid-template-columns: 1fr 1fr; }
     .dual .banner { min-height: 190px; }
     .dual .banner-img { height: 100%; object-fit: cover; }
+    .detail { padding: 10px 14px; }
+    .card-heading { display: flex; align-items: flex-start; gap: 8px; }
+    .card-heading h2 { flex: 1; min-width: 0; }
+    .card-heading .serial { position: static; flex-shrink: 0; }
+    .relation { margin-top: 4px; }
+    .meta-grid { margin-top: 6px; row-gap: 2px; }
   </style>
 </head>
 <body>
@@ -646,7 +653,7 @@ export default function TemplatesScreen() {
     };
   }, [shareImageRequest, templateBannerImage]);
 
-  const filteredVoters = voters;
+  const filteredVoters = useMemo(() => Array.from(new Map(voters.map((voter) => [voter.id, voter])).values()), [voters]);
   const listData = useMemo<TemplateListItem[]>(
     () => [
       TEMPLATE_CONTROLS_ITEM,
@@ -659,7 +666,8 @@ export default function TemplatesScreen() {
     assignedBooths.length > 0
       ? assignedBooths
       : [selectedBooth].filter(Boolean);
-  const previewVoters = filteredVoters.slice(0, 8);
+  const previewVoters = filteredVoters.slice(0, columns * 3);
+  const previewPages = getTemplatePages(previewVoters, columns * 3);
   const templateSelection = useMemo<VoterTemplateSelection>(
     () => ({
       template: "studio",
@@ -1171,12 +1179,12 @@ export default function TemplatesScreen() {
             </View>
             <ScrollView
               style={{ flexGrow: 0, height: previewWidth > 0
-                ? Math.ceil(previewVoters.length / (columns * 2)) * 1123 * Math.min(1, previewWidth / 794)
-                  + Math.max(0, Math.ceil(previewVoters.length / (columns * 2)) - 1) * 12 + 24
+                ? Math.ceil(previewVoters.length / (columns * 3)) * 1123 * Math.min(1, previewWidth / 794)
+                  + Math.max(0, Math.ceil(previewVoters.length / (columns * 3)) - 1) * 12 + 24
                 : 400 }}
               onLayout={(event) => setPreviewWidth(Math.max(1, event.nativeEvent.layout.width - 24))}
               contentContainerStyle={{ padding: 12, gap: 12, alignItems: "center", backgroundColor: "#CBD5E1" }}>
-              {previewWidth > 0 && Array.from({ length: Math.ceil(previewVoters.length / (columns * 2)) }, (_, pageIndex) => {
+              {previewWidth > 0 && previewPages.map((pageVoters, pageIndex) => {
                 const scale = Math.min(1, previewWidth / 794);
                 return <View key={pageIndex} style={{ width: 794 * scale, height: 1123 * scale, overflow: "hidden", flexShrink: 0 }}>
                 <View style={[styles.previewSheet, { width: 794, height: 1123, backgroundColor: "#FFFFFF", transform: [{ scale }], transformOrigin: "top left" }]}>
@@ -1186,24 +1194,18 @@ export default function TemplatesScreen() {
                 Voter Template
               </Text>
               <Text style={styles.paperSubtitle}>
-                {filteredVoters.length} voters
+                {pageVoters.length} voters
               </Text>
               <View style={styles.paperRule} />
               <View style={styles.previewGrid}>
-                {previewVoters.slice(pageIndex * columns * 2, (pageIndex + 1) * columns * 2).map((voter) => (
-                  <View
-                    key={voter.id}
-                    style={[
-                      styles.previewCardCell,
-                      { width: (794 - 56 - (columns - 1) * 10) / columns },
-                    ]}>
-                    <TemplateCard
-                      fields={fields}
-                      layout={layout}
-                      politicianName={politicianName}
-                      voter={voter}
-                      bannerImageUrl={templateBannerImage}
-                    />
+                {getTemplatePages(pageVoters, 3).map((columnVoters, columnIndex) => (
+                  <View key={columnIndex} style={{ width: (794 - 56 - (columns - 1) * 10) / columns, gap: 10 }}>
+                    {columnVoters.map((voter) => (
+                      <View key={voter.id} style={styles.previewCardCell}>
+                        <TemplateCard fields={fields} layout={layout} politicianName={politicianName}
+                          voter={voter} bannerImageUrl={templateBannerImage} />
+                      </View>
+                    ))}
                   </View>
                 ))}
               </View>
@@ -1501,15 +1503,12 @@ function TemplateCard({
       </View>
 
       <View style={styles.cardDetail}>
-        <View style={styles.cardSerial}>
-          <Text style={styles.cardSerialText}>
-            #{displayValue(voter.serialNo || voter.id)}
-          </Text>
+        <View style={styles.cardHeading}>
+          <Text style={styles.cardName}>{voter.name.toUpperCase()}</Text>
+          <View style={styles.cardSerial}>
+            <Text style={styles.cardSerialText}>#{displayValue(voter.serialNo || voter.id)}</Text>
+          </View>
         </View>
-
-        <Text style={styles.cardName}>
-          {voter.name.toUpperCase()}
-        </Text>
 
         {fields.epicNo ? (
           <Text style={styles.cardEpic}>
@@ -1960,13 +1959,12 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexShrink: 0,
     paddingHorizontal: 14,
-    paddingTop: 38,
-    paddingBottom: 12,
+    paddingTop: 10,
+    paddingBottom: 10,
   },
+  cardHeading: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
   cardSerial: {
-    position: "absolute",
-    right: 12,
-    top: 12,
+    flexShrink: 0,
     borderWidth: 1,
     borderColor: "#BFDBFE",
     backgroundColor: "#EFF6FF",
@@ -1980,6 +1978,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   cardName: {
+    flex: 1,
     color: "#020617",
     fontSize: 15,
     lineHeight: 19,
@@ -1998,7 +1997,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    marginTop: 8,
+    marginTop: 4,
   },
   cardRelationPrefix: {
     color: "#0F766E",
@@ -2014,8 +2013,8 @@ const styles = StyleSheet.create({
   cardMetaGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginTop: 10,
-    rowGap: 4,
+    marginTop: 6,
+    rowGap: 2,
   },
   cardMetaText: {
     width: "50%",
