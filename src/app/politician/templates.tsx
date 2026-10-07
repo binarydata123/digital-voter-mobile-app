@@ -237,7 +237,7 @@ function buildTemplateHtml({
         ? `<div class="meta-left">House No: ${escapeHtml(house)}</div>`
         : "",
       fields.booth
-        ? `<div class="meta-right">Booth: ${escapeHtml(boothValue)}</div>`
+        ? `<div class="meta-booth"><span>Booth&nbsp;No:</span> ${escapeHtml(boothValue)}</div>`
         : "",
       fields.pollingStation
         ? `<div class="meta-left">Station: ${escapeHtml(station)}</div>`
@@ -250,7 +250,7 @@ function buildTemplateHtml({
 
     // IMPORTANT: banner FIRST, detail SECOND.
     // `.bottom` uses column-reverse to flip it, matching the RN preview.
-    return `<article class="voter-card ${layout}">
+    return `<article class="voter-card ${layout}${columns === 4 ? " compact" : ""}">
         ${bannerBlock}
         <div class="detail">
           <div class="card-heading"><h2>${escapeHtml(voter.name.toUpperCase())}</h2><div class="serial">#${escapeHtml(voter.serialNo || voter.id)}</div></div>
@@ -381,6 +381,8 @@ function buildTemplateHtml({
       text-overflow: ellipsis;
     }
     .meta-right { text-align: right; }
+    .meta-booth { grid-column: 1 / -1; min-width: 0; color: #475569; font-size: 12px; font-weight: 800; white-space: normal; overflow-wrap: anywhere; line-height: 16px; }
+    .meta-booth span { white-space: nowrap; }
     .bottom { flex-direction: column-reverse; }
     .left, .right { display: grid; grid-template-columns: 34% 66%; }
     .left .banner, .right .banner { height: auto; min-height: 100%; }
@@ -396,6 +398,13 @@ function buildTemplateHtml({
     .card-heading .serial { position: static; flex-shrink: 0; }
     .relation { margin-top: 4px; }
     .meta-grid { margin-top: 6px; row-gap: 2px; }
+    .compact .detail { padding: 8px; }
+    .compact h2 { font-size: 12px; line-height: 15px; padding-right: 0; white-space: normal; overflow-wrap: anywhere; }
+    .compact .epic { font-size: 11px; line-height: 14px; padding-right: 0; white-space: normal; overflow-wrap: anywhere; }
+    .compact .relation, .compact .relation-prefix { font-size: 10px; line-height: 13px; white-space: normal; overflow-wrap: anywhere; }
+    .compact .meta-left, .compact .meta-right, .compact .meta-booth { font-size: 10px; line-height: 13px; white-space: normal; overflow-wrap: anywhere; }
+    .compact .serial { font-size: 8px; padding: 2px 5px; }
+    .compact .card-heading { gap: 4px; }
   </style>
 </head>
 <body>
@@ -404,43 +413,28 @@ function buildTemplateHtml({
 </html>`;
 }
 
-function openWebTemplatePrint(html: string) {
-  if (typeof window === "undefined") {
-    return false;
-  }
-
+async function openWebTemplatePrint(html: string): Promise<void> {
   const printWindow = window.open("", "_blank");
-  if (!printWindow) {
-    Alert.alert(
-      "Popup blocked",
-      "Please allow popups so the template can open for printing.",
-    );
-    return false;
-  }
-
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-
-  const printWhenReady = () => {
+  if (!printWindow) throw new Error("Please allow popups for this site, then try printing again.");
+  try {
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    await Promise.all(Array.from(printWindow.document.images).map((image) => {
+      if (image.complete) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        image.addEventListener("load", () => resolve(), { once: true });
+        image.addEventListener("error", () => resolve(), { once: true });
+        window.setTimeout(resolve, 10000);
+      });
+    }));
+    if (printWindow.closed) return;
     printWindow.focus();
     printWindow.print();
-  };
-
-  if (printWindow.document.readyState === "complete") {
-    window.setTimeout(printWhenReady, 100);
-  } else {
-    printWindow.addEventListener(
-      "load",
-      () => window.setTimeout(printWhenReady, 100),
-      {
-        once: true,
-      },
-    );
+  } catch (error) {
+    if (!printWindow.closed) printWindow.close();
+    throw error;
   }
-
-  return true;
 }
 
 async function getAllLocalTemplateVoters(politicianId: string, booth: string) {
@@ -480,6 +474,8 @@ export default function TemplatesScreen() {
   const [voters, setVoters] = useState<Voter[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const printRequestActive = useRef(false);
   const [savingTemplateSelection, setSavingTemplateSelection] = useState(false);
   const [error, setError] = useState("");
   const [menuVisible, setMenuVisible] = useState(false);
@@ -774,6 +770,7 @@ export default function TemplatesScreen() {
   }
 
   async function downloadPdf() {
+    if (printRequestActive.current) return;
     if (filteredVoters.length === 0) {
       Alert.alert(
         "No voters",
@@ -782,12 +779,15 @@ export default function TemplatesScreen() {
       return;
     }
 
+    printRequestActive.current = true;
     setSaving(true);
     try {
-      await saveTemplateSelection();
-      if (Platform.OS === "web" && openWebTemplatePrint(html)) {
+      if (Platform.OS === "web") {
+        await openWebTemplatePrint(html);
+        await saveTemplateSelection();
         return;
       }
+      await saveTemplateSelection();
       const { uri } = await Print.printToFileAsync({ html });
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, {
@@ -800,27 +800,36 @@ export default function TemplatesScreen() {
     } catch (pdfError: any) {
       Alert.alert("PDF failed", pdfError?.message ?? "Unable to create PDF.");
     } finally {
+      printRequestActive.current = false;
       setSaving(false);
     }
   }
 
   async function printTemplate() {
+    if (printRequestActive.current) return;
     if (filteredVoters.length === 0) {
       Alert.alert("No voters", "Select a booth with voters before printing.");
       return;
     }
 
+    printRequestActive.current = true;
+    setPrinting(true);
     try {
-      await saveTemplateSelection();
-      if (Platform.OS === "web" && openWebTemplatePrint(html)) {
+      if (Platform.OS === "web") {
+        await openWebTemplatePrint(html);
+        await saveTemplateSelection();
         return;
       }
+      await saveTemplateSelection();
       await Print.printAsync({ html });
     } catch (printError: any) {
       Alert.alert(
         "Print failed",
         printError?.message ?? "Unable to print template.",
       );
+    } finally {
+      printRequestActive.current = false;
+      setPrinting(false);
     }
   }
 
@@ -918,7 +927,7 @@ export default function TemplatesScreen() {
               <Pressable
                 style={styles.headerIconButton}
                 onPress={downloadPdf}
-                disabled={saving}>
+                disabled={saving || printing}>
                 {saving ? (
                   <ActivityIndicator size="small" color="#0F766E" />
                 ) : (
@@ -927,8 +936,9 @@ export default function TemplatesScreen() {
               </Pressable>
               <Pressable
                 style={styles.headerIconButton}
-                onPress={printTemplate}>
-                <Printer color="#0F766E" size={18} strokeWidth={2.8} />
+                onPress={printTemplate}
+                disabled={printing || saving}>
+                {printing ? <ActivityIndicator size="small" color="#0F766E" /> : <Printer color="#0F766E" size={18} strokeWidth={2.8} />}
               </Pressable>
               <Pressable
                 style={[styles.headerIconButton, styles.menuButton]}
@@ -1269,6 +1279,7 @@ export default function TemplatesScreen() {
                                     key={voter.id}
                                     style={styles.previewCardCell}>
                                     <TemplateCard
+                                      compact={columns === 4}
                                       fields={fields}
                                       layout={layout}
                                       politicianName={politicianName}
@@ -1514,12 +1525,14 @@ function SelectChip({
 }
 
 function TemplateCard({
+  compact = false,
   fields,
   layout,
   politicianName,
   voter,
   bannerImageUrl,
 }: {
+  compact?: boolean;
   fields: Record<FieldKey, boolean>;
   layout: TemplateLayout;
   politicianName: string;
@@ -1580,44 +1593,44 @@ function TemplateCard({
         )}
       </View>
 
-      <View style={styles.cardDetail}>
+      <View style={[styles.cardDetail, compact && styles.compactDetail]}>
         <View style={styles.cardHeading}>
-          <Text style={styles.cardName}>{voter.name.toUpperCase()}</Text>
-          <View style={styles.cardSerial}>
-            <Text style={styles.cardSerialText}>
+          <Text style={[styles.cardName, compact && styles.compactName]}>{voter.name.toUpperCase()}</Text>
+          <View style={[styles.cardSerial, compact && styles.compactSerial]}>
+            <Text style={[styles.cardSerialText, compact && styles.compactSerialText]}>
               #{displayValue(voter.serialNo || voter.id)}
             </Text>
           </View>
         </View>
 
         {fields.epicNo ? (
-          <Text style={styles.cardEpic}>
+          <Text style={[styles.cardEpic, compact && styles.compactEpic]}>
             EPIC: {displayValue(voter.epicNo)}
           </Text>
         ) : null}
 
         {fields.relation ? (
           <View style={styles.cardRelationRow}>
-            <Text style={styles.cardRelationPrefix}>पति:</Text>
-            <Text style={styles.cardRelationValue}>{relationLine}</Text>
+            <Text style={[styles.cardRelationPrefix, compact && styles.compactText]}>पति:</Text>
+            <Text style={[styles.cardRelationValue, compact && styles.compactText]}>{relationLine}</Text>
           </View>
         ) : null}
 
         <View style={styles.cardMetaGrid}>
           {fields.age || fields.gender ? (
-            <Text style={styles.cardMetaText}>{ageGender}</Text>
+            <Text style={[styles.cardMetaText, compact && styles.compactText]}>{ageGender}</Text>
           ) : null}
           {fields.ward ? (
-            <Text style={styles.cardMetaTextRight}>Ward: {ward}</Text>
+            <Text style={[styles.cardMetaTextRight, compact && styles.compactText]}>Ward: {ward}</Text>
           ) : null}
           {fields.houseNo ? (
-            <Text style={styles.cardMetaText}>House No: {house}</Text>
+            <Text style={[styles.cardMetaText, compact && styles.compactText]}>House No: {house}</Text>
           ) : null}
           {fields.booth ? (
-            <Text style={styles.cardMetaTextRight}>Booth: {booth}</Text>
+            <Text style={[styles.cardBoothText, compact && styles.compactText]}>Booth{"\u00A0"}No: {booth}</Text>
           ) : null}
           {fields.pollingStation ? (
-            <Text style={styles.cardMetaText}>Station: {station}</Text>
+            <Text style={[styles.cardMetaText, compact && styles.compactText]}>Station: {station}</Text>
           ) : null}
         </View>
       </View>
@@ -2023,6 +2036,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
+  compactDetail: { paddingHorizontal: 8, paddingTop: 8, paddingBottom: 8 },
+  compactName: { fontSize: 12, lineHeight: 15, letterSpacing: 0 },
+  compactEpic: { fontSize: 11, lineHeight: 14 },
+  compactText: { fontSize: 10, lineHeight: 13 },
+  compactSerialText: { fontSize: 8 },
+  compactSerial: { paddingHorizontal: 5, paddingVertical: 2 },
   cardDetail: {
     flexGrow: 1,
     flexShrink: 0,
@@ -2091,6 +2110,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     paddingRight: 6,
   },
+  cardBoothText: { width: "100%", color: "#475569", fontSize: 12, lineHeight: 16, fontWeight: "800" },
   cardMetaTextRight: {
     width: "50%",
     color: "#475569",
