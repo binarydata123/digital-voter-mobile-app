@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { Redirect, router } from "expo-router";
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useLoginDestination } from "@/hooks/use-login-destination";
 
 import {
   getDefaultPoliticianRoute,
@@ -22,6 +23,7 @@ import {
 import { Eye, EyeOff, Lock, Phone, X } from "lucide-react-native";
 
 export default function LoginScreen() {
+  const destination = useLoginDestination();
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -64,6 +66,9 @@ export default function LoginScreen() {
       setLoading(false);
     }
   }
+
+  if (!destination) return null;
+  if (destination !== "/login") return <Redirect href={destination} />;
 
   return (
     <SafeAreaView style={styles.safe}>
