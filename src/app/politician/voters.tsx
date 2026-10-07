@@ -128,6 +128,11 @@ export default function VotersScreen() {
   const lastLocalQueryKey = useRef("");
   const localRequestId = useRef(0);
   const currentUser = getCurrentUser();
+  const headerTitle = currentUser?.ward || currentUser?.constituency || currentUser?.district || "Assigned area";
+  const headerLocation = [
+    currentUser?.city || currentUser?.district,
+    currentUser?.state,
+  ].filter(Boolean).join(", ");
   const accountBannerImage = currentUser?.bannerImage;
   const canOpenSurvey = hasPoliticianPageAccess("survey", currentUser);
   const canUseTemplates = hasPoliticianPageAccess("template", currentUser);
@@ -548,12 +553,11 @@ export default function VotersScreen() {
 
           <View style={styles.headerCopy}>
             <Text style={styles.eyebrow}>VOTER LIST</Text>
-            <Text style={styles.title}>Ward-14</Text>
-            <Text style={styles.boothTitle}>Booth-1, 2</Text>
-            <View style={styles.locationRow}>
+            <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
+            {headerLocation ? <View style={styles.locationRow}>
               <MapPin color="#087568" size={14} strokeWidth={2.8} />
-              <Text style={styles.location}>Ganganagar, Rajasthan</Text>
-            </View>
+              <Text style={styles.location} numberOfLines={1}>{headerLocation}</Text>
+            </View> : null}
           </View>
         </View>
 
@@ -564,7 +568,7 @@ export default function VotersScreen() {
         ) : null}
       </>
     ),
-    [error, refreshAllVoterData, refreshing],
+    [error, refreshAllVoterData, refreshing, headerTitle, headerLocation],
   );
 
   const renderStickyControls = useCallback(
@@ -1066,12 +1070,6 @@ const styles = StyleSheet.create({
     lineHeight: 34,
     fontWeight: "900",
     marginTop: 2,
-  },
-  boothTitle: {
-    color: "#087568",
-    fontSize: 23,
-    lineHeight: 27,
-    fontWeight: "900",
   },
   locationRow: {
     flexDirection: "row",
