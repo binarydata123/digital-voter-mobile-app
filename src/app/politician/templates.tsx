@@ -2,6 +2,7 @@ import * as Print from "expo-print";
 import { router } from "expo-router";
 import * as Sharing from "expo-sharing";
 import {
+  ArrowUp,
   Check,
   ChevronDown,
   ClipboardList,
@@ -480,6 +481,8 @@ export default function TemplatesScreen() {
   const [shareImageRequest, setShareImageRequest] =
     useState<ShareImageRequest | null>(null);
   const shareSlipRef = useRef<View>(null);
+  const templateListRef = useRef<SectionList<Voter>>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const [profileUser, setProfileUser] = useState<AuthUser | null>(() =>
     getCurrentUser(),
   );
@@ -988,6 +991,12 @@ export default function TemplatesScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <SectionList
+        ref={templateListRef}
+        onScroll={(event) => {
+          const visible = event.nativeEvent.contentOffset.y > 300;
+          setShowScrollTop((current) => current === visible ? current : visible);
+        }}
+        scrollEventThrottle={100}
         sections={voterSections}
         keyExtractor={(item) => item.id}
         initialNumToRender={8}
@@ -1002,6 +1011,17 @@ export default function TemplatesScreen() {
         renderSectionHeader={renderStickyControls}
         renderItem={renderVoterItem}
       />
+
+      {showScrollTop ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Scroll to top"
+          onPress={() => templateListRef.current?.getScrollResponder()?.scrollTo({ y: 0, animated: true })}
+          style={styles.scrollTopButton}
+        >
+          <ArrowUp color="#FFFFFF" size={20} strokeWidth={3} />
+        </Pressable>
+      ) : null}
 
       {/* ===================== FILTER DRAWER ===================== */}
       <Modal
@@ -1581,6 +1601,25 @@ function PrintChoiceRow({
 }
 
 const styles = StyleSheet.create({
+  scrollTopButton: {
+    position: "absolute",
+    right: 18,
+    bottom: 26,
+    zIndex: 50,
+    elevation: 8,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#087568",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
   safe: { flex: 1, backgroundColor: "#f1f5f9" },
   slipPreviewSafeArea: { flex: 1, backgroundColor: "#f8fafc" },
   content: { paddingBottom: 34 },

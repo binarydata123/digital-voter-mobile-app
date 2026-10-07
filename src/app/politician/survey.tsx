@@ -17,7 +17,7 @@ import {
   UserRound,
   WalletCards,
 } from "lucide-react-native";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -65,16 +65,32 @@ const OCCUPATIONS = [
   "Daily Wage / Labour",
   "Homemaker",
   "Student",
+  "Unemployed",
 ];
 const CONCERNS = [
-  "Jobs & Youth",
-  "Inflation / Mehngai",
-  "Roads & Transport",
-  "Water Supply",
-  "Healthcare",
-  "Education",
-  "Safety & Crime",
-  "Farming & Agriculture",
+  "Roads / Infrastructure",
+  "Public Safety / Crime",
+  "Healthcare / Hospitals",
+  "Cost of Living / Inflation",
+  "Education / Schools",
+  "Jobs / Employment",
+  "Business / Economic Development",
+  "Water / Sanitation / Utilities",
+  "Electricity / Power Supply",
+  "Agriculture / Farmers",
+  "Housing / Land",
+  "Public Transport / Traffic",
+  "Women / Child Welfare",
+  "Youth / Skills / Opportunities",
+  "Environment / Pollution",
+  "Government Services / Administration",
+  "Corruption / Transparency",
+  "Social Welfare / Pensions",
+  "Drug Abuse / Addiction",
+  "Rural Development",
+  "Urban Development",
+  "Digital Connectivity / Internet",
+  "Other",
 ];
 const ELECTION_TYPES = [
   "Lok Sabha",
@@ -149,6 +165,21 @@ function getScopeLabel(field: ScopeField, electionType: string) {
 }
 
 export default function SurveyScreen() {
+  const scrollRef = useRef<ScrollView>(null);
+  const contentRef = useRef<View>(null);
+  const requiredViews = useRef<Record<string, View | null>>({});
+  const [missingField, setMissingField] = useState<string | null>(null);
+  const scrollToMissingField = useCallback(() => {
+    const target = missingField ? requiredViews.current[missingField] : null;
+    if (target && contentRef.current) {
+      target.measureLayout(contentRef.current, (_x, y) => {
+        scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+      }, () => {});
+    }
+  }, [missingField]);
+  useEffect(() => {
+    if (missingField) requestAnimationFrame(scrollToMissingField);
+  }, [missingField, scrollToMissingField]);
   const [scope, setScope] = useState<SurveyScope>(() =>
     buildAssignedSurveyScope(),
   );
@@ -211,7 +242,9 @@ export default function SurveyScreen() {
       state: uniqueValues(scope.state),
       district: uniqueValues(scope.district),
       city: uniqueValues(scope.city),
-      wardNo: uniqueValues(scope.wardNo, ...wardOptions),
+      wardNo: uniqueValues(...wardOptions, scope.wardNo).sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }),
+      ),
     }),
     [scope, wardOptions],
   );
@@ -304,6 +337,7 @@ export default function SurveyScreen() {
   ]);
 
   function updateScope(field: ScopeField, value: string) {
+    setMissingField(null);
     setMessage("");
     setError("");
     setScope((current) => {
@@ -327,13 +361,15 @@ export default function SurveyScreen() {
     setActiveDropdown(null);
   }
 
-  function setSingle(field: keyof FormState, value: string) {
+  const setSingle = useCallback((field: keyof FormState, value: string) => {
+    setMissingField(null);
     setMessage("");
     setError("");
     setForm((current) => ({ ...current, [field]: value }));
-  }
+  }, []);
 
-  function toggleConcern(issue: string) {
+  const toggleConcern = useCallback((issue: string) => {
+    setMissingField(null);
     setMessage("");
     setError("");
     setForm((current) => ({
@@ -342,9 +378,10 @@ export default function SurveyScreen() {
         ? current.issues.filter((item) => item !== issue)
         : [...current.issues, issue],
     }));
-  }
+  }, []);
 
   function choosePolitician(option: SurveyPoliticianOption) {
+    setMissingField(null);
     setMessage("");
     setError("");
     setForm((current) => ({
@@ -386,16 +423,34 @@ export default function SurveyScreen() {
   async function handleSave() {
     const validationError = validate();
     if (validationError) {
+      const firstMissingScope = visibleScopeFields.find((field) => !scope[field]);
+      const firstMissingProfile = (["gender", "ageBracket", "education", "incomeBracket", "occupation"] as const)
+        .find((field) => !form[field]);
+      const firstMissing = firstMissingScope
+        ?? (constituencyElection && !scope.wardNo ? "wardNo" : null)
+        ?? firstMissingProfile
+        ?? (!form.issues.length ? "issues" : "preferredPolitician");
+      setMissingField(firstMissing);
       setError(validationError);
+      requestAnimationFrame(() => {
+        const target = requiredViews.current[firstMissing];
+        if (target && contentRef.current) {
+          target.measureLayout(contentRef.current, (_x, y) => {
+            scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+          }, () => {});
+        }
+      });
       return;
     }
 
     setSaving(true);
     try {
       await saveSurveyResponse({ ...scope, ...form });
+      setMissingField(null);
       setForm(emptyForm);
       setMessage("Survey response saved.");
       setError("");
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
     } catch (saveError: any) {
       if (saveError?.message === "Please sign in again to continue.") {
         logoutPolitician();
@@ -496,9 +551,11 @@ export default function SurveyScreen() {
 
       <View style={styles.body}>
         <ScrollView
-          contentContainerStyle={styles.content}
+          ref={scrollRef}
+          onContentSizeChange={scrollToMissingField}
           showsVerticalScrollIndicator={false}
         >
+          <View ref={contentRef} collapsable={false} style={styles.content}>
           <View style={styles.scopeCard}>
             <View style={styles.scopeGrid}>
               {visibleScopeFields.map((field) => (
@@ -507,14 +564,15 @@ export default function SurveyScreen() {
                   label={getScopeLabel(field, scope.electionType)}
                   value={scope[field]}
                   onPress={() => setActiveDropdown(field)}
-                  fullWidth={field === "electionType"}
+                  missing={missingField === field}
+                  fieldRef={(view) => { requiredViews.current[field] = view; }}
                 />
               ))}
             </View>
           </View>
 
           {constituencyElection ? (
-            <View style={styles.section}>
+            <View ref={(view) => { requiredViews.current.wardNo = view; }} collapsable={false} style={[styles.section, missingField === "wardNo" && styles.missingSection]}>
               <Text style={styles.sectionTitle}>Ward No. *</Text>
               {loadingWards ? (
                 <ActivityIndicator color="#0F766E" style={styles.wardLoader} />
@@ -550,67 +608,67 @@ export default function SurveyScreen() {
           {error ? <Text style={styles.error}>{error}</Text> : null}
           {message ? <Text style={styles.success}>{message}</Text> : null}
 
+          <View ref={(view) => { requiredViews.current.gender = view; }} collapsable={false} style={missingField === "gender" && styles.missingSection}>
           <OptionSection
             title="Gender"
             options={GENDERS}
             value={form.gender}
-            onSelect={(value) => setSingle("gender", value)}
+            field="gender"
+            onSelect={setSingle}
             columns={3}
             icon={UserRound}
           />
+          </View>
+          <View ref={(view) => { requiredViews.current.ageBracket = view; }} collapsable={false} style={missingField === "ageBracket" && styles.missingSection}>
           <OptionSection
             title="Age bracket"
             options={AGE_BRACKETS}
             value={form.ageBracket}
-            onSelect={(value) => setSingle("ageBracket", value)}
+            field="ageBracket"
+            onSelect={setSingle}
             columns={4}
             icon={CalendarDays}
           />
+          </View>
+          <View ref={(view) => { requiredViews.current.education = view; }} collapsable={false} style={missingField === "education" && styles.missingSection}>
           <OptionSection
             title="Education"
             options={EDUCATION}
             value={form.education}
-            onSelect={(value) => setSingle("education", value)}
+            field="education"
+            onSelect={setSingle}
             columns={2}
             icon={GraduationCap}
           />
+          </View>
+          <View ref={(view) => { requiredViews.current.incomeBracket = view; }} collapsable={false} style={missingField === "incomeBracket" && styles.missingSection}>
           <OptionSection
             title="Monthly household income"
             options={INCOME}
             value={form.incomeBracket}
-            onSelect={(value) => setSingle("incomeBracket", value)}
+            field="incomeBracket"
+            onSelect={setSingle}
             columns={2}
             icon={WalletCards}
           />
+          </View>
+          <View ref={(view) => { requiredViews.current.occupation = view; }} collapsable={false} style={missingField === "occupation" && styles.missingSection}>
           <OptionSection
             title="Occupation"
             options={OCCUPATIONS}
             value={form.occupation}
-            onSelect={(value) => setSingle("occupation", value)}
+            field="occupation"
+            onSelect={setSingle}
             columns={2}
             icon={BriefcaseBusiness}
           />
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              Major concerns{" "}
-              <Text style={styles.hint}>(choose one or more)</Text>
-            </Text>
-            <View style={styles.optionGrid}>
-              {CONCERNS.map((issue) => (
-                <OptionButton
-                  key={issue}
-                  label={issue}
-                  selected={form.issues.includes(issue)}
-                  onPress={() => toggleConcern(issue)}
-                  columns={2}
-                  icon={CircleAlert}
-                />
-              ))}
-            </View>
           </View>
 
-          <View style={styles.section}>
+          <View ref={(view) => { requiredViews.current.issues = view; }} collapsable={false} style={missingField === "issues" && styles.missingSection}>
+            <ConcernSection issues={form.issues} onToggle={toggleConcern} />
+          </View>
+
+          <View ref={(view) => { requiredViews.current.preferredPolitician = view; }} collapsable={false} style={[styles.section, missingField === "preferredPolitician" && styles.missingSection]}>
             <Text style={styles.sectionTitle}>Likely preferred politician</Text>
             <View style={styles.optionGrid}>
               {politicianLocationReady && loadingPoliticians ? (
@@ -692,6 +750,7 @@ export default function SurveyScreen() {
             <ClipboardList color="#087568" size={17} strokeWidth={2.7} />
             <Text style={styles.reportText}>View report</Text>
           </Pressable> */}
+          </View>
         </ScrollView>
       </View>
 
@@ -832,14 +891,18 @@ function DropdownField({
   label,
   value,
   onPress,
+  missing,
+  fieldRef,
 }: {
   fullWidth?: boolean;
   label: string;
   value: string;
   onPress: () => void;
+  missing?: boolean;
+  fieldRef?: (view: View | null) => void;
 }) {
   return (
-    <View style={[styles.fieldWrap, fullWidth && styles.fullFieldWrap]}>
+    <View ref={fieldRef} collapsable={false} style={[styles.fieldWrap, fullWidth && styles.fullFieldWrap, missing && styles.missingSection]}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <Pressable onPress={onPress} style={styles.dropdownField}>
         <Text numberOfLines={1} style={styles.dropdownText}>
@@ -851,18 +914,20 @@ function DropdownField({
   );
 }
 
-function OptionSection({
+const OptionSection = memo(function OptionSection({
   title,
   options,
   value,
   onSelect,
+  field,
   columns,
   icon,
 }: {
   title: string;
   options: string[];
   value: string;
-  onSelect: (value: string) => void;
+  onSelect: (field: keyof FormState, value: string) => void;
+  field: keyof FormState;
   columns: 2 | 3 | 4;
   icon?: LucideIcon;
 }) {
@@ -875,7 +940,7 @@ function OptionSection({
             key={option}
             label={option}
             selected={value === option}
-            onPress={() => onSelect(option)}
+            onPress={() => onSelect(field, option)}
             columns={columns}
             icon={icon}
           />
@@ -883,9 +948,37 @@ function OptionSection({
       </View>
     </View>
   );
-}
+});
 
-function OptionButton({
+const ConcernSection = memo(function ConcernSection({
+  issues,
+  onToggle,
+}: {
+  issues: string[];
+  onToggle: (issue: string) => void;
+}) {
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>
+        Major concerns <Text style={styles.hint}>(choose one or more)</Text>
+      </Text>
+      <View style={styles.optionGrid}>
+        {CONCERNS.map((issue) => (
+          <OptionButton
+            key={issue}
+            label={issue}
+            selected={issues.includes(issue)}
+            onPress={() => onToggle(issue)}
+            columns={2}
+            icon={CircleAlert}
+          />
+        ))}
+      </View>
+    </View>
+  );
+});
+
+const OptionButton = memo(function OptionButton({
   label,
   selected,
   onPress,
@@ -911,6 +1004,22 @@ function OptionButton({
         selected && styles.optionButtonActive,
       ]}
     >
+      <OptionContent label={label} selected={selected} icon={Icon} />
+    </Pressable>
+  );
+});
+
+const OptionContent = memo(function OptionContent({
+  label,
+  selected,
+  icon: Icon,
+}: {
+  label: string;
+  selected: boolean;
+  icon?: LucideIcon;
+}) {
+  return (
+    <>
       {Icon ? (
         <Icon
           color={selected ? "#FFFFFF" : "#087568"}
@@ -922,13 +1031,14 @@ function OptionButton({
         numberOfLines={2}
         style={[styles.optionText, selected && styles.optionTextActive]}
       >
-        {label}
+        {label === "< ₹15k" ? "Below ₹15k" : label}
       </Text>
-    </Pressable>
+    </>
   );
-}
+});
 
 const styles = StyleSheet.create({
+  missingSection: { borderWidth: 1, borderColor: "#DC2626", borderRadius: 14, padding: 6 },
   safe: { flex: 1, backgroundColor: "#F4FBF7" },
   header: {
     minHeight: 198,
@@ -1133,7 +1243,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   twoColumn: { width: "48.7%" },
-  threeColumn: { width: "31.8%" },
+  threeColumn: { flexBasis: 0, flexGrow: 1, minWidth: 0 },
   fourColumn: { width: "23.2%" },
   optionText: {
     flexShrink: 1,
