@@ -556,6 +556,7 @@ export default function SurveyScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View ref={contentRef} collapsable={false} style={styles.content}>
+          {message ? <Text style={styles.success}>{message}</Text> : null}
           <View style={styles.scopeCard}>
             <View style={styles.scopeGrid}>
               {visibleScopeFields.map((field) => (
@@ -606,7 +607,6 @@ export default function SurveyScreen() {
             <ActivityIndicator color="#0F766E" style={styles.scopeLoader} />
           ) : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          {message ? <Text style={styles.success}>{message}</Text> : null}
 
           <View ref={(view) => { requiredViews.current.gender = view; }} collapsable={false} style={missingField === "gender" && styles.missingSection}>
           <OptionSection
