@@ -1,3 +1,4 @@
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import * as Print from "expo-print";
 import { router } from "expo-router";
 import * as Sharing from "expo-sharing";
@@ -28,7 +29,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  SectionList,
   StyleSheet,
   Text,
   View,
@@ -130,6 +130,8 @@ const DEFAULT_FIELDS = FIELD_OPTIONS.reduce(
   {} as Record<FieldKey, boolean>,
 );
 const LOCAL_TEMPLATE_PAGE_SIZE = 100;
+type TemplateListItem = { type: "controls" } | { type: "voter"; voter: Voter };
+const TEMPLATE_CONTROLS_ITEM: TemplateListItem = { type: "controls" };
 
 function uniqueValues(values: (string | undefined)[] = []) {
   return Array.from(
@@ -427,10 +429,7 @@ function openWebTemplatePrint(html: string) {
   return true;
 }
 
-async function getAllLocalTemplateVoters(
-  politicianId: string,
-  booth: string,
-) {
+async function getAllLocalTemplateVoters(politicianId: string, booth: string) {
   async function readLocalPages(query: { booth?: string }) {
     const pageVoters: Voter[] = [];
     let total = 0;
@@ -481,7 +480,7 @@ export default function TemplatesScreen() {
   const [shareImageRequest, setShareImageRequest] =
     useState<ShareImageRequest | null>(null);
   const shareSlipRef = useRef<View>(null);
-  const templateListRef = useRef<SectionList<Voter>>(null);
+  const templateListRef = useRef<FlashListRef<TemplateListItem>>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [profileUser, setProfileUser] = useState<AuthUser | null>(() =>
     getCurrentUser(),
@@ -652,8 +651,11 @@ export default function TemplatesScreen() {
   }, [shareImageRequest, templateBannerImage]);
 
   const filteredVoters = voters;
-  const voterSections = useMemo(
-    () => [{ key: "voters", data: filteredVoters }],
+  const listData = useMemo<TemplateListItem[]>(
+    () => [
+      TEMPLATE_CONTROLS_ITEM,
+      ...filteredVoters.map((voter) => ({ type: "voter" as const, voter })),
+    ],
     [filteredVoters],
   );
 
@@ -890,15 +892,13 @@ export default function TemplatesScreen() {
             <View style={styles.headerActions}>
               <Pressable
                 style={styles.headerIconButton}
-                onPress={() => setPreviewVisible(true)}
-              >
+                onPress={() => setPreviewVisible(true)}>
                 <Eye color="#0F766E" size={18} strokeWidth={2.8} />
               </Pressable>
               <Pressable
                 style={styles.headerIconButton}
                 onPress={downloadPdf}
-                disabled={saving}
-              >
+                disabled={saving}>
                 {saving ? (
                   <ActivityIndicator size="small" color="#0F766E" />
                 ) : (
@@ -907,14 +907,12 @@ export default function TemplatesScreen() {
               </Pressable>
               <Pressable
                 style={styles.headerIconButton}
-                onPress={printTemplate}
-              >
+                onPress={printTemplate}>
                 <Printer color="#0F766E" size={18} strokeWidth={2.8} />
               </Pressable>
               <Pressable
                 style={[styles.headerIconButton, styles.menuButton]}
-                onPress={openMenu}
-              >
+                onPress={openMenu}>
                 <Menu color="#FFFFFF" size={21} strokeWidth={2.8} />
               </Pressable>
             </View>
@@ -961,8 +959,7 @@ export default function TemplatesScreen() {
             <Pressable
               style={styles.filterIconButton}
               onPress={() => setFilterVisible(true)}
-              accessibilityLabel="Open template filters"
-            >
+              accessibilityLabel="Open template filters">
               <SlidersHorizontal color="#FFFFFF" size={18} strokeWidth={2.8} />
             </Pressable>
           </View>
@@ -971,11 +968,15 @@ export default function TemplatesScreen() {
     );
   }
 
-  function renderVoterItem({ item }: { item: Voter }) {
+  function renderListItem({ item }: { item: TemplateListItem }) {
+    if (item.type === "controls") {
+      return renderStickyControls();
+    }
+
     return (
       <View style={styles.voterItem}>
         <VoterCard
-          voter={item}
+          voter={item.voter}
           onPrint={handlePrint}
           onFamily={handleFamily}
           onShare={handleShareVoterSlip}
@@ -990,35 +991,38 @@ export default function TemplatesScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <SectionList
+      <FlashList
         ref={templateListRef}
+        data={listData}
+        keyExtractor={(item) =>
+          item.type === "voter" ? `voter:${item.voter.id}` : "controls"
+        }
+        renderItem={renderListItem}
+        getItemType={(item) => item.type}
+        stickyHeaderIndices={[0]}
         onScroll={(event) => {
           const visible = event.nativeEvent.contentOffset.y > 300;
-          setShowScrollTop((current) => current === visible ? current : visible);
+          setShowScrollTop((current) =>
+            current === visible ? current : visible,
+          );
         }}
         scrollEventThrottle={100}
-        sections={voterSections}
-        keyExtractor={(item) => item.id}
-        initialNumToRender={8}
-        maxToRenderPerBatch={6}
-        updateCellsBatchingPeriod={80}
-        windowSize={5}
-        stickySectionHeadersEnabled
-        removeClippedSubviews={Platform.OS === "android"}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={renderScreenHeader}
-        renderSectionHeader={renderStickyControls}
-        renderItem={renderVoterItem}
       />
 
       {showScrollTop ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Scroll to top"
-          onPress={() => templateListRef.current?.getScrollResponder()?.scrollTo({ y: 0, animated: true })}
-          style={styles.scrollTopButton}
-        >
+          onPress={() =>
+            templateListRef.current?.scrollToOffset({
+              offset: 0,
+              animated: true,
+            })
+          }
+          style={styles.scrollTopButton}>
           <ArrowUp color="#FFFFFF" size={20} strokeWidth={3} />
         </Pressable>
       ) : null}
@@ -1028,12 +1032,10 @@ export default function TemplatesScreen() {
         transparent
         visible={filterVisible}
         animationType="slide"
-        onRequestClose={() => setFilterVisible(false)}
-      >
+        onRequestClose={() => setFilterVisible(false)}>
         <Pressable
           style={styles.menuBackdrop}
-          onPress={() => setFilterVisible(false)}
-        >
+          onPress={() => setFilterVisible(false)}>
           <Pressable style={styles.filterSheet} onPress={() => {}}>
             <View style={styles.menuHandle} />
 
@@ -1041,23 +1043,20 @@ export default function TemplatesScreen() {
               <Text style={styles.filterSheetTitle}>Template Filters</Text>
               <Pressable
                 onPress={() => setFilterVisible(false)}
-                style={styles.filterSheetClose}
-              >
+                style={styles.filterSheetClose}>
                 <X color="#334155" size={20} strokeWidth={2.7} />
               </Pressable>
             </View>
 
             <ScrollView
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.filterSheetBody}
-            >
+              contentContainerStyle={styles.filterSheetBody}>
               <View style={styles.sectionBox}>
                 <Text style={styles.sectionLabel}>CANVA LAYOUTS</Text>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.layoutTabs}
-                >
+                  contentContainerStyle={styles.layoutTabs}>
                   {TEMPLATE_LAYOUTS.map((item) => (
                     <Pressable
                       key={item.key}
@@ -1067,14 +1066,12 @@ export default function TemplatesScreen() {
                         styles.layoutTab,
                         layout === item.key && styles.layoutTabActive,
                         savingTemplateSelection && styles.layoutTabSaving,
-                      ]}
-                    >
+                      ]}>
                       <Text
                         style={[
                           styles.layoutTabText,
                           layout === item.key && styles.layoutTabTextActive,
-                        ]}
-                      >
+                        ]}>
                         {item.label}
                       </Text>
                     </Pressable>
@@ -1088,8 +1085,7 @@ export default function TemplatesScreen() {
                   <View style={styles.sectionHeaderRight}>
                     <Pressable
                       onPress={() => setFields(DEFAULT_FIELDS)}
-                      hitSlop={6}
-                    >
+                      hitSlop={6}>
                       <Text style={styles.bulkText}>Select all</Text>
                     </Pressable>
                     <Pressable
@@ -1104,8 +1100,7 @@ export default function TemplatesScreen() {
                           ),
                         )
                       }
-                      hitSlop={6}
-                    >
+                      hitSlop={6}>
                       <Text style={styles.bulkTextMuted}>Clear all</Text>
                     </Pressable>
                   </View>
@@ -1124,14 +1119,12 @@ export default function TemplatesScreen() {
                       style={[
                         styles.fieldChip,
                         fields[field.key] && styles.fieldChipActive,
-                      ]}
-                    >
+                      ]}>
                       <View
                         style={[
                           styles.checkBox,
                           fields[field.key] && styles.checkBoxActive,
-                        ]}
-                      >
+                        ]}>
                         {fields[field.key] ? (
                           <Check color="#ffffff" size={12} strokeWidth={3} />
                         ) : null}
@@ -1147,8 +1140,7 @@ export default function TemplatesScreen() {
 
             <Pressable
               style={styles.filterApplyButton}
-              onPress={() => setFilterVisible(false)}
-            >
+              onPress={() => setFilterVisible(false)}>
               {savingTemplateSelection ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
@@ -1164,8 +1156,7 @@ export default function TemplatesScreen() {
         transparent
         visible={previewVisible}
         animationType="fade"
-        onRequestClose={() => setPreviewVisible(false)}
-      >
+        onRequestClose={() => setPreviewVisible(false)}>
         <View style={styles.previewBackdrop}>
           <View style={styles.previewPanel}>
             <View style={styles.previewHeader}>
@@ -1178,8 +1169,7 @@ export default function TemplatesScreen() {
               </SafeAreaView>
               <Pressable
                 onPress={() => setPreviewVisible(false)}
-                style={styles.previewCloseButton}
-              >
+                style={styles.previewCloseButton}>
                 <X color="#334155" size={20} strokeWidth={2.7} />
               </Pressable>
             </View>
@@ -1199,8 +1189,7 @@ export default function TemplatesScreen() {
                     style={[
                       styles.previewCardCell,
                       { width: previewCardWidth(columns) },
-                    ]}
-                  >
+                    ]}>
                     <TemplateCard
                       fields={fields}
                       layout={layout}
@@ -1221,13 +1210,11 @@ export default function TemplatesScreen() {
         transparent
         visible={Boolean(printTypeRequest)}
         animationType="fade"
-        onRequestClose={() => setPrintTypeRequest(null)}
-      >
+        onRequestClose={() => setPrintTypeRequest(null)}>
         {printTypeRequest ? (
           <Pressable
             style={styles.printChoiceBackdrop}
-            onPress={() => setPrintTypeRequest(null)}
-          >
+            onPress={() => setPrintTypeRequest(null)}>
             <Pressable style={styles.printChoicePanel}>
               <View style={styles.printChoiceHeader}>
                 <Text style={styles.printChoiceTitle}>
@@ -1238,8 +1225,7 @@ export default function TemplatesScreen() {
                 <Pressable
                   accessibilityLabel="Close print type"
                   onPress={() => setPrintTypeRequest(null)}
-                  style={styles.printChoiceClose}
-                >
+                  style={styles.printChoiceClose}>
                   <Text style={styles.printChoiceCloseText}>x</Text>
                 </Pressable>
               </View>
@@ -1284,8 +1270,7 @@ export default function TemplatesScreen() {
         transparent
         visible={Boolean(slipPreview)}
         animationType="fade"
-        onRequestClose={() => setSlipPreview(null)}
-      >
+        onRequestClose={() => setSlipPreview(null)}>
         {slipPreview ? (
           <SafeAreaView style={styles.slipPreviewSafeArea}>
             <VoterSlipPreview
@@ -1331,12 +1316,10 @@ export default function TemplatesScreen() {
         transparent
         visible={menuVisible}
         animationType="slide"
-        onRequestClose={() => setMenuVisible(false)}
-      >
+        onRequestClose={() => setMenuVisible(false)}>
         <Pressable
           style={styles.menuBackdrop}
-          onPress={() => setMenuVisible(false)}
-        >
+          onPress={() => setMenuVisible(false)}>
           <Pressable style={styles.menuSheet} onPress={() => {}}>
             <View style={styles.menuHandle} />
 
@@ -1420,12 +1403,10 @@ function SelectChip({
         transparent
         visible={open}
         animationType="fade"
-        onRequestClose={() => setOpen(false)}
-      >
+        onRequestClose={() => setOpen(false)}>
         <Pressable
           style={styles.dropdownBackdrop}
-          onPress={() => setOpen(false)}
-        >
+          onPress={() => setOpen(false)}>
           <View style={styles.dropdownPanel}>
             <ScrollView>
               {options.map((option) => (
@@ -1435,8 +1416,7 @@ function SelectChip({
                     onSelect(option);
                     setOpen(false);
                   }}
-                  style={styles.dropdownRow}
-                >
+                  style={styles.dropdownRow}>
                   <Text style={styles.dropdownText}>{option}</Text>
                 </Pressable>
               ))}
@@ -1494,8 +1474,7 @@ function TemplateCard({
         previewStyleForLayout(layout) === "bannerLeft" && styles.bannerLeft,
         previewStyleForLayout(layout) === "bannerRight" && styles.bannerRight,
         previewStyleForLayout(layout) === "dualVertical" && styles.dualVertical,
-      ]}
-    >
+      ]}>
       <View style={styles.cardBanner}>
         {bannerImageUrl ? (
           <Image

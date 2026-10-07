@@ -10,7 +10,10 @@ export type LocalVoterQuery = {
   houseNo?: string;
 };
 export type LocalVoterPage = { voters: Voter[]; total: number };
-export type LocalVoterOverview = { total: number; boothCounts: Record<string, number> };
+export type LocalVoterOverview = {
+  total: number;
+  boothCounts: Record<string, number>;
+};
 export type LocalVoterPageLoader = (
   savePage: (voters: Voter[]) => Promise<void>,
 ) => Promise<number>;
