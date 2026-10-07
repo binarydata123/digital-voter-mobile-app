@@ -158,12 +158,6 @@ function clampRecordsPerRow(value?: number): 2 | 3 | 4 {
   return value === 3 || value === 4 ? value : 2;
 }
 
-function previewCardWidth(columns: 2 | 3 | 4) {
-  if (columns === 4) return "23.5%";
-  if (columns === 3) return "31.7%";
-  return "48.5%";
-}
-
 function previewStyleForLayout(layout: TemplateLayout): TemplatePreviewStyle {
   if (layout === "bottom") return "bannerBottom";
   if (layout === "left") return "bannerLeft";
@@ -262,8 +256,12 @@ function buildTemplateHtml({
           <div class="meta-grid">${metaCells}</div>
         </div>
       </article>`;
-    })
-    .join("");
+    });
+  const pages = Array.from({ length: Math.max(1, Math.ceil(voterCards.length / (columns * 2))) }, (_, index) => `<main class="sheet">
+    <h1 class="title">Booth ${escapeHtml(booth)} Voter Template</h1>
+    <p class="sub">${voters.length} voters</p><div class="rule"></div>
+    <section class="grid">${voterCards.slice(index * columns * 2, (index + 1) * columns * 2).join("")}</section>
+  </main>`).join("");
 
   return `<!DOCTYPE html>
 <html>
@@ -274,7 +272,9 @@ function buildTemplateHtml({
     @page { margin: 14px; }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: Arial, sans-serif; color: #0f172a; }
-    .sheet { padding: 14px; }
+    @page { size: A4 portrait; margin: 0; }
+    .sheet { width: 794px; min-height: 1123px; padding: 28px; break-after: page; }
+    .sheet:last-child { break-after: auto; }
     .title { color: #020617; font-size: 20px; line-height: 24px; font-weight: 900; margin: 0; }
     .sub { color: #0f172a; font-size: 12px; font-weight: 900; margin: 4px 0 0; }
     .rule { height: 2px; background: #075e54; margin: 10px 0; }
@@ -380,12 +380,7 @@ function buildTemplateHtml({
   </style>
 </head>
 <body>
-  <main class="sheet">
-    <h1 class="title">Booth ${escapeHtml(booth)} Voter Template</h1>
-    <p class="sub">${voters.length} voters</p>
-    <div class="rule"></div>
-    <section class="grid">${voterCards}</section>
-  </main>
+  ${pages}
 </body>
 </html>`;
 }
@@ -524,6 +519,7 @@ export default function TemplatesScreen() {
   );
   const [fields, setFields] = useState(DEFAULT_FIELDS);
   const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewWidth, setPreviewWidth] = useState(0);
 
   const politicianName = currentUser?.name ?? "Politician";
 
@@ -1173,22 +1169,33 @@ export default function TemplatesScreen() {
                 <X color="#334155" size={20} strokeWidth={2.7} />
               </Pressable>
             </View>
-            <ScrollView contentContainerStyle={styles.previewSheet}>
+            <ScrollView
+              style={{ flexGrow: 0, height: previewWidth > 0
+                ? Math.ceil(previewVoters.length / (columns * 2)) * 1123 * Math.min(1, previewWidth / 794)
+                  + Math.max(0, Math.ceil(previewVoters.length / (columns * 2)) - 1) * 12 + 24
+                : 400 }}
+              onLayout={(event) => setPreviewWidth(Math.max(1, event.nativeEvent.layout.width - 24))}
+              contentContainerStyle={{ padding: 12, gap: 12, alignItems: "center", backgroundColor: "#CBD5E1" }}>
+              {previewWidth > 0 && Array.from({ length: Math.ceil(previewVoters.length / (columns * 2)) }, (_, pageIndex) => {
+                const scale = Math.min(1, previewWidth / 794);
+                return <View key={pageIndex} style={{ width: 794 * scale, height: 1123 * scale, overflow: "hidden", flexShrink: 0 }}>
+                <View style={[styles.previewSheet, { width: 794, height: 1123, backgroundColor: "#FFFFFF", transform: [{ scale }], transformOrigin: "top left" }]}>
+
               <Text style={styles.paperTitle}>
                 Booth {selectedBooth === "All" ? "All Booths" : selectedBooth}{" "}
                 Voter Template
               </Text>
               <Text style={styles.paperSubtitle}>
-                {previewVoters.length} voters
+                {filteredVoters.length} voters
               </Text>
               <View style={styles.paperRule} />
               <View style={styles.previewGrid}>
-                {previewVoters.map((voter) => (
+                {previewVoters.slice(pageIndex * columns * 2, (pageIndex + 1) * columns * 2).map((voter) => (
                   <View
                     key={voter.id}
                     style={[
                       styles.previewCardCell,
-                      { width: previewCardWidth(columns) },
+                      { width: (794 - 56 - (columns - 1) * 10) / columns },
                     ]}>
                     <TemplateCard
                       fields={fields}
@@ -1200,6 +1207,8 @@ export default function TemplatesScreen() {
                   </View>
                 ))}
               </View>
+                </View></View>;
+              })}
             </ScrollView>
           </View>
         </View>
@@ -1498,12 +1507,12 @@ function TemplateCard({
           </Text>
         </View>
 
-        <Text numberOfLines={1} style={styles.cardName}>
+        <Text style={styles.cardName}>
           {voter.name.toUpperCase()}
         </Text>
 
         {fields.epicNo ? (
-          <Text numberOfLines={1} style={styles.cardEpic}>
+          <Text style={styles.cardEpic}>
             EPIC: {displayValue(voter.epicNo)}
           </Text>
         ) : null}
@@ -1511,7 +1520,7 @@ function TemplateCard({
         {fields.relation ? (
           <View style={styles.cardRelationRow}>
             <Text style={styles.cardRelationPrefix}>पति:</Text>
-            <Text numberOfLines={1} style={styles.cardRelationValue}>
+            <Text style={styles.cardRelationValue}>
               {relationLine}
             </Text>
           </View>
@@ -1519,27 +1528,27 @@ function TemplateCard({
 
         <View style={styles.cardMetaGrid}>
           {fields.age || fields.gender ? (
-            <Text numberOfLines={1} style={styles.cardMetaText}>
+            <Text style={styles.cardMetaText}>
               {ageGender}
             </Text>
           ) : null}
           {fields.ward ? (
-            <Text numberOfLines={1} style={styles.cardMetaTextRight}>
+            <Text style={styles.cardMetaTextRight}>
               Ward: {ward}
             </Text>
           ) : null}
           {fields.houseNo ? (
-            <Text numberOfLines={1} style={styles.cardMetaText}>
+            <Text style={styles.cardMetaText}>
               House No: {house}
             </Text>
           ) : null}
           {fields.booth ? (
-            <Text numberOfLines={1} style={styles.cardMetaTextRight}>
+            <Text style={styles.cardMetaTextRight}>
               Booth: {booth}
             </Text>
           ) : null}
           {fields.pollingStation ? (
-            <Text numberOfLines={1} style={styles.cardMetaText}>
+            <Text style={styles.cardMetaText}>
               Station: {station}
             </Text>
           ) : null}
@@ -1884,7 +1893,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   previewPanel: {
-    flex: 1,
+    maxHeight: "100%",
     backgroundColor: "#fff",
     borderRadius: 10,
     overflow: "hidden",
@@ -1914,7 +1923,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  previewSheet: { padding: 14 },
+  previewSheet: { padding: 28 },
   paperTitle: { color: "#020617", fontSize: 20, fontWeight: "900" },
   paperSubtitle: {
     color: "#0f172a",
@@ -1926,7 +1935,7 @@ const styles = StyleSheet.create({
   previewGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "space-between",
+    columnGap: 10,
     rowGap: 10,
   },
   previewCardCell: {
@@ -1948,9 +1957,10 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   cardDetail: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 0,
     paddingHorizontal: 14,
-    paddingTop: 14,
+    paddingTop: 38,
     paddingBottom: 12,
   },
   cardSerial: {
@@ -1975,14 +1985,14 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     fontWeight: "900",
     letterSpacing: 0.3,
-    paddingRight: 60,
+    paddingRight: 0,
   },
   cardEpic: {
     color: "#2563EB",
     fontSize: 13,
     fontWeight: "900",
     marginTop: 4,
-    paddingRight: 60,
+    paddingRight: 0,
   },
   cardRelationRow: {
     flexDirection: "row",
