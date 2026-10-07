@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -763,6 +764,34 @@ function GenderPreferenceBars({ groups }: { groups: HeatmapGroup[] }) {
   </View>;
 }
 
+function InteractivePreferencePie({ rows, total, label }: { rows: BarRow[]; total: number; label: string }) {
+  const [visible, setVisible] = useState(false);
+  return <>
+    <Pressable accessibilityRole="button" accessibilityLabel={`View ${label} preference details`} onPress={() => setVisible(true)} onLongPress={() => setVisible(true)} delayLongPress={350}>
+      <PieGraphic rows={rows} total={total} size={140} radius={68} innerRadius={0} showLabels />
+    </Pressable>
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={() => setVisible(false)}>
+      <Pressable onPress={() => setVisible(false)} style={{ flex: 1, backgroundColor: "rgba(15,23,42,0.45)", justifyContent: "center", padding: 24 }}>
+        <Pressable onPress={(event) => event.stopPropagation()} style={{ backgroundColor: "#0F172A", borderRadius: 14, padding: 18, maxHeight: "80%", width: "100%", maxWidth: 420, alignSelf: "center" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 }}>
+            <Text style={{ flex: 1, color: "#FFFFFF", fontWeight: "900", fontSize: 16 }}>{label}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close preference details" onPress={() => setVisible(false)} style={{ padding: 8 }}><Text style={{ color: "#FFFFFF", fontSize: 18 }}>✕</Text></Pressable>
+          </View>
+          <ScrollView>
+            {rows.slice().sort((first, second) => second.count - first.count).map((item) => (
+              <View key={item.label} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8 }}>
+                <View style={{ width: 9, height: 9, borderRadius: 3, backgroundColor: item.color }} />
+                <Text style={{ flex: 1, color: "#E2E8F0", fontSize: 13 }}>{item.label}</Text>
+                <Text style={{ color: "#FFFFFF", fontWeight: "800", fontSize: 13 }}>{formatPercent(item.count / total * 100)}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  </>;
+}
+
 function PreferencePieCharts({ title, groups }: { title: string; groups: HeatmapGroup[] }) {
   const names = Array.from(new Set(groups.flatMap((group) => group.preferences.map((item) => item.name))));
   return (
@@ -781,7 +810,7 @@ function PreferencePieCharts({ title, groups }: { title: string; groups: Heatmap
           const rows = group.preferences.filter((item) => item.count > 0).map((item) => ({ ...item, label: item.name, color: colorFor(names.indexOf(item.name)) }));
           const total = rows.reduce((sum, item) => sum + item.count, 0);
           return <View key={group.label} style={{ width: "48%", alignItems: "center", gap: 5 }}>
-            {total > 0 ? <PieGraphic rows={rows} total={total} size={140} radius={68} innerRadius={0} showLabels /> : <Text style={{ color: "#94A3B8", paddingVertical: 50 }}>No responses</Text>}
+            {total > 0 ? <InteractivePreferencePie rows={rows} total={total} label={group.label} /> : <Text style={{ color: "#94A3B8", paddingVertical: 50 }}>No responses</Text>}
             <Text style={{ color: "#334155", fontWeight: "800", textAlign: "center" }}>{group.label}</Text>
             <Text style={{ color: "#94A3B8", fontSize: 11 }}>{group.total} voters</Text>
           </View>;
