@@ -70,29 +70,8 @@ type HeatPalette = {
   leaderBorder: string;
 };
 
-const AGE_PALETTE: HeatPalette = {
-  name: "teal",
-  colors: ["#F0FDFA", "#CCFBF1", "#5EEAD4", "#14B8A6", "#0F766E"],
-  weakText: "#115E59",
-  strongText: "#FFFFFF",
-  leaderBorder: "#0F766E",
-};
 
-const GENDER_PALETTE: HeatPalette = {
-  name: "blue",
-  colors: ["#EFF6FF", "#DBEAFE", "#93C5FD", "#3B82F6", "#1D4ED8"],
-  weakText: "#1E3A8A",
-  strongText: "#FFFFFF",
-  leaderBorder: "#1D4ED8",
-};
 
-const EDUCATION_PALETTE: HeatPalette = {
-  name: "purple",
-  colors: ["#F5F3FF", "#EDE9FE", "#C4B5FD", "#8B5CF6", "#6D28D9"],
-  weakText: "#4C1D95",
-  strongText: "#FFFFFF",
-  leaderBorder: "#6D28D9",
-};
 
 const INCOME_PALETTE: HeatPalette = {
   name: "amber",
@@ -431,11 +410,8 @@ export default function SurveyScreen() {
           centerValue={String(report.summary.total)}
         />
 
-        <PreferenceHeatmap
+        <PreferencePieCharts
           title="Age-group support"
-          subtitle="Darker cells indicate stronger political preference"
-          rowHeader="Age"
-          palette={AGE_PALETTE}
           groups={AGE_BRACKETS.map((bracket) => {
             const found = report.supportByAgeGroup.find(
               (group) => group.ageBracket === bracket,
@@ -453,11 +429,7 @@ export default function SurveyScreen() {
           })}
         />
 
-        <PreferenceHeatmap
-          title="Preference by gender"
-          subtitle="Darker cells indicate stronger political preference"
-          rowHeader="Gender"
-          palette={GENDER_PALETTE}
+        <GenderPreferenceBars
           groups={report.preferenceByGender.map((item) => ({
             label: item.gender,
             total: item.total,
@@ -465,11 +437,8 @@ export default function SurveyScreen() {
           }))}
         />
 
-        <PreferenceHeatmap
-          title="Preference by education"
-          subtitle="Darker cells indicate stronger political preference"
-          rowHeader="Education"
-          palette={EDUCATION_PALETTE}
+        <PreferencePieCharts
+          title="Education preference"
           groups={report.preferenceByEducation.map((item) => ({
             label: item.education,
             total: item.total,
@@ -590,7 +559,7 @@ function PieGraphic({
             Math.PI *
             2;
         const angle = (row.count / total) * Math.PI * 2;
-        const endAngle = startAngle + angle;
+        const endAngle = startAngle + Math.min(angle, Math.PI * 2 - 0.000001);
         const path = buildPieSlice(
           center,
           center,
@@ -753,6 +722,74 @@ type HeatmapGroup = {
   total: number;
   preferences: { name: string; count: number; percentage?: number }[];
 };
+
+function GenderPreferenceBars({ groups }: { groups: HeatmapGroup[] }) {
+  const genders = [
+    { label: "Male", color: "#2563EB" },
+    { label: "Female", color: "#EC4899" },
+    { label: "Other", color: "#8B5CF6" },
+  ];
+  const names = Array.from(new Set(groups.flatMap((group) => group.preferences.map((item) => item.name))));
+  const getCount = (name: string, gender: string) => groups
+    .filter((group) => group.label.toLowerCase() === gender.toLowerCase())
+    .reduce((sum, group) => sum + group.preferences.filter((item) => item.name === name).reduce((count, item) => count + item.count, 0), 0);
+  const maximum = Math.max(1, ...names.flatMap((name) => genders.map((gender) => getCount(name, gender.label))));
+  return <View style={styles.chartCard}>
+    <Text style={styles.chartTitle}>Preference by gender</Text>
+    <Text style={{ color: "#64748B", fontSize: 12, marginTop: 4 }}>Number of voters · swipe to view politicians</Text>
+    <View style={{ flexDirection: "row", gap: 16, marginVertical: 14 }}>
+      {genders.map((gender) => <View key={gender.label} style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+        <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: gender.color }} />
+        <Text style={{ color: "#475569", fontSize: 12 }}>{gender.label}</Text>
+      </View>)}
+    </View>
+    {names.length === 0 ? <Text style={{ color: "#94A3B8" }}>No responses yet.</Text> :
+      <ScrollView horizontal showsHorizontalScrollIndicator>
+        <View style={{ flexDirection: "row", gap: 18, paddingBottom: 10 }}>
+          {names.map((name) => <View key={name} style={{ width: 126 }}>
+            <View style={{ height: 190, flexDirection: "row", alignItems: "flex-end", justifyContent: "center", gap: 8, borderBottomWidth: 1, borderBottomColor: "#CBD5E1" }}>
+              {genders.map((gender) => {
+                const count = getCount(name, gender.label);
+                return <View key={gender.label} accessible accessibilityLabel={`${name}, ${gender.label}: ${count} voters`} style={{ alignItems: "center", width: 30 }}>
+                  <Text style={{ color: "#475569", fontSize: 11, marginBottom: 4 }}>{count}</Text>
+                  <View style={{ width: 26, height: count > 0 ? Math.max(2, count / maximum * 160) : 0, backgroundColor: gender.color, borderTopLeftRadius: 4, borderTopRightRadius: 4 }} />
+                </View>;
+              })}
+            </View>
+            <Text style={{ textAlign: "center", color: "#334155", fontSize: 12, fontWeight: "800", marginTop: 8 }}>{name}</Text>
+          </View>)}
+        </View>
+      </ScrollView>}
+  </View>;
+}
+
+function PreferencePieCharts({ title, groups }: { title: string; groups: HeatmapGroup[] }) {
+  const names = Array.from(new Set(groups.flatMap((group) => group.preferences.map((item) => item.name))));
+  return (
+    <View style={styles.chartCard}>
+      <Text style={styles.chartTitle}>{title}</Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginVertical: 14 }}>
+        {names.map((name, index) => (
+          <View key={name} style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <View style={{ width: 9, height: 9, borderRadius: 3, backgroundColor: colorFor(index) }} />
+            <Text style={{ color: "#475569", fontSize: 11 }}>{name}</Text>
+          </View>
+        ))}
+      </View>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 18 }}>
+        {groups.map((group) => {
+          const rows = group.preferences.filter((item) => item.count > 0).map((item) => ({ ...item, label: item.name, color: colorFor(names.indexOf(item.name)) }));
+          const total = rows.reduce((sum, item) => sum + item.count, 0);
+          return <View key={group.label} style={{ width: "48%", alignItems: "center", gap: 5 }}>
+            {total > 0 ? <PieGraphic rows={rows} total={total} size={140} radius={68} innerRadius={0} showLabels /> : <Text style={{ color: "#94A3B8", paddingVertical: 50 }}>No responses</Text>}
+            <Text style={{ color: "#334155", fontWeight: "800", textAlign: "center" }}>{group.label}</Text>
+            <Text style={{ color: "#94A3B8", fontSize: 11 }}>{group.total} voters</Text>
+          </View>;
+        })}
+      </View>
+    </View>
+  );
+}
 
 function PreferenceHeatmap({
   title,

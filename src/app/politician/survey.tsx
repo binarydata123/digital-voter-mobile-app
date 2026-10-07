@@ -14,6 +14,7 @@ import {
   LogOut,
   MapPin,
   Menu,
+  RotateCcw,
   UserRound,
   WalletCards,
 } from "lucide-react-native";
@@ -420,6 +421,16 @@ export default function SurveyScreen() {
     return "";
   }
 
+  function resetForm() {
+    if (saving) return;
+    setForm({ ...emptyForm, issues: [] });
+    setMissingField(null);
+    setMessage("");
+    setError("");
+    setActiveDropdown(null);
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }
+
   async function handleSave() {
     const validationError = validate();
     if (validationError) {
@@ -513,6 +524,15 @@ export default function SurveyScreen() {
         <View style={styles.headerTop}>
           <View />
           <View style={styles.headerActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Reset survey answers"
+              disabled={saving || loadingScope}
+              onPress={resetForm}
+              style={[styles.headerIconButton, (saving || loadingScope) && styles.disabledButton]}
+            >
+              <RotateCcw color="#087568" size={18} strokeWidth={2.8} />
+            </Pressable>
             <Pressable
               accessibilityLabel="Survey report"
               onPress={openSurveyReport}

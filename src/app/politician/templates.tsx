@@ -415,19 +415,24 @@ function buildTemplateHtml({
 
 async function openWebTemplatePrint(html: string): Promise<void> {
   const printWindow = window.open("", "_blank");
-  if (!printWindow) throw new Error("Please allow popups for this site, then try printing again.");
+  if (!printWindow)
+    throw new Error(
+      "Please allow popups for this site, then try printing again.",
+    );
   try {
     printWindow.document.open();
     printWindow.document.write(html);
     printWindow.document.close();
-    await Promise.all(Array.from(printWindow.document.images).map((image) => {
-      if (image.complete) return Promise.resolve();
-      return new Promise<void>((resolve) => {
-        image.addEventListener("load", () => resolve(), { once: true });
-        image.addEventListener("error", () => resolve(), { once: true });
-        window.setTimeout(resolve, 10000);
-      });
-    }));
+    await Promise.all(
+      Array.from(printWindow.document.images).map((image) => {
+        if (image.complete) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          image.addEventListener("load", () => resolve(), { once: true });
+          image.addEventListener("error", () => resolve(), { once: true });
+          window.setTimeout(resolve, 10000);
+        });
+      }),
+    );
     if (printWindow.closed) return;
     printWindow.focus();
     printWindow.print();
@@ -938,7 +943,11 @@ export default function TemplatesScreen() {
                 style={styles.headerIconButton}
                 onPress={printTemplate}
                 disabled={printing || saving}>
-                {printing ? <ActivityIndicator size="small" color="#0F766E" /> : <Printer color="#0F766E" size={18} strokeWidth={2.8} />}
+                {printing ? (
+                  <ActivityIndicator size="small" color="#0F766E" />
+                ) : (
+                  <Printer color="#0F766E" size={18} strokeWidth={2.8} />
+                )}
               </Pressable>
               <Pressable
                 style={[styles.headerIconButton, styles.menuButton]}
@@ -1595,9 +1604,15 @@ function TemplateCard({
 
       <View style={[styles.cardDetail, compact && styles.compactDetail]}>
         <View style={styles.cardHeading}>
-          <Text style={[styles.cardName, compact && styles.compactName]}>{voter.name.toUpperCase()}</Text>
+          <Text style={[styles.cardName, compact && styles.compactName]}>
+            {voter.name.toUpperCase()}
+          </Text>
           <View style={[styles.cardSerial, compact && styles.compactSerial]}>
-            <Text style={[styles.cardSerialText, compact && styles.compactSerialText]}>
+            <Text
+              style={[
+                styles.cardSerialText,
+                compact && styles.compactSerialText,
+              ]}>
               #{displayValue(voter.serialNo || voter.id)}
             </Text>
           </View>
@@ -1611,26 +1626,46 @@ function TemplateCard({
 
         {fields.relation ? (
           <View style={styles.cardRelationRow}>
-            <Text style={[styles.cardRelationPrefix, compact && styles.compactText]}>पति:</Text>
-            <Text style={[styles.cardRelationValue, compact && styles.compactText]}>{relationLine}</Text>
+            <Text
+              style={[
+                styles.cardRelationPrefix,
+                compact && styles.compactText,
+              ]}>
+              पति:
+            </Text>
+            <Text
+              style={[styles.cardRelationValue, compact && styles.compactText]}>
+              {relationLine}
+            </Text>
           </View>
         ) : null}
 
         <View style={styles.cardMetaGrid}>
           {fields.age || fields.gender ? (
-            <Text style={[styles.cardMetaText, compact && styles.compactText]}>{ageGender}</Text>
+            <Text style={[styles.cardMetaText, compact && styles.compactText]}>
+              {ageGender}
+            </Text>
           ) : null}
           {fields.ward ? (
-            <Text style={[styles.cardMetaTextRight, compact && styles.compactText]}>Ward: {ward}</Text>
+            <Text
+              style={[styles.cardMetaTextRight, compact && styles.compactText]}>
+              Ward: {ward}
+            </Text>
           ) : null}
           {fields.houseNo ? (
-            <Text style={[styles.cardMetaText, compact && styles.compactText]}>House No: {house}</Text>
+            <Text style={[styles.cardMetaText, compact && styles.compactText]}>
+              House No: {house}
+            </Text>
           ) : null}
           {fields.booth ? (
-            <Text style={[styles.cardBoothText, compact && styles.compactText]}>Booth{"\u00A0"}No: {booth}</Text>
+            <Text style={[styles.cardBoothText, compact && styles.compactText]}>
+              Booth{"\u00A0"}No: {booth}
+            </Text>
           ) : null}
           {fields.pollingStation ? (
-            <Text style={[styles.cardMetaText, compact && styles.compactText]}>Station: {station}</Text>
+            <Text style={[styles.cardMetaText, compact && styles.compactText]}>
+              Station: {station}
+            </Text>
           ) : null}
         </View>
       </View>
@@ -2110,7 +2145,13 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     paddingRight: 6,
   },
-  cardBoothText: { width: "100%", color: "#475569", fontSize: 12, lineHeight: 16, fontWeight: "800" },
+  cardBoothText: {
+    width: "100%",
+    color: "#475569",
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "800",
+  },
   cardMetaTextRight: {
     width: "50%",
     color: "#475569",
