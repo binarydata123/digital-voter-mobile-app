@@ -198,56 +198,59 @@ function buildTemplateHtml({
   voters: Voter[];
   bannerImageUrl: string;
 }) {
-  const voterCards = voters
-    .map((voter) => {
-      const gender = displayValue(voter.gender);
-      const age = displayValue(voter.age);
-      const ageGender =
-        age !== "N/A" && gender !== "N/A"
-          ? `${age} | ${gender}`
-          : age !== "N/A"
-            ? age
-            : gender;
+  const voterCards = voters.map((voter) => {
+    const gender = displayValue(voter.gender);
+    const age = displayValue(voter.age);
+    const ageGender =
+      age !== "N/A" && gender !== "N/A"
+        ? `${age} | ${gender}`
+        : age !== "N/A"
+          ? age
+          : gender;
 
-      const relation = displayValue(voter.relation);
-      const guardian = displayValue(voter.guardian);
-      const relationLine =
-        relation !== "N/A" && guardian !== "N/A"
-          ? `${relation}: ${guardian}`
-          : guardian !== "N/A"
-            ? guardian
-            : "N/A";
+    const relation = displayValue(voter.relation);
+    const guardian = displayValue(
+      String(voter.guardian ?? "")
+        .replace(/\s*\(husband\)/gi, "")
+        .trim(),
+    );
+    const relationLine =
+      relation !== "N/A" && guardian !== "N/A"
+        ? `${relation}: ${guardian}`
+        : guardian !== "N/A"
+          ? guardian
+          : "N/A";
 
-      const ward = displayValue(voter.ward);
-      const house = displayValue(voter.houseNo);
-      const boothValue = displayValue(voter.booth);
-      const station = displayValue(voter.pollingStation);
+    const ward = displayValue(voter.ward);
+    const house = displayValue(voter.houseNo);
+    const boothValue = displayValue(voter.booth);
+    const station = displayValue(voter.pollingStation);
 
-      const metaCells = [
-        fields.age || fields.gender
-          ? `<div class="meta-left">${escapeHtml(ageGender)}</div>`
-          : "",
-        fields.ward
-          ? `<div class="meta-right">Ward: ${escapeHtml(ward)}</div>`
-          : "",
-        fields.houseNo
-          ? `<div class="meta-left">House No: ${escapeHtml(house)}</div>`
-          : "",
-        fields.booth
-          ? `<div class="meta-right">Booth: ${escapeHtml(boothValue)}</div>`
-          : "",
-        fields.pollingStation
-          ? `<div class="meta-left">Station: ${escapeHtml(station)}</div>`
-          : "",
-      ].join("");
+    const metaCells = [
+      fields.age || fields.gender
+        ? `<div class="meta-left">${escapeHtml(ageGender)}</div>`
+        : "",
+      fields.ward
+        ? `<div class="meta-right">Ward: ${escapeHtml(ward)}</div>`
+        : "",
+      fields.houseNo
+        ? `<div class="meta-left">House No: ${escapeHtml(house)}</div>`
+        : "",
+      fields.booth
+        ? `<div class="meta-right">Booth: ${escapeHtml(boothValue)}</div>`
+        : "",
+      fields.pollingStation
+        ? `<div class="meta-left">Station: ${escapeHtml(station)}</div>`
+        : "",
+    ].join("");
 
-      const bannerBlock = bannerImageUrl
-        ? `<div class="banner"><img src="${escapeHtml(bannerImageUrl)}" alt="Banner" class="banner-img" /></div>`
-        : `<div class="banner banner-fallback"><span>${escapeHtml(politicianName)} Banner</span></div>`;
+    const bannerBlock = bannerImageUrl
+      ? `<div class="banner"><img src="${escapeHtml(bannerImageUrl)}" alt="Banner" class="banner-img" /></div>`
+      : `<div class="banner banner-fallback"><span>${escapeHtml(politicianName)} Banner</span></div>`;
 
-      // IMPORTANT: banner FIRST, detail SECOND.
-      // `.bottom` uses column-reverse to flip it, matching the RN preview.
-      return `<article class="voter-card ${layout}">
+    // IMPORTANT: banner FIRST, detail SECOND.
+    // `.bottom` uses column-reverse to flip it, matching the RN preview.
+    return `<article class="voter-card ${layout}">
         ${bannerBlock}
         <div class="detail">
           <div class="card-heading"><h2>${escapeHtml(voter.name.toUpperCase())}</h2><div class="serial">#${escapeHtml(voter.serialNo || voter.id)}</div></div>
@@ -256,12 +259,21 @@ function buildTemplateHtml({
           <div class="meta-grid">${metaCells}</div>
         </div>
       </article>`;
-    });
-  const pages = getTemplatePages(voterCards, columns * 3).map((pageCards) => `<main class="sheet">
+  });
+  const pages = getTemplatePages(voterCards, columns * 3)
+    .map(
+      (pageCards) => `<main class="sheet">
     <h1 class="title">Booth ${escapeHtml(booth)} Voter Template</h1>
     <p class="sub">${pageCards.length} voters</p><div class="rule"></div>
-    <section class="grid">${getTemplatePages(pageCards, 3).map((columnCards) => `<div class="card-column">${columnCards.join("")}</div>`).join("")}</section>
-  </main>`).join("");
+    <section class="grid">${getTemplatePages(pageCards, 3)
+      .map(
+        (columnCards) =>
+          `<div class="card-column">${columnCards.join("")}</div>`,
+      )
+      .join("")}</section>
+  </main>`,
+    )
+    .join("");
 
   return `<!DOCTYPE html>
 <html>
@@ -653,7 +665,11 @@ export default function TemplatesScreen() {
     };
   }, [shareImageRequest, templateBannerImage]);
 
-  const filteredVoters = useMemo(() => Array.from(new Map(voters.map((voter) => [voter.id, voter])).values()), [voters]);
+  const filteredVoters = useMemo(
+    () =>
+      Array.from(new Map(voters.map((voter) => [voter.id, voter])).values()),
+    [voters],
+  );
   const listData = useMemo<TemplateListItem[]>(
     () => [
       TEMPLATE_CONTROLS_ITEM,
@@ -1178,39 +1194,97 @@ export default function TemplatesScreen() {
               </Pressable>
             </View>
             <ScrollView
-              style={{ flexGrow: 0, height: previewWidth > 0
-                ? Math.ceil(previewVoters.length / (columns * 3)) * 1123 * Math.min(1, previewWidth / 794)
-                  + Math.max(0, Math.ceil(previewVoters.length / (columns * 3)) - 1) * 12 + 24
-                : 400 }}
-              onLayout={(event) => setPreviewWidth(Math.max(1, event.nativeEvent.layout.width - 24))}
-              contentContainerStyle={{ padding: 12, gap: 12, alignItems: "center", backgroundColor: "#CBD5E1" }}>
-              {previewWidth > 0 && previewPages.map((pageVoters, pageIndex) => {
-                const scale = Math.min(1, previewWidth / 794);
-                return <View key={pageIndex} style={{ width: 794 * scale, height: 1123 * scale, overflow: "hidden", flexShrink: 0 }}>
-                <View style={[styles.previewSheet, { width: 794, height: 1123, backgroundColor: "#FFFFFF", transform: [{ scale }], transformOrigin: "top left" }]}>
-
-              <Text style={styles.paperTitle}>
-                Booth {selectedBooth === "All" ? "All Booths" : selectedBooth}{" "}
-                Voter Template
-              </Text>
-              <Text style={styles.paperSubtitle}>
-                {pageVoters.length} voters
-              </Text>
-              <View style={styles.paperRule} />
-              <View style={styles.previewGrid}>
-                {getTemplatePages(pageVoters, 3).map((columnVoters, columnIndex) => (
-                  <View key={columnIndex} style={{ width: (794 - 56 - (columns - 1) * 10) / columns, gap: 10 }}>
-                    {columnVoters.map((voter) => (
-                      <View key={voter.id} style={styles.previewCardCell}>
-                        <TemplateCard fields={fields} layout={layout} politicianName={politicianName}
-                          voter={voter} bannerImageUrl={templateBannerImage} />
+              style={{
+                flexGrow: 0,
+                height:
+                  previewWidth > 0
+                    ? Math.ceil(previewVoters.length / (columns * 3)) *
+                        1123 *
+                        Math.min(1, previewWidth / 794) +
+                      Math.max(
+                        0,
+                        Math.ceil(previewVoters.length / (columns * 3)) - 1,
+                      ) *
+                        12 +
+                      24
+                    : 400,
+              }}
+              onLayout={(event) =>
+                setPreviewWidth(
+                  Math.max(1, event.nativeEvent.layout.width - 24),
+                )
+              }
+              contentContainerStyle={{
+                padding: 12,
+                gap: 12,
+                alignItems: "center",
+                backgroundColor: "#CBD5E1",
+              }}>
+              {previewWidth > 0 &&
+                previewPages.map((pageVoters, pageIndex) => {
+                  const scale = Math.min(1, previewWidth / 794);
+                  return (
+                    <View
+                      key={pageIndex}
+                      style={{
+                        width: 794 * scale,
+                        height: 1123 * scale,
+                        overflow: "hidden",
+                        flexShrink: 0,
+                      }}>
+                      <View
+                        style={[
+                          styles.previewSheet,
+                          {
+                            width: 794,
+                            height: 1123,
+                            backgroundColor: "#FFFFFF",
+                            transform: [{ scale }],
+                            transformOrigin: "top left",
+                          },
+                        ]}>
+                        <Text style={styles.paperTitle}>
+                          Booth{" "}
+                          {selectedBooth === "All"
+                            ? "All Booths"
+                            : selectedBooth}{" "}
+                          Voter Template
+                        </Text>
+                        <Text style={styles.paperSubtitle}>
+                          {pageVoters.length} voters
+                        </Text>
+                        <View style={styles.paperRule} />
+                        <View style={styles.previewGrid}>
+                          {getTemplatePages(pageVoters, 3).map(
+                            (columnVoters, columnIndex) => (
+                              <View
+                                key={columnIndex}
+                                style={{
+                                  width:
+                                    (794 - 56 - (columns - 1) * 10) / columns,
+                                  gap: 10,
+                                }}>
+                                {columnVoters.map((voter) => (
+                                  <View
+                                    key={voter.id}
+                                    style={styles.previewCardCell}>
+                                    <TemplateCard
+                                      fields={fields}
+                                      layout={layout}
+                                      politicianName={politicianName}
+                                      voter={voter}
+                                      bannerImageUrl={templateBannerImage}
+                                    />
+                                  </View>
+                                ))}
+                              </View>
+                            ),
+                          )}
+                        </View>
                       </View>
-                    ))}
-                  </View>
-                ))}
-              </View>
-                </View></View>;
-              })}
+                    </View>
+                  );
+                })}
             </ScrollView>
           </View>
         </View>
@@ -1462,7 +1536,11 @@ function TemplateCard({
         : gender;
 
   const relation = displayValue(voter.relation);
-  const guardian = displayValue(voter.guardian);
+  const guardian = displayValue(
+    String(voter.guardian ?? "")
+      .replace(/\s*\(husband\)/gi, "")
+      .trim(),
+  );
   const relationLine =
     relation !== "N/A" && guardian !== "N/A"
       ? `${relation}: ${guardian}`
@@ -1506,7 +1584,9 @@ function TemplateCard({
         <View style={styles.cardHeading}>
           <Text style={styles.cardName}>{voter.name.toUpperCase()}</Text>
           <View style={styles.cardSerial}>
-            <Text style={styles.cardSerialText}>#{displayValue(voter.serialNo || voter.id)}</Text>
+            <Text style={styles.cardSerialText}>
+              #{displayValue(voter.serialNo || voter.id)}
+            </Text>
           </View>
         </View>
 
@@ -1519,37 +1599,25 @@ function TemplateCard({
         {fields.relation ? (
           <View style={styles.cardRelationRow}>
             <Text style={styles.cardRelationPrefix}>पति:</Text>
-            <Text style={styles.cardRelationValue}>
-              {relationLine}
-            </Text>
+            <Text style={styles.cardRelationValue}>{relationLine}</Text>
           </View>
         ) : null}
 
         <View style={styles.cardMetaGrid}>
           {fields.age || fields.gender ? (
-            <Text style={styles.cardMetaText}>
-              {ageGender}
-            </Text>
+            <Text style={styles.cardMetaText}>{ageGender}</Text>
           ) : null}
           {fields.ward ? (
-            <Text style={styles.cardMetaTextRight}>
-              Ward: {ward}
-            </Text>
+            <Text style={styles.cardMetaTextRight}>Ward: {ward}</Text>
           ) : null}
           {fields.houseNo ? (
-            <Text style={styles.cardMetaText}>
-              House No: {house}
-            </Text>
+            <Text style={styles.cardMetaText}>House No: {house}</Text>
           ) : null}
           {fields.booth ? (
-            <Text style={styles.cardMetaTextRight}>
-              Booth: {booth}
-            </Text>
+            <Text style={styles.cardMetaTextRight}>Booth: {booth}</Text>
           ) : null}
           {fields.pollingStation ? (
-            <Text style={styles.cardMetaText}>
-              Station: {station}
-            </Text>
+            <Text style={styles.cardMetaText}>Station: {station}</Text>
           ) : null}
         </View>
       </View>
