@@ -188,7 +188,7 @@ export default function SurveyScreen() {
     majorPublicConcerns: [],
     wardHeatMap: [],
   });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const autoLoadedScopeKey = useRef<string | null>(null);
   const currentUser = getCurrentUser();
@@ -226,6 +226,7 @@ export default function SurveyScreen() {
 
   const loadReport = useCallback(async () => {
     if (!canLoad) {
+      setLoading(false);
       setError(
         isConstituencyElection
           ? "Election type, year, state, and constituency are required."
@@ -394,6 +395,7 @@ export default function SurveyScreen() {
           
           */}
 
+        {loading || !scopeReady ? <ReportSkeleton /> : <>
         {report.summary.total === 0 && !loading ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>No anonymous responses yet</Text>
@@ -447,11 +449,7 @@ export default function SurveyScreen() {
           }))}
         />
 
-        <PreferenceHeatmap
-          title="Preference by income"
-          subtitle="Darker cells indicate stronger political preference"
-          rowHeader="Income"
-          palette={INCOME_PALETTE}
+        <IncomePreferenceViews
           groups={report.preferenceByIncome.map((item) => ({
             label: item.incomeBracket,
             total: item.total,
@@ -466,9 +464,27 @@ export default function SurveyScreen() {
           showPercent
         />
         <MajorPublicConcernsChart data={issueRows} />
+        </>}
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function ReportSkeleton() {
+  return <View accessible accessibilityLabel="Loading survey report" accessibilityState={{ busy: true }} style={{ gap: 14 }}>
+    {["pie", "groups", "bars"].map((kind) => <View key={kind} style={styles.chartCard}>
+      <View style={[styles.skeletonBlock, { width: "58%", height: 18, marginBottom: 10 }]} />
+      <View style={[styles.skeletonBlock, { width: "80%", height: 12, marginBottom: 22 }]} />
+      {kind === "bars" ? <View style={{ gap: 14 }}>
+        {[85, 65, 75, 45].map((width) => <View key={width} style={[styles.skeletonBlock, { width: `${width}%`, height: 24 }]} />)}
+      </View> : <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-around", gap: 18 }}>
+        {Array.from({ length: kind === "groups" ? 4 : 1 }, (_, index) => <View key={index} style={{ alignItems: "center", gap: 10, width: kind === "groups" ? "44%" : "100%" }}>
+          <View style={[styles.skeletonBlock, { width: 120, height: 120, borderRadius: 60 }]} />
+          <View style={[styles.skeletonBlock, { width: 85, height: 12 }]} />
+        </View>)}
+      </View>}
+    </View>)}
+  </View>;
 }
 
 /* ------------------------------- Pie / Donut ------------------------------- */
@@ -792,11 +808,11 @@ function InteractivePreferencePie({ rows, total, label }: { rows: BarRow[]; tota
   </>;
 }
 
-function PreferencePieCharts({ title, groups }: { title: string; groups: HeatmapGroup[] }) {
+function PreferencePieCharts({ title, groups, embedded = false }: { title: string; groups: HeatmapGroup[]; embedded?: boolean }) {
   const names = Array.from(new Set(groups.flatMap((group) => group.preferences.map((item) => item.name))));
   return (
-    <View style={styles.chartCard}>
-      <Text style={styles.chartTitle}>{title}</Text>
+    <View style={!embedded && styles.chartCard}>
+      {!embedded && <Text style={styles.chartTitle}>{title}</Text>}
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginVertical: 14 }}>
         {names.map((name, index) => (
           <View key={name} style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
@@ -820,13 +836,37 @@ function PreferencePieCharts({ title, groups }: { title: string; groups: Heatmap
   );
 }
 
+function IncomePreferenceViews({ groups }: { groups: HeatmapGroup[] }) {
+  const [view, setView] = useState<"pie" | "heatmap">("pie");
+  return <View style={styles.chartCard}>
+    <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+      <Text style={[styles.chartTitle, { flexGrow: 1 }]}>Preference by income</Text>
+      <View style={{ flexDirection: "row", gap: 6 }}>
+      {(["pie", "heatmap"] as const).map((option) => <Pressable
+        key={option}
+        accessibilityRole="button"
+        accessibilityLabel={`Show income preference as ${option === "pie" ? "pie charts" : "heatmap"}`}
+        accessibilityState={{ selected: view === option }}
+        onPress={() => setView(option)}
+        style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: "#0F766E", backgroundColor: view === option ? "#0F766E" : "#FFFFFF" }}>
+        <Text style={{ fontSize: 12, fontWeight: "800", color: view === option ? "#FFFFFF" : "#0F766E" }}>{option === "pie" ? "Pie charts" : "Heatmap"}</Text>
+      </Pressable>)}
+      </View>
+    </View>
+    {view === "pie" ? <PreferencePieCharts embedded title="Preference by income" groups={groups} /> :
+      <PreferenceHeatmap embedded title="Preference by income" subtitle="Darker cells indicate stronger political preference" rowHeader="Income" palette={INCOME_PALETTE} groups={groups} />}
+  </View>;
+}
+
 function PreferenceHeatmap({
   title,
   subtitle,
   rowHeader,
   groups,
   palette,
+  embedded = false,
 }: {
+  embedded?: boolean;
   title: string;
   subtitle?: string;
   rowHeader: string;
@@ -838,12 +878,12 @@ function PreferenceHeatmap({
   );
   const visibleGroups = groups.filter((group) => group.total > 0);
   const hasData = visibleGroups.length > 0 && politicians.length > 0;
-  const tableWidth = Math.max(300, 96 + politicians.length * 68);
+  const tableWidth = politicians.length * 68 - 6;
 
   return (
-    <View style={styles.chartCard}>
+    <View style={embedded ? { marginTop: 14 } : styles.chartCard}>
       <View style={styles.chartHeader}>
-        <View style={styles.chartHeaderRow}>
+        {!embedded && <View style={styles.chartHeaderRow}>
           <Text style={styles.chartTitle}>{title}</Text>
           <View
             style={[
@@ -851,18 +891,23 @@ function PreferenceHeatmap({
               { backgroundColor: palette.colors[4] },
             ]}
           />
-        </View>
+        </View>}
         {subtitle ? <Text style={styles.chartSubtitle}>{subtitle}</Text> : null}
       </View>
       {!hasData ? <EmptyChartText /> : null}
       {hasData ? (
         <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={{ flexDirection: "row", gap: 6 }}>
+            <View style={{ width: 96, gap: 6 }}>
+              <Text style={[styles.heatmapHeader, styles.heatmapRowHeader, { height: 26 }]}>{rowHeader}</Text>
+              {visibleGroups.map((group) => <View key={group.label} style={styles.heatmapRowCell}>
+                <Text style={styles.heatmapRowLabel}>{group.label}</Text>
+                <Text style={styles.heatmapRowTotal}>{group.total}</Text>
+              </View>)}
+            </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
             <View style={[styles.heatmapTable, { width: tableWidth }]}>
-              <View style={styles.heatmapHeaderRow}>
-                <Text style={[styles.heatmapHeader, styles.heatmapRowHeader]}>
-                  {rowHeader}
-                </Text>
+              <View style={[styles.heatmapHeaderRow, { height: 26 }]}>
                 {politicians.map((name) => (
                   <Text
                     key={name}
@@ -883,12 +928,6 @@ function PreferenceHeatmap({
 
                 return (
                   <View key={group.label} style={styles.heatmapRow}>
-                    <View style={styles.heatmapRowCell}>
-                      <Text style={styles.heatmapRowLabel} numberOfLines={1}>
-                        {group.label}
-                      </Text>
-                      <Text style={styles.heatmapRowTotal}>{group.total}</Text>
-                    </View>
                     {politicians.map((name) => {
                       const preference = group.preferences.find(
                         (item) => item.name === name,
@@ -931,6 +970,7 @@ function PreferenceHeatmap({
               })}
             </View>
           </ScrollView>
+          </View>
           <View style={styles.heatmapLegend}>
             <Text style={styles.heatmapLegendText}>Low</Text>
             {palette.colors.map((color) => (
@@ -983,6 +1023,7 @@ function EmptyChartText({
 }
 
 const styles = StyleSheet.create({
+  skeletonBlock: { backgroundColor: "#E2E8F0", borderRadius: 6 },
   safe: { flex: 1, backgroundColor: "#F4FBF7" },
   content: { padding: 16, paddingBottom: 36, gap: 14 },
   topRow: {
