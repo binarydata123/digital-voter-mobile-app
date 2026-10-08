@@ -1,5 +1,6 @@
 import { getTemplatePages } from "@/utils/templatePages";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Print from "expo-print";
 import { router } from "expo-router";
 import * as Sharing from "expo-sharing";
@@ -38,7 +39,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 import { VoterCard } from "@/features/voters/components/VoterCard";
-import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
+import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleton";
 import {
   shareVoterSlipImageFromRef,
   VoterSlipPaper,
@@ -677,9 +678,9 @@ export default function TemplatesScreen() {
   const listData = useMemo<TemplateListItem[]>(
     () => [
       TEMPLATE_CONTROLS_ITEM,
-      ...filteredVoters.map((voter) => ({ type: "voter" as const, voter })),
+      ...(loading ? [] : filteredVoters.map((voter) => ({ type: "voter" as const, voter }))),
     ],
-    [filteredVoters],
+    [filteredVoters, loading],
   );
 
   const boothOptions =
@@ -797,7 +798,19 @@ export default function TemplatesScreen() {
         return;
       }
       await saveTemplateSelection();
-      const { uri } = await Print.printToFileAsync({ html });
+      const cacheDirectory = FileSystem.cacheDirectory;
+      if (!cacheDirectory) {
+        throw new Error("Unable to access the PDF cache directory.");
+      }
+      // Write into the app's scoped cache so Sharing has permission to read it.
+      const { base64 } = await Print.printToFileAsync({ html, base64: true });
+      if (!base64) {
+        throw new Error("Unable to create the PDF file.");
+      }
+      const uri = `${cacheDirectory}voter-template-${Date.now()}.pdf`;
+      await FileSystem.writeAsStringAsync(uri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, {
           mimeType: "application/pdf",
@@ -1028,10 +1041,6 @@ export default function TemplatesScreen() {
     );
   }
 
-  if (loading) {
-    return <VoterDataSetup />;
-  }
-
   return (
     <SafeAreaView style={styles.safe}>
       <FlashList
@@ -1053,6 +1062,7 @@ export default function TemplatesScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={renderScreenHeader}
+        ListFooterComponent={loading ? <View style={{ paddingHorizontal: 12, paddingBottom: 20 }}><VoterListSkeleton /></View> : null}
       />
 
       {showScrollTop ? (
