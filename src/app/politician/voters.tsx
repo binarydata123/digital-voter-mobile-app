@@ -121,6 +121,10 @@ export default function VotersScreen() {
     useState<ShareImageRequest | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [listHeight, setListHeight] = useState(0);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const [boothControlsHeight, setBoothControlsHeight] = useState(0);
+  const [searchControlsHeight, setSearchControlsHeight] = useState(0);
   const boothSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shareSlipRef = useRef<View>(null);
   const listRef = useRef<FlashListRef<VoterListItem>>(null);
@@ -573,7 +577,13 @@ export default function VotersScreen() {
 
   const renderStickyControls = useCallback(
     (section: "controls" | "booths") => (
-      <View style={section === "controls" ? styles.stickyControls : styles.boothControls}>
+      <View
+        onLayout={(event) => {
+          const height = event.nativeEvent.layout.height;
+          if (section === "booths") setBoothControlsHeight(height);
+          else setSearchControlsHeight(height);
+        }}
+        style={section === "controls" ? styles.stickyControls : styles.boothControls}>
         {section === "controls" ? <View style={styles.searchRow}>
           <View style={styles.searchBox}>
             <Search color="#94A3B8" size={18} strokeWidth={2.6} />
@@ -655,7 +665,10 @@ export default function VotersScreen() {
 
     if (filteredVoters.length === 0) {
       return (
-        <View style={styles.listFooterWrap}>
+        <View style={[styles.listFooterWrap, {
+          height: Math.max(0, listHeight - searchControlsHeight),
+          justifyContent: "center",
+        }]}>
           <EmptyState
             title="No voters found"
             message="Try a different name, EPIC number, or booth."
@@ -665,7 +678,7 @@ export default function VotersScreen() {
     }
 
     return null;
-  }, [filteredVoters.length, isSearchPending, loadingMore, pendingBooth]);
+  }, [filteredVoters.length, isSearchPending, loadingMore, pendingBooth, listHeight, searchControlsHeight]);
 
   const renderVoterItem = useCallback(
     ({ item }: { item: VoterListItem }) => item.type === "voter"
@@ -673,7 +686,11 @@ export default function VotersScreen() {
       : renderStickyControls(item.type),
     [renderStickyControls, renderVoter],
   );
-  const listHeader = useMemo(() => renderScreenHeader(), [renderScreenHeader]);
+  const listHeader = useMemo(() => (
+    <View onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}>
+      {renderScreenHeader()}
+    </View>
+  ), [renderScreenHeader]);
 
   function openSlipPreview(withBanner: boolean) {
     if (!printTypeRequest) return;
@@ -722,6 +739,7 @@ export default function VotersScreen() {
     <SafeAreaView style={styles.safe}>
       <FlashList
         ref={listRef}
+        onLayout={(event) => setListHeight(event.nativeEvent.layout.height)}
         data={listData}
         keyExtractor={voterKeyExtractor}
         renderItem={renderVoterItem}
@@ -736,7 +754,10 @@ export default function VotersScreen() {
         keyboardDismissMode="none"
         keyboardShouldPersistTaps="always"
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
+        // Preserve the scroll range needed to pin search even with no results.
+        contentContainerStyle={[styles.listContent, {
+          minHeight: listHeight + headerHeight + boothControlsHeight,
+        }]}
         ListHeaderComponent={listHeader}
         ListFooterComponent={renderListFooter}
       />
