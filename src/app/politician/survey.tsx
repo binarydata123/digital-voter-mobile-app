@@ -1,3 +1,4 @@
+import { Shimmer } from "@/components/common/Shimmer";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import type { LucideIcon } from "lucide-react-native";
@@ -595,10 +596,8 @@ export default function SurveyScreen() {
           {constituencyElection ? (
             <View ref={(view) => { requiredViews.current.wardNo = view; }} collapsable={false} style={[styles.section, missingField === "wardNo" && styles.missingSection]}>
               <Text style={styles.sectionTitle}>Ward No. *</Text>
-              {loadingWards ? (
-                <ActivityIndicator color="#0F766E" style={styles.wardLoader} />
-              ) : null}
-              {!loadingWards && scopeOptions.wardNo.length ? (
+              {loadingScope || loadingWards ? <OptionSkeleton label="Loading wards" /> : null}
+              {!loadingScope && !loadingWards && scopeOptions.wardNo.length ? (
                 <View style={styles.optionGrid}>
                   {scopeOptions.wardNo.map((ward) => (
                     <OptionButton
@@ -615,7 +614,7 @@ export default function SurveyScreen() {
                   ))}
                 </View>
               ) : null}
-              {!loadingWards && !scopeOptions.wardNo.length ? (
+              {!loadingScope && !loadingWards && !scopeOptions.wardNo.length ? (
                 <Text style={styles.politicianHint}>
                   No ward options are available for this constituency.
                 </Text>
@@ -691,26 +690,21 @@ export default function SurveyScreen() {
           <View ref={(view) => { requiredViews.current.preferredPolitician = view; }} collapsable={false} style={[styles.section, missingField === "preferredPolitician" && styles.missingSection]}>
             <Text style={styles.sectionTitle}>Likely preferred politician</Text>
             <View style={styles.optionGrid}>
-              {politicianLocationReady && loadingPoliticians ? (
-                <ActivityIndicator
-                  color="#0F766E"
-                  style={styles.politicianLoader}
-                />
-              ) : null}
-              {!politicianLocationReady ? (
+              {loadingScope || (politicianLocationReady && loadingPoliticians) ? <OptionSkeleton label="Loading politicians" detail /> : null}
+              {!loadingScope && !politicianLocationReady ? (
                 <Text style={styles.politicianHint}>
                   Select a valid survey location to load active politicians.
                 </Text>
               ) : null}
               {politicianLocationReady &&
-              !loadingPoliticians &&
+              !loadingScope && !loadingPoliticians &&
               politicianOptions.length === 0 ? (
                 <Text style={styles.politicianHint}>
                   No active politicians are available for this location.
                 </Text>
               ) : null}
               {politicianLocationReady &&
-                !loadingPoliticians &&
+                !loadingScope && !loadingPoliticians &&
                 politicianOptions.map((candidate) => (
                   <Pressable
                     key={candidate.id}
@@ -901,6 +895,15 @@ export default function SurveyScreen() {
   );
 }
 
+function OptionSkeleton({ label, detail = false }: { label: string; detail?: boolean }) {
+  return <View accessible accessibilityLabel={label} accessibilityState={{ busy: true }} style={[styles.optionGrid, { width: "100%" }]}>
+    {[0, 1, 2, 3].map((index) => <Shimmer key={index} style={[styles.optionSkeleton, detail && { minHeight: 60 }]}>
+      <View style={{ height: 10, width: "65%", borderRadius: 5, backgroundColor: "#B4DCD0" }} />
+      {detail ? <View style={{ height: 8, width: "40%", borderRadius: 4, backgroundColor: "#C8E6DC" }} /> : null}
+    </Shimmer>)}
+  </View>;
+}
+
 function uniqueValues(...values: string[]) {
   const unique = values.map((value) => value.trim()).filter(Boolean);
   return unique.length ? Array.from(new Set(unique)) : [""];
@@ -1016,6 +1019,7 @@ const OptionButton = memo(function OptionButton({
       onPress={onPress}
       style={[
         styles.optionButton,
+        Icon && styles.iconOptionButton,
         columns === 4
           ? styles.fourColumn
           : columns === 2
@@ -1049,7 +1053,7 @@ const OptionContent = memo(function OptionContent({
       ) : null}
       <Text
         numberOfLines={2}
-        style={[styles.optionText, selected && styles.optionTextActive]}
+        style={[styles.optionText, Icon && styles.iconOptionText, selected && styles.optionTextActive]}
       >
         {label === "< ₹15k" ? "Below ₹15k" : label}
       </Text>
@@ -1058,6 +1062,7 @@ const OptionContent = memo(function OptionContent({
 });
 
 const styles = StyleSheet.create({
+  optionSkeleton: { width: "48.7%", minHeight: 44, borderRadius: 14, backgroundColor: "#E3F2EC", alignItems: "center", justifyContent: "center", gap: 8 },
   missingSection: { borderWidth: 1, borderColor: "#DC2626", borderRadius: 14, padding: 6 },
   safe: { flex: 1, backgroundColor: "#F4FBF7" },
   header: {
@@ -1256,6 +1261,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 8,
   },
+  iconOptionButton: { justifyContent: "flex-start", paddingHorizontal: 12, gap: 8 },
+  iconOptionText: { textAlign: "left" },
   optionButtonActive: { backgroundColor: "#064E3B", borderColor: "#064E3B" },
   politicianOption: {
     flexDirection: "column",

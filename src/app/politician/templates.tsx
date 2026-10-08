@@ -198,6 +198,7 @@ function buildTemplateHtml({
   voters: Voter[];
   bannerImageUrl: string;
 }) {
+  const rowsPerPage = columns === 4 ? 4 : 3;
   const voterCards = voters.map((voter) => {
     const gender = displayValue(voter.gender);
     const age = displayValue(voter.age);
@@ -260,12 +261,12 @@ function buildTemplateHtml({
         </div>
       </article>`;
   });
-  const pages = getTemplatePages(voterCards, columns * 3)
+  const pages = getTemplatePages(voterCards, columns * rowsPerPage)
     .map(
       (pageCards) => `<main class="sheet">
     <h1 class="title">Booth ${escapeHtml(booth)} Voter Template</h1>
     <p class="sub">${pageCards.length} voters</p><div class="rule"></div>
-    <section class="grid">${getTemplatePages(pageCards, 3)
+    <section class="grid">${getTemplatePages(pageCards, rowsPerPage)
       .map(
         (columnCards) =>
           `<div class="card-column">${columnCards.join("")}</div>`,
@@ -304,7 +305,7 @@ function buildTemplateHtml({
       flex-direction: column;
     }
     .banner { width: 100%; height: 160px; background: #f8fafc; overflow: hidden; }
-    .banner-img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .banner-img { display: block; width: 100%; height: 100%; object-fit: contain; }
     .banner-fallback {
       display: flex;
       align-items: center;
@@ -391,14 +392,16 @@ function buildTemplateHtml({
     .right .banner { grid-column: 2; grid-row: 1; }
     .dual { display: grid; grid-template-columns: 1fr 1fr; }
     .dual .banner { min-height: 190px; }
-    .dual .banner-img { height: 100%; object-fit: cover; }
+    .dual .banner-img { height: 100%; object-fit: contain; }
     .detail { padding: 10px 14px; }
     .card-heading { display: flex; align-items: flex-start; gap: 8px; }
     .card-heading h2 { flex: 1; min-width: 0; }
     .card-heading .serial { position: static; flex-shrink: 0; }
     .relation { margin-top: 4px; }
     .meta-grid { margin-top: 6px; row-gap: 2px; }
-    .compact .detail { padding: 8px; }
+    .compact { min-height: 0; }
+    .compact .banner { height: 104px; }
+    .compact .detail { padding: 6px; }
     .compact h2 { font-size: 12px; line-height: 15px; padding-right: 0; white-space: normal; overflow-wrap: anywhere; }
     .compact .epic { font-size: 11px; line-height: 14px; padding-right: 0; white-space: normal; overflow-wrap: anywhere; }
     .compact .relation, .compact .relation-prefix { font-size: 10px; line-height: 13px; white-space: normal; overflow-wrap: anywhere; }
@@ -683,8 +686,9 @@ export default function TemplatesScreen() {
     assignedBooths.length > 0
       ? assignedBooths
       : [selectedBooth].filter(Boolean);
-  const previewVoters = filteredVoters.slice(0, columns * 3);
-  const previewPages = getTemplatePages(previewVoters, columns * 3);
+  const rowsPerPage = columns === 4 ? 4 : 3;
+  const previewVoters = filteredVoters.slice(0, columns * rowsPerPage);
+  const previewPages = getTemplatePages(previewVoters, columns * rowsPerPage);
   const templateSelection = useMemo<VoterTemplateSelection>(
     () => ({
       template: "studio",
@@ -1217,12 +1221,12 @@ export default function TemplatesScreen() {
                 flexGrow: 0,
                 height:
                   previewWidth > 0
-                    ? Math.ceil(previewVoters.length / (columns * 3)) *
+                    ? Math.ceil(previewVoters.length / (columns * rowsPerPage)) *
                         1123 *
                         Math.min(1, previewWidth / 794) +
                       Math.max(
                         0,
-                        Math.ceil(previewVoters.length / (columns * 3)) - 1,
+                        Math.ceil(previewVoters.length / (columns * rowsPerPage)) - 1,
                       ) *
                         12 +
                       24
@@ -1274,7 +1278,7 @@ export default function TemplatesScreen() {
                         </Text>
                         <View style={styles.paperRule} />
                         <View style={styles.previewGrid}>
-                          {getTemplatePages(pageVoters, 3).map(
+                          {getTemplatePages(pageVoters, rowsPerPage).map(
                             (columnVoters, columnIndex) => (
                               <View
                                 key={columnIndex}
@@ -1581,17 +1585,18 @@ function TemplateCard({
     <View
       style={[
         styles.templateCard,
+        compact && styles.compactCard,
         previewStyleForLayout(layout) === "bannerBottom" && styles.bannerBottom,
         previewStyleForLayout(layout) === "bannerLeft" && styles.bannerLeft,
         previewStyleForLayout(layout) === "bannerRight" && styles.bannerRight,
         previewStyleForLayout(layout) === "dualVertical" && styles.dualVertical,
       ]}>
-      <View style={styles.cardBanner}>
+      <View style={[styles.cardBanner, compact && styles.compactBanner]}>
         {bannerImageUrl ? (
           <Image
             source={{ uri: bannerImageUrl }}
             style={styles.cardBannerImage}
-            resizeMode="cover"
+            resizeMode="contain"
           />
         ) : (
           <View style={styles.cardBannerPlaceholder}>
@@ -2071,7 +2076,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
-  compactDetail: { paddingHorizontal: 8, paddingTop: 8, paddingBottom: 8 },
+  compactCard: { minHeight: 0 },
+  compactBanner: { height: 104 },
+  compactDetail: { paddingHorizontal: 6, paddingTop: 6, paddingBottom: 6 },
   compactName: { fontSize: 12, lineHeight: 15, letterSpacing: 0 },
   compactEpic: { fontSize: 11, lineHeight: 14 },
   compactText: { fontSize: 10, lineHeight: 13 },

@@ -1,3 +1,4 @@
+import { Shimmer } from "@/components/common/Shimmer";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -473,14 +474,14 @@ export default function SurveyScreen() {
 function ReportSkeleton() {
   return <View accessible accessibilityLabel="Loading survey report" accessibilityState={{ busy: true }} style={{ gap: 14 }}>
     {["pie", "groups", "bars"].map((kind) => <View key={kind} style={styles.chartCard}>
-      <View style={[styles.skeletonBlock, { width: "58%", height: 18, marginBottom: 10 }]} />
-      <View style={[styles.skeletonBlock, { width: "80%", height: 12, marginBottom: 22 }]} />
+      <Shimmer style={[styles.skeletonBlock, { width: "58%", height: 18, marginBottom: 10 }]} />
+      <Shimmer style={[styles.skeletonBlock, { width: "80%", height: 12, marginBottom: 22 }]} />
       {kind === "bars" ? <View style={{ gap: 14 }}>
-        {[85, 65, 75, 45].map((width) => <View key={width} style={[styles.skeletonBlock, { width: `${width}%`, height: 24 }]} />)}
+        {[85, 65, 75, 45].map((width) => <Shimmer key={width} style={[styles.skeletonBlock, { width: `${width}%`, height: 24 }]} />)}
       </View> : <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-around", gap: 18 }}>
         {Array.from({ length: kind === "groups" ? 4 : 1 }, (_, index) => <View key={index} style={{ alignItems: "center", gap: 10, width: kind === "groups" ? "44%" : "100%" }}>
-          <View style={[styles.skeletonBlock, { width: 120, height: 120, borderRadius: 60 }]} />
-          <View style={[styles.skeletonBlock, { width: 85, height: 12 }]} />
+          <Shimmer style={[styles.skeletonBlock, { width: 120, height: 120, borderRadius: 60 }]} />
+          <Shimmer style={[styles.skeletonBlock, { width: 85, height: 12 }]} />
         </View>)}
       </View>}
     </View>)}
@@ -1023,7 +1024,7 @@ function EmptyChartText({
 }
 
 const styles = StyleSheet.create({
-  skeletonBlock: { backgroundColor: "#E2E8F0", borderRadius: 6 },
+  skeletonBlock: { backgroundColor: "#D5EBE2", borderRadius: 6 },
   safe: { flex: 1, backgroundColor: "#F4FBF7" },
   content: { padding: 16, paddingBottom: 36, gap: 14 },
   topRow: {
