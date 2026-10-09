@@ -34,7 +34,8 @@ export type AuthUser = {
       | "right"
       | "diagonal"
       | "floating"
-      | "dual";
+      | "dual"
+      | "none";
     recordsPerRow?: 2 | 3 | 4;
   };
   showVoterPage: boolean;
@@ -190,6 +191,7 @@ function normalizeSelectedVoterTemplate(value: any): AuthUser["selectedVoterTemp
     "diagonal",
     "floating",
     "dual",
+    "none",
   ].includes(String(value.canvasLayout || value.studioLayout || ""))
     ? value.canvasLayout ?? value.studioLayout
     : "top";

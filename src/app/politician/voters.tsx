@@ -34,11 +34,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/common/EmptyState";
-import { searchRank, searchTerms } from "@/utils/voterSearch";
 import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 import { VoterCard } from "@/features/voters/components/VoterCard";
 import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
 import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleton";
+import { searchRank, searchTerms } from "@/utils/voterSearch";
 
 import {
   shareVoterSlipImageFromRef,
@@ -72,7 +72,9 @@ import {
 
 const VOTER_PAGE_SIZE = 50;
 const STICKY_CONTROL_INDICES = [1];
-type VoterListItem = { type: "controls" | "booths" } | { type: "voter"; voter: Voter };
+type VoterListItem =
+  | { type: "controls" | "booths" }
+  | { type: "voter"; voter: Voter };
 const CONTROLS_ITEM: VoterListItem = { type: "controls" };
 const BOOTHS_ITEM: VoterListItem = { type: "booths" };
 const getVoterListItemType = (item: VoterListItem) => item.type;
@@ -121,10 +123,6 @@ export default function VotersScreen() {
     useState<ShareImageRequest | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
-  const [listHeight, setListHeight] = useState(0);
-  const [headerHeight, setHeaderHeight] = useState(0);
-  const [boothControlsHeight, setBoothControlsHeight] = useState(0);
-  const [searchControlsHeight, setSearchControlsHeight] = useState(0);
   const boothSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shareSlipRef = useRef<View>(null);
   const listRef = useRef<FlashListRef<VoterListItem>>(null);
@@ -132,11 +130,17 @@ export default function VotersScreen() {
   const lastLocalQueryKey = useRef("");
   const localRequestId = useRef(0);
   const currentUser = getCurrentUser();
-  const headerTitle = currentUser?.ward || currentUser?.constituency || currentUser?.district || "Assigned area";
+  const headerTitle =
+    currentUser?.ward ||
+    currentUser?.constituency ||
+    currentUser?.district ||
+    "Assigned area";
   const headerLocation = [
     currentUser?.city || currentUser?.district,
     currentUser?.state,
-  ].filter(Boolean).join(", ");
+  ]
+    .filter(Boolean)
+    .join(", ");
   const accountBannerImage = currentUser?.bannerImage;
   const canOpenSurvey = hasPoliticianPageAccess("survey", currentUser);
   const canUseTemplates = hasPoliticianPageAccess("template", currentUser);
@@ -231,8 +235,7 @@ export default function VotersScreen() {
 
     let timer: ReturnType<typeof setTimeout> | null = null;
     const frame = requestAnimationFrame(() => {
-      const waitForBanner =
-        canUseTemplates && accountBannerImage ? 250 : 0;
+      const waitForBanner = canUseTemplates && accountBannerImage ? 250 : 0;
 
       timer = setTimeout(() => {
         shareVoterSlipImageFromRef(
@@ -340,7 +343,12 @@ export default function VotersScreen() {
   }, [activeBooth, deferredQuery, localPoliticianId]);
 
   const loadMoreLocalVoters = useCallback(async () => {
-    if (!localPoliticianId || pendingBooth || loadingMore || voters.length >= localTotal) {
+    if (
+      !localPoliticianId ||
+      pendingBooth ||
+      loadingMore ||
+      voters.length >= localTotal
+    ) {
       return;
     }
 
@@ -408,7 +416,14 @@ export default function VotersScreen() {
       localMode
         ? []
         : voters.map((voter) => ({
-            words: searchTerms([voter.name, voter.hindiName ?? "", voter.epicNo, voter.serialNo ?? ""].join(" ")),
+            words: searchTerms(
+              [
+                voter.name,
+                voter.hindiName ?? "",
+                voter.epicNo,
+                voter.serialNo ?? "",
+              ].join(" "),
+            ),
             voter,
           })),
     [localMode, voters],
@@ -422,15 +437,26 @@ export default function VotersScreen() {
 
     for (const { voter, words } of voterSearchIndex) {
       const boothMatch = activeBooth === "All" || voter.booth === activeBooth;
-      const queryMatch = terms.every((term) => words.some((word) => word.startsWith(term)));
+      const queryMatch = terms.every((term) =>
+        words.some((word) => word.startsWith(term)),
+      );
       if (boothMatch && queryMatch) matched.push(voter);
     }
 
     return matched.sort((a, b) => {
-      const fields = (voter: Voter) => [voter.name, voter.hindiName ?? "", voter.epicNo, voter.serialNo ?? ""];
-      return (lowered ? searchRank(fields(a), lowered) - searchRank(fields(b), lowered) : 0)
-        || a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
-        || a.id.localeCompare(b.id);
+      const fields = (voter: Voter) => [
+        voter.name,
+        voter.hindiName ?? "",
+        voter.epicNo,
+        voter.serialNo ?? "",
+      ];
+      return (
+        (lowered
+          ? searchRank(fields(a), lowered) - searchRank(fields(b), lowered)
+          : 0) ||
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) ||
+        a.id.localeCompare(b.id)
+      );
     });
   }, [activeBooth, deferredQuery, localMode, voterSearchIndex, voters]);
 
@@ -493,16 +519,23 @@ export default function VotersScreen() {
   );
 
   const voterKeyExtractor = useCallback(
-    (item: VoterListItem) => item.type === "voter" ? `voter:${item.voter.id}` : item.type,
+    (item: VoterListItem) =>
+      item.type === "voter" ? `voter:${item.voter.id}` : item.type,
     [],
   );
 
   const listData = useMemo<VoterListItem[]>(
     // `deferredQuery` keeps the previous result visible during a search. Do
     // not clear it here: unmounting every card on each key press is expensive.
-    () => [BOOTHS_ITEM, CONTROLS_ITEM, ...(pendingBooth ? [] : filteredVoters.map(
-      (voter): VoterListItem => ({ type: "voter", voter }),
-    ))],
+    () => [
+      BOOTHS_ITEM,
+      CONTROLS_ITEM,
+      ...(pendingBooth
+        ? []
+        : filteredVoters.map(
+            (voter): VoterListItem => ({ type: "voter", voter }),
+          )),
+    ],
     [filteredVoters, pendingBooth],
   );
 
@@ -557,11 +590,17 @@ export default function VotersScreen() {
 
           <View style={styles.headerCopy}>
             <Text style={styles.eyebrow}>VOTER LIST</Text>
-            <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
-            {headerLocation ? <View style={styles.locationRow}>
-              <MapPin color="#087568" size={14} strokeWidth={2.8} />
-              <Text style={styles.location} numberOfLines={1}>{headerLocation}</Text>
-            </View> : null}
+            <Text style={styles.title} numberOfLines={1}>
+              {headerTitle}
+            </Text>
+            {headerLocation ? (
+              <View style={styles.locationRow}>
+                <MapPin color="#087568" size={14} strokeWidth={2.8} />
+                <Text style={styles.location} numberOfLines={1}>
+                  {headerLocation}
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -578,77 +617,78 @@ export default function VotersScreen() {
   const renderStickyControls = useCallback(
     (section: "controls" | "booths") => (
       <View
-        onLayout={(event) => {
-          const height = event.nativeEvent.layout.height;
-          if (section === "booths") setBoothControlsHeight(height);
-          else setSearchControlsHeight(height);
-        }}
-        style={section === "controls" ? styles.stickyControls : styles.boothControls}>
-        {section === "controls" ? <View style={styles.searchRow}>
-          <View style={styles.searchBox}>
-            <Search color="#94A3B8" size={18} strokeWidth={2.6} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search name, EPIC No. or Serial No."
-              placeholderTextColor="#94A3B8"
-              style={styles.searchInput}
-              returnKeyType="search"
-            />
+        style={
+          section === "controls" ? styles.stickyControls : styles.boothControls
+        }>
+        {section === "controls" ? (
+          <View style={styles.searchRow}>
+            <View style={styles.searchBox}>
+              <Search color="#94A3B8" size={18} strokeWidth={2.6} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search name, EPIC No. or Serial No."
+                placeholderTextColor="#94A3B8"
+                style={styles.searchInput}
+                returnKeyType="search"
+              />
+            </View>
+            <Pressable
+              style={styles.filterButton}
+              onPress={() => setModalVisible(true)}>
+              <SlidersHorizontal color="#FFFFFF" size={15} strokeWidth={2.8} />
+              <Text style={styles.filterButtonText}>Filter</Text>
+            </Pressable>
           </View>
-          <Pressable
-            style={styles.filterButton}
-            onPress={() => setModalVisible(true)}>
-            <SlidersHorizontal color="#FFFFFF" size={15} strokeWidth={2.8} />
-            <Text style={styles.filterButtonText}>Filter</Text>
-          </Pressable>
-        </View> : null}
-        {section === "booths" ? <FlatList
-          horizontal
-          data={booths}
-          keyExtractor={(item) => item}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.boothTabs}
-          renderItem={({ item }) => {
-            const isActive = (pendingBooth ?? activeBooth) === item;
-            const label = item === "All" ? "All Voters" : item;
-            const count = boothCounts[item] ?? 0;
+        ) : null}
+        {section === "booths" ? (
+          <FlatList
+            horizontal
+            data={booths}
+            keyExtractor={(item) => item}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.boothTabs}
+            renderItem={({ item }) => {
+              const isActive = (pendingBooth ?? activeBooth) === item;
+              const label = item === "All" ? "All Voters" : item;
+              const count = boothCounts[item] ?? 0;
 
-            return (
-              <Pressable
-                onPress={() => selectBooth(item)}
-                style={[styles.boothTab, isActive && styles.boothTabActive]}>
-                {item === "All" ? (
-                  <UsersRound
-                    color={isActive ? "#FFFFFF" : "#087568"}
-                    size={16}
-                    strokeWidth={2.6}
-                  />
-                ) : null}
-                <Text
-                  style={[
-                    styles.boothTabText,
-                    isActive && styles.boothTabTextActive,
-                  ]}>
-                  {label}
-                </Text>
-                <View
-                  style={[
-                    styles.countBadge,
-                    isActive && styles.countBadgeActive,
-                  ]}>
+              return (
+                <Pressable
+                  onPress={() => selectBooth(item)}
+                  style={[styles.boothTab, isActive && styles.boothTabActive]}>
+                  {item === "All" ? (
+                    <UsersRound
+                      color={isActive ? "#FFFFFF" : "#087568"}
+                      size={16}
+                      strokeWidth={2.6}
+                    />
+                  ) : null}
                   <Text
                     style={[
-                      styles.countBadgeText,
-                      isActive && styles.countBadgeTextActive,
+                      styles.boothTabText,
+                      isActive && styles.boothTabTextActive,
                     ]}>
-                    {count}
+                    {label}
                   </Text>
-                </View>
-              </Pressable>
-            );
-          }}
-        /> : null}
+                  <View
+                    style={[
+                      styles.countBadge,
+                      isActive && styles.countBadgeActive,
+                    ]}>
+                    <Text
+                      style={[
+                        styles.countBadgeText,
+                        isActive && styles.countBadgeTextActive,
+                      ]}>
+                      {count}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            }}
+          />
+        ) : null}
       </View>
     ),
     [activeBooth, boothCounts, booths, pendingBooth, query, selectBooth],
@@ -665,10 +705,7 @@ export default function VotersScreen() {
 
     if (filteredVoters.length === 0) {
       return (
-        <View style={[styles.listFooterWrap, {
-          height: Math.max(0, listHeight - searchControlsHeight),
-          justifyContent: "center",
-        }]}>
+        <View style={styles.listFooterWrap}>
           <EmptyState
             title="No voters found"
             message="Try a different name, EPIC number, or booth."
@@ -678,19 +715,23 @@ export default function VotersScreen() {
     }
 
     return null;
-  }, [filteredVoters.length, isSearchPending, loadingMore, pendingBooth, listHeight, searchControlsHeight]);
+  }, [
+    filteredVoters.length,
+    isSearchPending,
+    loadingMore,
+    pendingBooth,
+  ]);
 
   const renderVoterItem = useCallback(
-    ({ item }: { item: VoterListItem }) => item.type === "voter"
-      ? <View style={styles.voterItemWrap}>{renderVoter(item.voter)}</View>
-      : renderStickyControls(item.type),
+    ({ item }: { item: VoterListItem }) =>
+      item.type === "voter" ? (
+        <View style={styles.voterItemWrap}>{renderVoter(item.voter)}</View>
+      ) : (
+        renderStickyControls(item.type)
+      ),
     [renderStickyControls, renderVoter],
   );
-  const listHeader = useMemo(() => (
-    <View onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}>
-      {renderScreenHeader()}
-    </View>
-  ), [renderScreenHeader]);
+  const listHeader = useMemo(() => renderScreenHeader(), [renderScreenHeader]);
 
   function openSlipPreview(withBanner: boolean) {
     if (!printTypeRequest) return;
@@ -739,7 +780,6 @@ export default function VotersScreen() {
     <SafeAreaView style={styles.safe}>
       <FlashList
         ref={listRef}
-        onLayout={(event) => setListHeight(event.nativeEvent.layout.height)}
         data={listData}
         keyExtractor={voterKeyExtractor}
         renderItem={renderVoterItem}
@@ -754,10 +794,7 @@ export default function VotersScreen() {
         keyboardDismissMode="none"
         keyboardShouldPersistTaps="always"
         showsVerticalScrollIndicator={false}
-        // Preserve the scroll range needed to pin search even with no results.
-        contentContainerStyle={[styles.listContent, {
-          minHeight: listHeight + headerHeight + boothControlsHeight,
-        }]}
+        contentContainerStyle={styles.listContent}
         ListHeaderComponent={listHeader}
         ListFooterComponent={renderListFooter}
       />
@@ -923,7 +960,9 @@ export default function VotersScreen() {
           bannerImage={thermalPrintRequest.bannerImage}
           showBanner={thermalPrintRequest.showBanner}
           onClose={() => setThermalPrintRequest(null)}
-          onSelected={() => setPrinterSelectionVersion((version) => version + 1)}
+          onSelected={() =>
+            setPrinterSelectionVersion((version) => version + 1)
+          }
           onPrinted={() => {
             setThermalPrintRequest(null);
             setSlipPreview(null);

@@ -44,7 +44,7 @@ export type VoterQuery = {
 
 export type VoterTemplateSelection = {
   template: "studio";
-  canvasLayout: "top" | "bottom" | "left" | "right" | "floating" | "dual";
+  canvasLayout: "top" | "bottom" | "left" | "right" | "floating" | "dual" | "none";
   recordsPerRow: 2 | 3 | 4;
 };
 

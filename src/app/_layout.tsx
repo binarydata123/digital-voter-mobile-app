@@ -1,3 +1,5 @@
+import "@/global.css";
+
 import * as Linking from "expo-linking";
 import {
   DarkTheme,

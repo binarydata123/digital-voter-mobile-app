@@ -66,6 +66,14 @@
           "useSQLCipher": true,
           "enableFTS": true
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Politic Ease to select a banner photo.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {
