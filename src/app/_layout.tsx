@@ -1,4 +1,5 @@
 import "@/global.css";
+import { AppUpdateGate } from "@/features/app-updates/AppUpdateGate";
 
 import * as Linking from "expo-linking";
 import {
@@ -58,6 +59,7 @@ export default function RootLayout() {
         <Stack.Screen name="politician/survey-report" />
         <Stack.Screen name="politician/voter-detail" />
       </Stack>
+      <AppUpdateGate />
     </ThemeProvider>
   );
 }
