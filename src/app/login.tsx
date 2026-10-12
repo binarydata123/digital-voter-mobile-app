@@ -20,7 +20,7 @@ import {
   loginPolitician,
   logoutPolitician,
 } from "@/services/authentication";
-import { Eye, EyeOff, Lock, Phone, X } from "lucide-react-native";
+import { Eye, EyeOff, ImagePlus, Lock, Phone, X } from "lucide-react-native";
 
 export default function LoginScreen() {
   const destination = useLoginDestination();
@@ -219,12 +219,30 @@ export default function LoginScreen() {
             </View>
           </View>
         </ScrollView>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open politician banner generation"
+          onPress={() => router.push("/banner-generation")}
+          style={styles.bannerButton}>
+          <ImagePlus size={26} color="#FFFFFF" strokeWidth={2} />
+        </Pressable>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  bannerButton: {
+    position: "absolute",
+    right: 24,
+    bottom: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#0F4C4E",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   errorText: {
     color: "#B91C1C",
     fontSize: 13,
