@@ -1,3 +1,4 @@
+import { BannerStudioMenuItem } from "@/features/banner-generation/BannerStudioMenuItem";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { Image } from "expo-image";
 import { router } from "expo-router";
@@ -850,6 +851,7 @@ export default function VotersScreen() {
               </Pressable>
             ) : null}
 
+            <BannerStudioMenuItem onPress={() => { setMenuVisible(false); router.push("/banner-generation"); }} />
             <Pressable
               onPress={() => {
                 setMenuVisible(false);

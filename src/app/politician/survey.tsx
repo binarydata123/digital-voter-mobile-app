@@ -1,3 +1,4 @@
+import { BannerStudioMenuItem } from "@/features/banner-generation/BannerStudioMenuItem";
 import { Shimmer } from "@/components/common/Shimmer";
 import { Image } from "expo-image";
 import { router } from "expo-router";
@@ -821,6 +822,7 @@ export default function SurveyScreen() {
                 </View>
               </Pressable>
             ) : null}
+            <BannerStudioMenuItem onPress={() => { setMenuVisible(false); router.push("/banner-generation"); }} />
             <Pressable
               onPress={() => {
                 setMenuVisible(false);

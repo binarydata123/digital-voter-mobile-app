@@ -14,8 +14,9 @@ type Props = {
   onInteraction: (active: boolean) => void;
   onLayer: (direction: 1 | -1) => void;
   onImageLoaded: (uri: string) => void;
+  onEdit: () => void;
 };
-export function DraggableSupporter({ uri, width, height, placement, editable, zIndex, onChange, onInteraction, onLayer, onImageLoaded }: Props) {
+export function DraggableSupporter({ uri, width, height, placement, editable, zIndex, onChange, onInteraction, onLayer, onImageLoaded, onEdit }: Props) {
   const [showTools, setShowTools] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (hideTimer.current) clearTimeout(hideTimer.current); }, []);
@@ -81,7 +82,8 @@ export function DraggableSupporter({ uri, width, height, placement, editable, zI
         <View style={styles.handle}><Text style={styles.handleText}>↘</Text></View>
       </View>
     </>}
-    {editable && showTools && <BannerElementTools left={Math.max(-left, Math.min(photoWidth - 74, width - left - 74))} top={Math.max(-34, -top)} zIndex={zIndex}
+    {editable && showTools && <BannerElementTools left={Math.max(-left, Math.min(photoWidth - 110, width - left - 110))} top={Math.max(-34, -top)} zIndex={zIndex}
+      onEdit={() => { if (hideTimer.current) clearTimeout(hideTimer.current); setShowTools(false); onEdit(); }}
       onFront={() => { onLayer(1); if (hideTimer.current) clearTimeout(hideTimer.current); hideTimer.current = setTimeout(() => setShowTools(false), 3000); }}
       onBack={() => { onLayer(-1); if (hideTimer.current) clearTimeout(hideTimer.current); hideTimer.current = setTimeout(() => setShowTools(false), 3000); }} />}
   </View>;

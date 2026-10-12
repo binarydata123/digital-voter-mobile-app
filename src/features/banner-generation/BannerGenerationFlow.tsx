@@ -7,6 +7,7 @@ import { ActivityIndicator, FlatList, Image, Modal, Pressable, ScrollView, Style
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PARTIES, type Party } from './parties';
 import { exportBanner } from './export-banner';
+import { BannerStudioMenu } from './BannerStudioMenu';
 import { BannerColorChoices } from './BannerColorChoices';
 import { DraggableBannerText } from './DraggableBannerText';
 import { DraggableSupporter, DEFAULT_SUPPORTER_PLACEMENT } from './DraggableSupporter';
@@ -15,8 +16,8 @@ import { removePhotoBackground, deleteCutout } from '@/services/background-remov
 import { loadBannerSupporter, saveBannerSupporter } from '@/services/banner-supporter';
 
 type BannerLayer = 'photo' | 'name' | 'phone';
-const titles = ['Select Your Party', 'Choose a Politician', 'Choose a Banner', 'Add Your Photo', 'Your Banner Preview'];
-const subtitles = ['Your party. Your leader. Your banner.', 'Choose who you want on your banner.', 'Pick a design to make your own.', 'Make this banner yours.', 'Here is how your personalised banner looks.'];
+const titles = ['Select Your Party', 'Choose a Politician', 'Choose a Banner', 'Edit Your Banner'];
+const subtitles = ['Your party. Your leader. Your banner.', 'Choose who you want on your banner.', 'Pick a design to make your own.', 'Your changes appear live. Save or share when ready.'];
 
 
 export default function BannerGenerationFlow() {
@@ -68,6 +69,7 @@ export default function BannerGenerationFlow() {
   }, [party, page, retry]);
   const [template, setTemplate] = useState(0);
   const [photo, setPhoto] = useState<string | null>(null);
+  const [photoEditorOpen, setPhotoEditorOpen] = useState(false);
   const [originalPhoto, setOriginalPhoto] = useState<string | null>(null);
   const [cutout, setCutout] = useState<string | null>(null);
   const [removingBackground, setRemovingBackground] = useState(false);
@@ -92,27 +94,24 @@ export default function BannerGenerationFlow() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [detailsLoaded, setDetailsLoaded] = useState(false);
-  const [editingDetails, setEditingDetails] = useState(true);
   const [savingDetails, setSavingDetails] = useState(false);
   const [detailsMessage, setDetailsMessage] = useState('');
   useEffect(() => {
     let active = true;
     void loadBannerSupporter().then(details => {
-      if (active && details) { setName(details.name); setPhone(details.phone); setEditingDetails(!details.name.trim() || !/^[0-9]{10}$/.test(details.phone)); }
+      if (active && details) { setName(details.name); setPhone(details.phone); }
     }).catch(() => {
       if (active) setDetailsMessage('Could not load saved details. You can enter them again.');
     }).finally(() => { if (active) setDetailsLoaded(true); });
     return () => { active = false; };
   }, []);
-  async function saveDetails(generate = false) {
+  async function saveDetails() {
     if (savingDetails || !detailsLoaded) return;
-    if (!name.trim()) { setEditingDetails(true); setDetailsMessage('Please enter your name.'); return; }
-    if (!/^[0-9]{10}$/.test(phone)) { setEditingDetails(true); setDetailsMessage('Please enter a valid 10-digit mobile number.'); return; }
+    if (phone && !/^[0-9]{10}$/.test(phone)) { setDetailsMessage('Please enter a valid 10-digit mobile number, or leave it blank.'); return; }
     setSavingDetails(true); setDetailsMessage('');
     try {
       await saveBannerSupporter({ name: name.trim(), phone });
-      setName(name.trim()); setEditingDetails(false); setDetailsMessage('');
-      if (generate) setStep(4);
+      setName(name.trim()); setColourEditor(null);
     } catch { setDetailsMessage('Could not save your details. Please try again.'); }
     finally { setSavingDetails(false); }
   }
@@ -135,16 +134,20 @@ export default function BannerGenerationFlow() {
   const [namePosition, setNamePosition] = useState({ x: 0.4, y: 0.72 });
   const [phonePosition, setPhonePosition] = useState({ x: 0.03, y: 0.85 });
   const [placement, setPlacement] = useState(DEFAULT_SUPPORTER_PLACEMENT);
+  const [livePreviewSize, setLivePreviewSize] = useState({ width: 0, height: 0 });
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [draggingPhoto, setDraggingPhoto] = useState(false);
   const [error, setError] = useState('');
   const filtered = PARTIES.filter(p => `${p.name} ${p.short}`.toLowerCase().includes(query.toLowerCase().trim()));
   async function finishBanner(action: 'save' | 'share') {
-    if (exportBusy.current || step !== 4) return;
+    if (exportBusy.current || step !== 3 || removingBackground || savingDetails) return;
+    if (phone && !/^[0-9]{10}$/.test(phone)) { setColourEditor('phone'); setDetailsMessage('Enter a valid 10-digit mobile number before exporting.'); return; }
     exportBusy.current = true; setExporting(action); setExportMessage('');
     if (action === 'save') { if (savedTimer.current) clearTimeout(savedTimer.current); setGallerySaved(false); }
     try {
       if (!loadedImages[banners[template]?.uri] || (photo && !loadedImages[photo])) throw new Error('Wait for the banner and photo to finish loading.');
+      // Commit the clean live preview before capture: no handles or placeholder text.
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       await exportBanner(bannerRef, action, canvasSize.width, canvasSize.height);
       if (action === 'save') {
         setExportMessage('Banner saved successfully.'); setGallerySaved(true);
@@ -182,11 +185,13 @@ export default function BannerGenerationFlow() {
       if (!result.canceled) { setCutout(null); setOriginalPhoto(result.assets[0].uri); setPhoto(result.assets[0].uri); setPlacement(DEFAULT_SUPPORTER_PLACEMENT); setError(''); }
     } catch { setError('Could not open your photos. Please try again.'); }
   }
-  function banner(index: number, preview = false) {
+  function banner(index: number, preview = false, readOnly = false) {
+    const size = readOnly ? livePreviewSize : canvasSize;
+    const updateSize = readOnly ? setLivePreviewSize : setCanvasSize;
     const chosen = banners[index];
     if (!chosen) return null;
     return <View style={{ borderRadius: preview ? 0 : 12, overflow: 'hidden', backgroundColor: '#fff' }}>
-      <View ref={preview ? bannerRef : undefined} collapsable={false} style={{ aspectRatio: imageRatios[chosen.uri] ?? 1.6, overflow: 'hidden' }} onLayout={preview ? ({ nativeEvent }) => { const { width, height } = nativeEvent.layout; setCanvasSize(previous => previous.width === width && previous.height === height ? previous : { width, height }); } : undefined}>
+      <View ref={preview && !readOnly ? bannerRef : undefined} collapsable={false} style={{ aspectRatio: imageRatios[chosen.uri] ?? 1.6, overflow: 'hidden' }} onLayout={preview ? ({ nativeEvent }) => { const { width, height } = nativeEvent.layout; updateSize(previous => previous.width === width && previous.height === height ? previous : { width, height }); } : undefined}>
         <Image source={{ uri: chosen.uri }} style={StyleSheet.absoluteFill} resizeMode="contain"
           accessibilityLabel={chosen.title}
           onLoad={({ nativeEvent }) => {
@@ -194,13 +199,13 @@ export default function BannerGenerationFlow() {
             const { width, height } = nativeEvent.source;
             if (width > 0 && height > 0) setImageRatios(previous => ({ ...previous, [chosen.uri]: width / height }));
           }} />
-        {preview && photo && canvasSize.width > 0 && canvasSize.height > 0 && <DraggableSupporter
-          uri={photo} onImageLoaded={imageLoaded} onLayer={direction => moveLayer('photo', direction)} zIndex={layers.indexOf('photo') + 1} width={canvasSize.width} height={canvasSize.height}
-          placement={placement} editable={step === 3} onChange={setPlacement} onInteraction={setDraggingPhoto}
+        {preview && photo && size.width > 0 && size.height > 0 && <DraggableSupporter
+          uri={photo} onEdit={() => setPhotoEditorOpen(true)} onImageLoaded={imageLoaded} onLayer={direction => moveLayer('photo', direction)} zIndex={layers.indexOf('photo') + 1} width={size.width} height={size.height}
+          placement={placement} editable={step === 3 && !exporting && !readOnly} onChange={setPlacement} onInteraction={setDraggingPhoto}
         />}
-        {preview && canvasSize.width > 0 && canvasSize.height > 0 && <>
-          {!!name.trim() && <DraggableBannerText text={name.trim()} kind="name" onLayer={direction => moveLayer('name', direction)} zIndex={layers.indexOf('name') + 1} onEdit={() => setColourEditor('name')} backgroundColor={nameBackground} textColor={nameColor} width={canvasSize.width} height={canvasSize.height} position={namePosition} editable={step === 3} onChange={setNamePosition} onInteraction={setDraggingPhoto} />}
-          {!!phone && <DraggableBannerText text={phone} kind="phone" onLayer={direction => moveLayer('phone', direction)} zIndex={layers.indexOf('phone') + 1} onEdit={() => setColourEditor('phone')} backgroundColor={phoneBackground} textColor={phoneColor} width={canvasSize.width} height={canvasSize.height} position={phonePosition} editable={step === 3} onChange={setPhonePosition} onInteraction={setDraggingPhoto} />}
+        {preview && size.width > 0 && size.height > 0 && <>
+          {(!!name.trim() || (!exporting && !readOnly)) && <DraggableBannerText text={name.trim() || 'Edit name'} kind="name" placeholder={!name.trim()} onLayer={direction => moveLayer('name', direction)} zIndex={layers.indexOf('name') + 1} onEdit={() => { setDetailsMessage(''); setColourEditor('name'); }} backgroundColor={nameBackground} textColor={nameColor} width={size.width} height={size.height} position={namePosition} editable={step === 3 && !exporting && !readOnly} onChange={setNamePosition} onInteraction={setDraggingPhoto} />}
+          {(!!phone || (!exporting && !readOnly)) && <DraggableBannerText text={phone || 'Edit number'} kind="phone" placeholder={!phone} onLayer={direction => moveLayer('phone', direction)} zIndex={layers.indexOf('phone') + 1} onEdit={() => { setDetailsMessage(''); setColourEditor('phone'); }} backgroundColor={phoneBackground} textColor={phoneColor} width={size.width} height={size.height} position={phonePosition} editable={step === 3 && !exporting && !readOnly} onChange={setPhonePosition} onInteraction={setDraggingPhoto} />}
         </>}
 
 
@@ -209,7 +214,7 @@ export default function BannerGenerationFlow() {
   }
 
   return <SafeAreaView style={s.screen}>
-    <View style={s.header}><Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={back} style={s.back}><ArrowLeft color="#0F4C4E" size={22} /></Pressable><Text style={s.brand}>Banner Studio</Text><Text style={s.stepLabel}>{step + 1} / 5</Text></View>
+    <View style={s.header}><Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={back} style={s.back}><ArrowLeft color="#0F4C4E" size={22} /></Pressable><Text style={s.brand}>Banner Studio</Text><Text style={s.stepLabel}>{step + 1} / {titles.length}</Text><BannerStudioMenu /></View>
     <View style={s.heading}><Text style={s.eyebrow}>CREATE SOMETHING PERSONAL</Text><Text style={s.title}>{titles[step]}</Text><Text style={s.subtitle}>{subtitles[step]}</Text>
       <View style={s.steps}>{titles.map((_, i) => <View key={i} style={[s.stepBar, i <= step && s.activeStep]} />)}</View>
       {party && step > 0 && <View style={s.context}><Text style={s.contextText}>{party.short}{step > 1 ? `  /  ${leader}` : ''}</Text><Check size={14} color="#0F4C4E" /></View>}
@@ -239,10 +244,41 @@ export default function BannerGenerationFlow() {
           <Text style={[s.subtitle, { textAlign: 'center' }]}>Choose a politician banner from your gallery</Text>
         </Pressable>
         {!!bannerError && <Text accessibilityRole="alert" style={s.error}>{bannerError}</Text>}
+
       </>}
       {step >= 3 && <>{banner(template, true)}
-        {step === 3 && photo && <Text style={s.smallNote}>Drag the photo or name separately. Resize the photo from its corner. Drag the number anywhere on the banner.</Text>}
-        {step === 3 && <><View style={s.panel}><Text style={s.cardTitle}>Your photo</Text><Text style={s.subtitle}>Choose a clear photo. Transparent PNGs also work.</Text><Pressable style={[s.upload, photo && { padding: 12 }]} accessibilityRole="button" disabled={removingBackground} accessibilityLabel={photo ? 'Replace uploaded photo' : 'Upload your photo'} onPress={() => void pickPhoto()}>{photo ? <Image source={{ uri: photo }} accessibilityLabel="Uploaded photo preview" resizeMode="contain" style={{ width: '100%', height: 150, marginBottom: 8 }} /> : <ImagePlus size={23} color="#0F4C4E" />}<Text style={s.uploadText}>{photo ? 'Replace photo' : 'Upload your photo'}</Text></Pressable>
+        {step === 3 && photo && <Text style={s.smallNote}>Drag the photo or name separately. Resize the photo from its corner. Tap its pencil to replace it or remove the background. Drag the number anywhere on the banner.</Text>}
+        {step === 3 && <>
+          {!photo && <Pressable accessibilityRole="button" accessibilityLabel="Upload your photo" style={[s.upload, { padding: 20, marginTop: 0 }]} onPress={() => setPhotoEditorOpen(true)}>
+            <ImagePlus size={30} color="#0F4C4E" />
+            <Text style={s.cardTitle}>Add your photo to the banner</Text>
+            <Text style={[s.subtitle, { textAlign: 'center' }]}>Upload a photo, then remove its background for a clean cutout.</Text>
+            <Text style={s.uploadText}>Upload photo</Text>
+          </Pressable>}
+        </>}
+        {banners.length > 0 && <View style={s.panel}>
+          <Text style={[s.cardTitle, { marginBottom: 12 }]}>Live preview</Text>
+          <View pointerEvents="none">{banner(banners[template] ? template : 0, true, true)}</View>
+        </View>}
+        {!!exportMessage && <Text accessibilityLiveRegion="polite" style={s.smallNote}>{exportMessage}</Text>}
+      </>}
+    </ScrollView>}
+    {step === 3 && <View style={s.footer}>
+      <View style={s.controls}>
+        <Pressable style={[s.control, (exporting || removingBackground || !detailsLoaded) && { opacity: 0.6 }]} disabled={!!exporting || removingBackground || !detailsLoaded} accessibilityRole="button" onPress={() => void finishBanner('save')}>
+          {exporting === 'save' ? <ActivityIndicator color="#0F4C4E" /> : <Text accessibilityLiveRegion="polite" style={s.uploadText}>{gallerySaved ? 'Saved ✓' : 'Save to gallery'}</Text>}
+        </Pressable>
+        <Pressable style={[s.primary, { flex: 1 }, (exporting || removingBackground || !detailsLoaded) && { opacity: 0.6 }]} disabled={!!exporting || removingBackground || !detailsLoaded} accessibilityRole="button" onPress={() => void finishBanner('share')}>
+          {exporting === 'share' ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryText}>Share</Text>}
+        </Pressable>
+      </View>
+    </View>}
+    <Modal visible={photoEditorOpen} transparent animationType="slide" onRequestClose={() => setPhotoEditorOpen(false)}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: '#00000066' }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close photo editor" style={{ flex: 1 }} onPress={() => setPhotoEditorOpen(false)} />
+        <SafeAreaView edges={['bottom']} style={{ maxHeight: '85%', backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
+          <ScrollView contentContainerStyle={{ padding: 20 }}>
+            <View style={s.panel}><Text style={s.cardTitle}>Your photo</Text><Text style={s.subtitle}>Choose a clear photo. Transparent PNGs also work.</Text><Pressable style={[s.upload, photo && { padding: 12 }]} accessibilityRole="button" disabled={removingBackground} accessibilityLabel={photo ? 'Replace uploaded photo' : 'Upload your photo'} onPress={() => void pickPhoto()}>{photo ? <Image source={{ uri: photo }} accessibilityLabel="Uploaded photo preview" resizeMode="contain" style={{ width: '100%', height: 150, marginBottom: 8 }} /> : <ImagePlus size={23} color="#0F4C4E" />}<Text style={s.uploadText}>{photo ? 'Replace photo' : 'Upload your photo'}</Text></Pressable>
           {photo && <>
             <Pressable style={s.outlineButton} disabled={removingBackground} accessibilityRole="button" accessibilityState={{ disabled: removingBackground, busy: removingBackground }} onPress={() => {
               if (cutout && originalPhoto) { setPhoto(originalPhoto); setCutout(null); setError(''); }
@@ -252,32 +288,26 @@ export default function BannerGenerationFlow() {
           </>}
           {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
         </View>
-        {editingDetails ? <View style={s.panel}>
-          <Text style={s.cardTitle}>Personalise your banner</Text>
-          <Text style={s.inputLabel}>YOUR NAME</Text><TextInput editable={detailsLoaded && !savingDetails} value={name} onChangeText={value => { setName(value); setDetailsMessage(''); }} maxLength={50} placeholder="Enter your name" style={s.nameInput} placeholderTextColor="#82948F" />
-          <Text style={s.inputLabel}>MOBILE NUMBER</Text><TextInput editable={detailsLoaded && !savingDetails} value={phone} onChangeText={value => { setPhone(value.replace(/\D/g, '').slice(0, 10)); setDetailsMessage(''); }} keyboardType="phone-pad" maxLength={10} placeholder="Enter 10-digit mobile number" style={s.nameInput} placeholderTextColor="#82948F" />
-          <Text style={s.smallNote}>Saved on this device for your next banner.</Text>
-          <Pressable disabled={!detailsLoaded || savingDetails} accessibilityRole="button" style={s.outlineButton} onPress={() => void saveDetails()}>{savingDetails ? <ActivityIndicator color="#0F4C4E" /> : <Text style={s.uploadText}>Save name & mobile number</Text>}</Pressable>
-          {!!detailsMessage && <Text accessibilityLiveRegion="polite" style={s.smallNote}>{detailsMessage}</Text>}
-
-
-
-
-        </View> : <Pressable accessibilityRole="button" style={s.outlineButton} onPress={() => { setEditingDetails(true); setDetailsMessage(''); }}><Text style={s.uploadText}>Change name or phone</Text></Pressable>}</>}
-        {step === 4 && <View style={s.panel}><Text style={s.cardTitle}>Your preview is ready</Text><Text style={s.subtitle}>{name} · {phone}</Text><Text style={s.subtitle}>Check your photo and details before exporting.</Text><Text style={s.smallNote}>Save your finished banner or share it with friends.</Text>{!!exportMessage && <Text accessibilityLiveRegion="polite" style={s.smallNote}>{exportMessage}</Text>}<Pressable style={s.outlineButton} disabled={!!exporting} onPress={() => { setEditingDetails(true); setDetailsMessage(''); setStep(3); }} accessibilityRole="button"><Text style={s.uploadText}>Change name or phone</Text></Pressable></View>}
-      </>}
-    </ScrollView>}
-    {step >= 3 && <View style={s.footer}>{step === 3 ? <Pressable disabled={!photo || !detailsLoaded || savingDetails || removingBackground} accessibilityRole="button" accessibilityState={{ disabled: !photo || !detailsLoaded || savingDetails || removingBackground }} style={[s.primary, (!photo || !detailsLoaded || savingDetails || removingBackground) && { opacity: 0.45 }]} onPress={() => void saveDetails(true)}><Sparkles color="#fff" size={19} /><Text style={s.primaryText}>{savingDetails ? 'Saving…' : 'Generate banner preview'}</Text></Pressable> : <View style={s.controls}><Pressable style={[s.control, exporting && { opacity: 0.6 }]} disabled={!!exporting} accessibilityRole="button" accessibilityState={{ disabled: !!exporting }} onPress={() => void finishBanner('save')}>{exporting === 'save' ? <ActivityIndicator color="#0F4C4E" /> : <Text accessibilityLiveRegion="polite" style={s.uploadText}>{gallerySaved ? 'Saved ✓' : 'Save to gallery'}</Text>}</Pressable><Pressable style={[s.primary, { flex: 1 }, exporting && { opacity: 0.6 }]} disabled={!!exporting} accessibilityRole="button" accessibilityState={{ disabled: !!exporting }} onPress={() => void finishBanner('share')}>{exporting === 'share' ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryText}>Share</Text>}</Pressable></View>}</View>}
-    <Modal visible={colourEditor !== null} transparent animationType="slide" onRequestClose={() => setColourEditor(null)}>
+            <Pressable accessibilityRole="button" style={[s.primary, { marginTop: 16 }]} onPress={() => setPhotoEditorOpen(false)}><Text style={s.primaryText}>Done</Text></Pressable>
+          </ScrollView>
+        </SafeAreaView>
+      </View>
+    </Modal>
+    <Modal visible={colourEditor !== null} transparent animationType="slide" onRequestClose={() => { if (!savingDetails) setColourEditor(null); }}>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: '#00000066' }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close colour editor" onPress={() => setColourEditor(null)} style={{ flex: 1 }} />
-        <SafeAreaView edges={['bottom']} style={{ backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
-          <View style={{ padding: 24 }}>
-            <Text style={s.cardTitle}>{colourEditor === 'name' ? 'Name colours' : 'Mobile number colours'}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close colour editor" disabled={savingDetails} onPress={() => setColourEditor(null)} style={{ flex: 1 }} />
+        <SafeAreaView edges={['bottom']} style={{ maxHeight: '85%', backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 24 }}>
+            <Text style={s.cardTitle}>{colourEditor === 'name' ? 'Edit name' : 'Edit mobile number'}</Text>
+            <Text style={s.inputLabel}>{colourEditor === 'name' ? 'YOUR NAME' : 'MOBILE NUMBER'}</Text>
+            {colourEditor === 'name' ? <TextInput autoFocus editable={detailsLoaded && !savingDetails} value={name} onChangeText={value => { setName(value); setDetailsMessage(''); }} maxLength={50} placeholder="Enter your name" style={s.nameInput} placeholderTextColor="#82948F" />
+              : <TextInput autoFocus editable={detailsLoaded && !savingDetails} value={phone} onChangeText={value => { setPhone(value.replace(/\D/g, '').slice(0, 10)); setDetailsMessage(''); }} maxLength={10} keyboardType="phone-pad" placeholder="Enter 10-digit mobile number" style={s.nameInput} placeholderTextColor="#82948F" />}
+            <Text style={s.smallNote}>Saved on this device for your next banner.</Text>
+            {!!detailsMessage && <Text accessibilityRole="alert" style={s.error}>{detailsMessage}</Text>}
             <BannerColorChoices label="Background colour" value={colourEditor === 'name' ? nameBackground : phoneBackground} onChange={colourEditor === 'name' ? setNameBackground : setPhoneBackground} allowTransparent />
             <BannerColorChoices label="Text colour" value={colourEditor === 'name' ? nameColor : phoneColor} onChange={colourEditor === 'name' ? setNameColor : setPhoneColor} />
-            <Pressable accessibilityRole="button" style={[s.primary, { marginTop: 20 }]} onPress={() => setColourEditor(null)}><Text style={s.primaryText}>Done</Text></Pressable>
-          </View>
+            <Pressable disabled={savingDetails || !detailsLoaded} accessibilityRole="button" style={[s.primary, { marginTop: 20 }]} onPress={() => void saveDetails()}>{savingDetails ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryText}>Save changes</Text>}</Pressable>
+          </ScrollView>
         </SafeAreaView>
       </View>
     </Modal>

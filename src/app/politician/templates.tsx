@@ -1,3 +1,4 @@
+import { BannerStudioMenuItem } from "@/features/banner-generation/BannerStudioMenuItem";
 import { DEFAULT_TEMPLATE_FIELDS, type TemplateFields } from "@/features/templates/fields";
 import {
   TEMPLATE_LAYOUTS,
@@ -410,6 +411,7 @@ export default function TemplatesScreen() {
               </>
             ) : null}
 
+            <BannerStudioMenuItem onPress={() => { setMenuVisible(false); router.push("/banner-generation"); }} />
             <Pressable style={styles.menuItem} onPress={handleLogout}>
               <View style={[styles.menuIconWrap, styles.menuIconWrapDanger]}>
                 <LogOut color="#b91c1c" size={18} strokeWidth={2.6} />

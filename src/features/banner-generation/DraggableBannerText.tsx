@@ -11,12 +11,15 @@ type Props = {
   onChange: (position: BannerTextPosition) => void;
   onInteraction: (active: boolean) => void;
   onEdit: () => void;
+  placeholder?: boolean;
   onLayer: (direction: 1 | -1) => void;
 };
-export function DraggableBannerText({ text, kind, width, height, position, editable, zIndex, backgroundColor, textColor, onChange, onInteraction, onEdit, onLayer }: Props) {
+export function DraggableBannerText({ text, kind, width, height, position, editable, zIndex, backgroundColor, textColor, onChange, onInteraction, onEdit, onLayer, placeholder = false }: Props) {
   const [showPencil, setShowPencil] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (hideTimer.current) clearTimeout(hideTimer.current); }, []);
+  const editAction = useRef(onEdit);
+  useEffect(() => { editAction.current = onEdit; }, [onEdit]);
   const current = useRef(position);
   const start = useRef(position);
   useEffect(() => { current.current = position; }, [position]);
@@ -40,8 +43,9 @@ export function DraggableBannerText({ text, kind, width, height, position, edita
         const next = { x: clampX(start.current.x + gesture.dx / width), y: clampY(start.current.y + gesture.dy / height) };
         current.current = next; onChange(next);
       },
-      onPanResponderRelease: () => {
+      onPanResponderRelease: (_, gesture) => {
         onInteraction(false);
+        if (placeholder && Math.abs(gesture.dx) < 5 && Math.abs(gesture.dy) < 5) { setShowPencil(false); editAction.current(); return; }
         hideTimer.current = setTimeout(() => setShowPencil(false), 3000);
       },
       onPanResponderTerminate: () => {
@@ -50,7 +54,7 @@ export function DraggableBannerText({ text, kind, width, height, position, edita
       },
       onPanResponderTerminationRequest: () => false,
     });
-  }, [width, height, labelWidth, labelHeight, editable, onChange, onInteraction]);
+  }, [width, height, labelWidth, labelHeight, editable, placeholder, onChange, onInteraction]);
   return <View accessibilityLabel={kind === 'phone' ? 'Drag mobile number anywhere on the banner' : 'Move supporter name'}
     style={{ position: 'absolute', zIndex, left, top, width: labelWidth, height: labelHeight, justifyContent: 'center', borderWidth: editable ? 1 : 0, borderStyle: 'dashed', borderColor: '#0F4C4E', backgroundColor, borderRadius: kind === 'name' ? 4 : 0 }}>
     <View {...responder.panHandlers} style={{ flex: 1, justifyContent: 'center' }}>
