@@ -6,26 +6,9 @@ import { WebView } from "react-native-webview";
 import type { SurveyLocationPoint } from "@/services/survey";
 import {
   buildSurveyLocationMapHtml,
+  getSurveyLocationMapRegion,
   getValidSurveyLocations,
 } from "./surveyLocationMapHtml";
-
-function getMapRegion(locations: SurveyLocationPoint[]) {
-  const latitudes = locations.map((location) => location.latitude);
-  const longitudes = locations.map((location) => location.longitude);
-  const minLatitude = Math.min(...latitudes);
-  const maxLatitude = Math.max(...latitudes);
-  const minLongitude = Math.min(...longitudes);
-  const maxLongitude = Math.max(...longitudes);
-  const latitudeDelta = Math.max(0.01, (maxLatitude - minLatitude) * 1.8);
-  const longitudeDelta = Math.max(0.01, (maxLongitude - minLongitude) * 1.8);
-
-  return {
-    latitude: (minLatitude + maxLatitude) / 2,
-    longitude: (minLongitude + maxLongitude) / 2,
-    latitudeDelta,
-    longitudeDelta,
-  };
-}
 
 function formatLocationTime(capturedAt?: string) {
   if (!capturedAt) return "";
@@ -47,7 +30,8 @@ export function SurveyLocationMap({
     [locations],
   );
   const region = useMemo(
-    () => (validLocations.length ? getMapRegion(validLocations) : null),
+    () =>
+      validLocations.length ? getSurveyLocationMapRegion(validLocations) : null,
     [validLocations],
   );
   const mapHtml = useMemo(
@@ -66,8 +50,8 @@ export function SurveyLocationMap({
         longitude: location.longitude,
       })),
       {
-        animated: true,
-        edgePadding: { bottom: 44, left: 44, right: 44, top: 44 },
+        animated: false,
+        edgePadding: { bottom: 32, left: 32, right: 32, top: 32 },
       },
     );
   }, [region, validLocations]);

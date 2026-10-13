@@ -13,6 +13,24 @@ type LeafletLocationPoint = {
   details: string[];
 };
 
+export function getSurveyLocationMapRegion(locations: SurveyLocationPoint[]) {
+  const latitudes = locations.map((location) => location.latitude);
+  const longitudes = locations.map((location) => location.longitude);
+  const minLatitude = Math.min(...latitudes);
+  const maxLatitude = Math.max(...latitudes);
+  const minLongitude = Math.min(...longitudes);
+  const maxLongitude = Math.max(...longitudes);
+  const latitudeDelta = Math.max(0.006, (maxLatitude - minLatitude) * 1.28);
+  const longitudeDelta = Math.max(0.006, (maxLongitude - minLongitude) * 1.28);
+
+  return {
+    latitude: (minLatitude + maxLatitude) / 2,
+    longitude: (minLongitude + maxLongitude) / 2,
+    latitudeDelta,
+    longitudeDelta,
+  };
+}
+
 function formatLocationTime(capturedAt?: string) {
   if (!capturedAt) return "";
   const date = new Date(capturedAt);
@@ -61,7 +79,9 @@ function serializeScriptValue(value: unknown) {
 export function buildSurveyLocationMapHtml(locations: SurveyLocationPoint[]) {
   const validLocations = getValidSurveyLocations(locations);
   const markerData = validLocations.map(toLeafletPoint);
-  const center = markerData[0] ?? DEFAULT_CENTER;
+  const region = validLocations.length
+    ? getSurveyLocationMapRegion(validLocations)
+    : DEFAULT_CENTER;
 
   return `<!DOCTYPE html>
 <html>
@@ -109,8 +129,8 @@ export function buildSurveyLocationMapHtml(locations: SurveyLocationPoint[]) {
       var map = L.map("map", {
         attributionControl: false,
         zoomControl: true,
-        zoomSnap: 0.25
-      }).setView([${center.latitude}, ${center.longitude}], ${markerData.length > 1 ? 12 : 14});
+        zoomSnap: 0.1
+      }).setView([${region.latitude}, ${region.longitude}], ${markerData.length > 1 ? 11 : 15});
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
@@ -158,9 +178,8 @@ export function buildSurveyLocationMapHtml(locations: SurveyLocationPoint[]) {
           if (bounds.isValid()) {
             map.fitBounds(bounds, {
               animate: false,
-              maxZoom: 12,
-              paddingTopLeft: [40, 28],
-              paddingBottomRight: [40, 48]
+              maxZoom: 16,
+              padding: [36, 36]
             });
           }
         } else if (markers.length === 1) {
@@ -176,6 +195,10 @@ export function buildSurveyLocationMapHtml(locations: SurveyLocationPoint[]) {
         setTimeout(fitMapToMarkers, 100);
         setTimeout(fitMapToMarkers, 350);
       });
+
+      if (window.ResizeObserver) {
+        new ResizeObserver(fitMapToMarkers).observe(document.getElementById("map"));
+      }
     </script>
   </body>
 </html>`;

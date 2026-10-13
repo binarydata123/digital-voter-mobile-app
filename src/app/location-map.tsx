@@ -1,5 +1,6 @@
 import {
   buildSurveyLocationMapHtml,
+  getSurveyLocationMapRegion,
   getValidSurveyLocations,
 } from "@/features/survey/components/surveyLocationMapHtml";
 import {
@@ -17,24 +18,6 @@ import {
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { WebView } from "react-native-webview";
-
-function getMapRegion(locations: SurveyLocationPoint[]) {
-  const latitudes = locations.map((location) => location.latitude);
-  const longitudes = locations.map((location) => location.longitude);
-  const minLatitude = Math.min(...latitudes);
-  const maxLatitude = Math.max(...latitudes);
-  const minLongitude = Math.min(...longitudes);
-  const maxLongitude = Math.max(...longitudes);
-  const latitudeDelta = Math.max(0.01, (maxLatitude - minLatitude) * 1.8);
-  const longitudeDelta = Math.max(0.01, (maxLongitude - minLongitude) * 1.8);
-
-  return {
-    latitude: (minLatitude + maxLatitude) / 2,
-    longitude: (minLongitude + maxLongitude) / 2,
-    latitudeDelta,
-    longitudeDelta,
-  };
-}
 
 function formatLocationTime(capturedAt?: string) {
   if (!capturedAt) return "";
@@ -91,7 +74,8 @@ export default function LocationMapScreen() {
     [validLocations],
   );
   const region = useMemo(
-    () => (validLocations.length ? getMapRegion(validLocations) : null),
+    () =>
+      validLocations.length ? getSurveyLocationMapRegion(validLocations) : null,
     [validLocations],
   );
 
@@ -106,8 +90,8 @@ export default function LocationMapScreen() {
         longitude: location.longitude,
       })),
       {
-        animated: true,
-        edgePadding: { bottom: 64, left: 44, right: 44, top: 64 },
+        animated: false,
+        edgePadding: { bottom: 48, left: 40, right: 40, top: 48 },
       },
     );
   }, [region, validLocations]);
