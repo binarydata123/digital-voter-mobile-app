@@ -391,7 +391,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   infoTile: {
-    flex: 1,
+    flex: 1.4,
     minWidth: 58,
     height: 50,
     backgroundColor: "#F6FBFF",
@@ -402,8 +402,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   priorityInfoTile: {
-    flex: 1.55,
-    minWidth: 112,
+    flex: 0.8,
+    minWidth: 88,
   },
   tileIcon: {
     width: 26,

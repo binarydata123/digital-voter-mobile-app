@@ -29,11 +29,12 @@ import {
   Modal,
   Pressable,
   StyleSheet,
+  StatusBar,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
@@ -96,6 +97,7 @@ type ThermalPrintRequest = {
 type ShareImageRequest = { voter: Voter; resolve: () => void };
 
 export default function VotersScreen({ searchMode = false, initialBooth = "All" }: { searchMode?: boolean; initialBooth?: string }) {
+  const safeAreaInsets = useSafeAreaInsets();
   const [voters, setVoters] = useState<Voter[]>([]);
   const [localPoliticianId, setLocalPoliticianId] = useState<string | null>(
     null,
@@ -814,6 +816,8 @@ export default function VotersScreen({ searchMode = false, initialBooth = "All" 
 
   return (
     <SafeAreaView style={styles.safe}>
+      <StatusBar barStyle="light-content" />
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: safeAreaInsets.top, backgroundColor: '#087568' }} />
       {searchMode && <>
         <View style={styles.searchPageHeader}>
           <Pressable accessibilityRole="button" accessibilityLabel="Back to voter list" onPress={() => router.canGoBack() ? router.back() : router.replace('/politician/voters')} style={styles.searchPageBack}><ArrowLeft size={22} color="#087568" /></Pressable>
