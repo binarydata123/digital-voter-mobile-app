@@ -51,6 +51,12 @@
     "plugins": [
       "expo-router",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Politic Ease to save the survey location with each response."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#def6f0",

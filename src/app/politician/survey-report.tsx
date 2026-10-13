@@ -28,6 +28,7 @@ import {
   type SurveyScope,
   type SurveySummary,
 } from "@/services/survey";
+import { SurveyLocationMap } from "../../features/survey/components/SurveyLocationMap";
 
 const AGE_BRACKETS = ["18-25", "26-35", "36-50", "50+"];
 const COLORS = [
@@ -188,6 +189,7 @@ export default function SurveyScreen() {
     preferenceByIncome: [],
     majorPublicConcerns: [],
     wardHeatMap: [],
+    surveyLocations: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -405,6 +407,8 @@ export default function SurveyScreen() {
             </Text>
           </View>
         ) : null}
+
+        <SurveyLocationMap locations={report.surveyLocations} />
 
         <PieDistribution
           title="Vote share distribution"

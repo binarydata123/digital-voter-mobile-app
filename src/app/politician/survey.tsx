@@ -1,5 +1,6 @@
 import { Shimmer } from "@/components/common/Shimmer";
 import { Image } from "expo-image";
+import * as Location from "expo-location";
 import { router } from "expo-router";
 import type { LucideIcon } from "lucide-react-native";
 import {
@@ -149,6 +150,27 @@ const emptyForm: FormState = {
   preferredPolitician: "",
   preferredParty: "",
 };
+
+async function captureSurveyLocation() {
+  const permission = await Location.requestForegroundPermissionsAsync();
+
+  if (!permission.granted) {
+    throw new Error(
+      "Please allow location permission to save the survey location.",
+    );
+  }
+
+  const currentLocation = await Location.getCurrentPositionAsync({
+    accuracy: Location.Accuracy.Balanced,
+  });
+
+  return {
+    latitude: currentLocation.coords.latitude,
+    longitude: currentLocation.coords.longitude,
+    accuracy: currentLocation.coords.accuracy,
+    capturedAt: new Date(currentLocation.timestamp).toISOString(),
+  };
+}
 
 const scopeLabels: Record<ScopeField, string> = {
   electionType: "Election Type *",
@@ -457,10 +479,11 @@ export default function SurveyScreen() {
 
     setSaving(true);
     try {
-      await saveSurveyResponse({ ...scope, ...form });
+      const surveyLocation = await captureSurveyLocation();
+      await saveSurveyResponse({ ...scope, ...form, surveyLocation });
       setMissingField(null);
       setForm(emptyForm);
-      setMessage("Survey response saved.");
+      setMessage("Survey response and location saved.");
       setError("");
       scrollRef.current?.scrollTo({ y: 0, animated: true });
     } catch (saveError: any) {
