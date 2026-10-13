@@ -80,6 +80,17 @@
           "cameraPermission": false,
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Politic Ease to access photos when saving a banner.",
+          "savePhotosPermission": "Allow Politic Ease to save your generated banner to Photos.",
+          "granularPermissions": [
+            "photo"
+          ],
+          "isAccessMediaLocationEnabled": false
+        }
       ]
     ],
     "experiments": {
