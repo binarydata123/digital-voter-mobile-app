@@ -3,10 +3,19 @@ import {
   House,
   Printer,
   QrCode,
+  Share2,
   UsersRound,
 } from "lucide-react-native";
-import { useState } from "react";
-import { Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { memo, useCallback, useState } from "react";
+import {
+  ActivityIndicator,
+  Image,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import QRCode from "react-native-qrcode-svg";
 
 import type { Voter } from "@/services/voters";
@@ -20,28 +29,51 @@ const oldWomenImage = require("@/assets/icons/old-women.png");
 
 function buildVoterQrValue(voter: Voter): string {
   const epicNo = voter.epicNo ?? voter.id ?? voter.serialNo ?? "";
-  return `https://api.votersakha.tech/api/public/voter-slip.html?epicNo=${encodeURIComponent(epicNo)}`;
+  return `https://votersakha.tech/voter-slip.html?epicNo=${encodeURIComponent(epicNo)}`;
 }
 
-export function VoterCard({
-  voter,
-  onScan,
-  onPrint,
-  onFamily,
-}: {
+type VoterCardProps = {
   voter: Voter;
   onScan?: (voter: Voter) => void;
   onPrint?: (voter: Voter) => void;
   onFamily?: (voter: Voter) => void;
-}) {
-  const [qrVisible, setQrVisible] = useState(false);
+  onShare?: (voter: Voter) => Promise<void> | void;
+};
 
-  function handleQrPress() {
+function VoterCardComponent({
+  voter,
+  onScan,
+  onPrint,
+  onFamily,
+  onShare,
+}: VoterCardProps) {
+  const [qrVisible, setQrVisible] = useState(false);
+  const [sharing, setSharing] = useState(false);
+
+  const handleQrPress = useCallback(() => {
     setQrVisible(true);
     onScan?.(voter);
-  }
+  }, [onScan, voter]);
 
-  const qrValue = buildVoterQrValue(voter);
+  const handleSharePress = useCallback(async () => {
+    if (!onShare || sharing) return;
+
+    setSharing(true);
+    try {
+      await onShare(voter);
+    } finally {
+      setSharing(false);
+    }
+  }, [onShare, sharing, voter]);
+
+  const handlePrintPress = useCallback(
+    () => onPrint?.(voter),
+    [onPrint, voter],
+  );
+  const handleFamilyPress = useCallback(
+    () => onFamily?.(voter),
+    [onFamily, voter],
+  );
 
   return (
     <View style={styles.voterCard}>
@@ -61,113 +93,169 @@ export function VoterCard({
 
             <View style={styles.cardRightRail}>
               <View style={styles.boothActions}>
-                <Text style={styles.boothBadge}>
-                  S.No. {voter.serialNo ?? voter.id ?? "N/A"}
-                </Text>
+                <View style={styles.quickActions}>
+                  <Pressable
+                    accessibilityLabel="Show voter QR code"
+                    onPress={handleQrPress}
+                    style={styles.scanButton}>
+                    <QrCode color="#087568" size={15} strokeWidth={2.8} />
+                  </Pressable>
 
-                <Pressable
-                  accessibilityLabel="Show voter QR code"
-                  onPress={handleQrPress}
-                  style={styles.scanButton}
-                >
-                  <QrCode color="#087568" size={15} strokeWidth={2.8} />
-                </Pressable>
+                  <Pressable
+                    accessibilityLabel="Share voter slip"
+                    disabled={sharing}
+                    onPress={handleSharePress}
+                    style={[
+                      styles.scanButton,
+                      sharing && styles.scanButtonDisabled,
+                    ]}>
+                    {sharing ? (
+                      <ActivityIndicator color="#087568" size="small" />
+                    ) : (
+                      <Share2 color="#087568" size={16} strokeWidth={2.7} />
+                    )}
+                  </Pressable>
+                </View>
               </View>
             </View>
           </View>
 
-          <Text
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.82}
-            style={styles.guardian}
-          >
-            {voter.guardian}
-          </Text>
+          <View style={styles.guardianRow}>
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={styles.guardian}>
+              {voter.guardian}
+            </Text>
+            <Text style={styles.boothBadge}>
+              S.No. {voter.serialNo ?? voter.id ?? "N/A"}
+            </Text>
+          </View>
         </View>
       </View>
 
       <View style={styles.cardFooter}>
         <InfoTile
-          icon={<BadgeCheck color="#087568" size={17} strokeWidth={2.5} />}
+          icon={BadgeCheck}
           label="EPIC No."
           value={voter.epicNo}
+          priority
         />
 
-        <InfoTile
-          icon={<House color="#087568" size={17} strokeWidth={2.5} />}
-          label="House No."
-          value={voter.houseNo}
-        />
+        <InfoTile icon={House} label="House No." value={voter.houseNo} />
 
-        <Pressable onPress={() => onPrint?.(voter)} style={styles.printButton}>
+        <Pressable onPress={handlePrintPress} style={styles.printButton}>
           <Printer color="#087568" size={17} strokeWidth={2.5} />
           <Text style={styles.printText}>Print</Text>
         </Pressable>
 
-        <Pressable
-          onPress={() => onFamily?.(voter)}
-          style={styles.familyButton}
-        >
+        <Pressable onPress={handleFamilyPress} style={styles.familyButton}>
           <UsersRound color="#087568" size={17} strokeWidth={2.5} />
           <Text style={styles.printText}>Family</Text>
         </Pressable>
       </View>
 
-      {/* =============== QR MODAL =============== */}
-      <Modal
-        transparent
-        visible={qrVisible}
-        animationType="fade"
-        onRequestClose={() => setQrVisible(false)}
-      >
-        <Pressable
-          style={styles.qrBackdrop}
-          onPress={() => setQrVisible(false)}
-        >
-          <Pressable style={styles.qrPanel}>
-            <Text style={styles.qrTitle}>{voter.name}</Text>
-            <Text style={styles.qrSubtitle}>
-              S.No. {voter.serialNo ?? voter.id ?? "N/A"} · {voter.booth}
-            </Text>
+      {qrVisible ? (
+        <Modal
+          transparent
+          visible
+          animationType="fade"
+          onRequestClose={() => setQrVisible(false)}>
+          <Pressable
+            style={styles.qrBackdrop}
+            onPress={() => setQrVisible(false)}>
+            <Pressable style={styles.qrPanel}>
+              <Text style={styles.qrTitle}>{voter.name}</Text>
+              <Text style={styles.qrSubtitle}>
+                S.No. {voter.serialNo ?? voter.id ?? "N/A"} · {voter.booth}
+              </Text>
 
-            <View style={styles.qrWrap}>
-              <QRCode value={qrValue} size={200} />
-            </View>
+              <View style={styles.qrWrap}>
+                <QRCode value={buildVoterQrValue(voter)} size={200} />
+              </View>
 
-            <Text style={styles.qrHint}>
-              Scan this QR with another phone to open the voter detail.
-            </Text>
+              <Text style={styles.qrHint}>
+                Scan this QR with another phone to open the voter detail.
+              </Text>
 
-            <Pressable
-              onPress={() => setQrVisible(false)}
-              style={styles.qrCloseButton}
-            >
-              <Text style={styles.qrCloseText}>Close</Text>
+              <Pressable
+                onPress={() => setQrVisible(false)}
+                style={styles.qrCloseButton}>
+                <Text style={styles.qrCloseText}>Close</Text>
+              </Pressable>
             </Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Modal>
+      ) : null}
     </View>
   );
 }
+
+/**
+ * SQLite filtering may return new object instances for the same voter. A
+ * default React.memo comparison would re-render every visible card in that
+ * case, so compare only the fields this card actually displays or uses.
+ */
+function areVoterCardPropsEqual(
+  previous: Readonly<VoterCardProps>,
+  next: Readonly<VoterCardProps>,
+) {
+  const before = previous.voter;
+  const after = next.voter;
+
+  return (
+    previous.onScan === next.onScan &&
+    previous.onPrint === next.onPrint &&
+    previous.onFamily === next.onFamily &&
+    previous.onShare === next.onShare &&
+    before.id === after.id &&
+    before.name === after.name &&
+    before.gender === after.gender &&
+    before.age === after.age &&
+    before.guardian === after.guardian &&
+    before.epicNo === after.epicNo &&
+    before.houseNo === after.houseNo &&
+    before.booth === after.booth &&
+    before.serialNo === after.serialNo
+  );
+}
+
+export const VoterCard = memo(VoterCardComponent, areVoterCardPropsEqual);
 
 /* -------------------------------------------------------------
    AVATAR
    ------------------------------------------------------------- */
 
-function Avatar({ gender, age }: { gender: string; age: number }) {
+const AGE_IMAGES = {
+  maleYoung: boyImage,
+  femaleYoung: girlImage,
+  maleAdult: manImage,
+  femaleAdult: womenImage,
+  maleOld: oldMenImage,
+  femaleOld: oldWomenImage,
+};
+
+const Avatar = memo(function Avatar({
+  gender,
+  age,
+}: {
+  gender: string;
+  age: number;
+}) {
   const isFemale = gender.toLowerCase().startsWith("f");
 
-  let imageSource;
-
-  if (age < 35) {
-    imageSource = isFemale ? girlImage : boyImage;
-  } else if (age <= 70) {
-    imageSource = isFemale ? womenImage : manImage;
-  } else {
-    imageSource = isFemale ? oldWomenImage : oldMenImage;
-  }
+  const imageSource =
+    age < 35
+      ? isFemale
+        ? AGE_IMAGES.femaleYoung
+        : AGE_IMAGES.maleYoung
+      : age <= 70
+        ? isFemale
+          ? AGE_IMAGES.femaleAdult
+          : AGE_IMAGES.maleAdult
+        : isFemale
+          ? AGE_IMAGES.femaleOld
+          : AGE_IMAGES.maleOld;
 
   return (
     <View style={styles.avatar}>
@@ -178,33 +266,43 @@ function Avatar({ gender, age }: { gender: string; age: number }) {
       />
     </View>
   );
-}
+});
 
 /* -------------------------------------------------------------
    INFO TILE
    ------------------------------------------------------------- */
 
-function InfoTile({
-  icon,
+const InfoTile = memo(function InfoTile({
+  icon: Icon,
   label,
   value,
+  priority = false,
 }: {
-  icon: React.ReactNode;
+  icon: React.ComponentType<{
+    color?: string;
+    size?: number;
+    strokeWidth?: number;
+  }>;
   label: string;
   value: string;
+  priority?: boolean;
 }) {
   return (
-    <View style={styles.infoTile}>
-      <View style={styles.tileIcon}>{icon}</View>
+    <View style={[styles.infoTile, priority && styles.priorityInfoTile]}>
+      <View style={styles.tileIcon}>
+        <Icon color="#087568" size={17} strokeWidth={2.5} />
+      </View>
+
       <View style={styles.tileTextWrap}>
         <Text style={styles.infoLabel}>{label}</Text>
-        <Text numberOfLines={1} style={styles.infoValue}>
+
+        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.infoValue}>
           {value}
         </Text>
       </View>
     </View>
   );
-}
+});
 
 /* -------------------------------------------------------------
    STYLES
@@ -218,9 +316,9 @@ const styles = StyleSheet.create({
     borderColor: "#DDE8EF",
     padding: 12,
     shadowColor: "#718096",
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 2,
+    shadowOpacity: 0.06,
+    shadowRadius: 5,
+    elevation: 1,
   },
   voterTop: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   avatar: {
@@ -252,13 +350,19 @@ const styles = StyleSheet.create({
   },
   guardian: {
     color: "#047857",
+    flex: 1,
     fontWeight: "900",
     fontSize: 12,
+  },
+  guardianRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
     marginTop: 3,
-    width: "100%",
   },
   cardRightRail: { alignItems: "flex-end", gap: 7 },
   boothActions: { flexDirection: "row", alignItems: "center", gap: 6 },
+  quickActions: { flexDirection: "row", alignItems: "center", gap: 5 },
   boothBadge: {
     overflow: "hidden",
     backgroundColor: "#DCFCE7",
@@ -270,7 +374,7 @@ const styles = StyleSheet.create({
     borderRadius: 9,
   },
   scanButton: {
-    width: 28,
+    width: 26,
     height: 25,
     borderRadius: 9,
     backgroundColor: "#ECFDF5",
@@ -279,27 +383,32 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  scanButtonDisabled: { opacity: 0.7 },
   cardFooter: {
     marginTop: 10,
     flexDirection: "row",
     alignItems: "stretch",
-    gap: 6,
+    gap: 4,
   },
   infoTile: {
     flex: 1,
-    minWidth: 72,
+    minWidth: 58,
     height: 50,
     backgroundColor: "#F6FBFF",
     borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 7,
+    gap: 4,
+    paddingHorizontal: 6,
+  },
+  priorityInfoTile: {
+    flex: 1.55,
+    minWidth: 112,
   },
   tileIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
+    width: 26,
+    height: 26,
+    borderRadius: 8,
     backgroundColor: "#DDF8EC",
     alignItems: "center",
     justifyContent: "center",
@@ -313,28 +422,28 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   printButton: {
-    width: 45,
+    width: 34,
     height: 45,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "#99D6CC",
+    // borderRadius: 12,
+    // borderWidth: 1.5,
+    // borderColor: "#99D6CC",
     alignItems: "center",
     justifyContent: "center",
   },
   familyButton: {
-    width: 45,
+    width: 38,
     height: 45,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "#BFEBDD",
-    backgroundColor: "#F4FFFA",
+    // borderRadius: 12,
+    // borderWidth: 1.5,
+    // borderColor: "#BFEBDD",
+    // backgroundColor: "#F4FFFA",
     alignItems: "center",
     justifyContent: "center",
     gap: 2,
   },
   printText: {
     color: "#087568",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
     textAlign: "center",
   },

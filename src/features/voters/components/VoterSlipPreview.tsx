@@ -2,9 +2,13 @@ import * as FileSystem from "expo-file-system/legacy";
 import { Image } from "expo-image";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
-import { Download, Printer, X } from "lucide-react-native";
+import { Bluetooth, Download, Printer, X } from "lucide-react-native";
+import { useEffect, useState } from "react";
+import type { RefObject } from "react";
 import {
   Alert,
+  Linking,
+  NativeModules,
   Platform,
   Pressable,
   ScrollView,
@@ -12,8 +16,13 @@ import {
   Text,
   View,
 } from "react-native";
+import { captureRef } from "react-native-view-shot";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import {
+  getSavedThermalPrinter,
+  type ThermalPrinterDevice,
+} from "@/services/thermal-printer";
 import type { Voter } from "@/services/voters";
 
 export type VoterSlipPreviewProps = {
@@ -22,8 +31,16 @@ export type VoterSlipPreviewProps = {
   showBanner?: boolean;
   bannerImage?: string;
   onDownload?: () => void;
-  onPrint?: () => void;
+  onPrint?: () => Promise<void> | void;
+  onChangeDevice?: () => Promise<void> | void;
+  printerSelectionVersion?: number;
   variant?: "modal" | "page";
+};
+
+export type VoterSlipPaperProps = {
+  voter: Voter;
+  showBanner: boolean;
+  bannerImage?: string;
 };
 
 /* ============================================================
@@ -46,7 +63,64 @@ function slugFileName(value: unknown) {
 }
 
 function formatGuardian(value: string) {
-  return String(value || "N/A").replace(/\s*\([^)]*\)\s*$/, "");
+  const text = String(value || "N/A").trim();
+  const relationStart = text.lastIndexOf(" (");
+  return relationStart > 0 && text.endsWith(")")
+    ? text.slice(0, relationStart)
+    : text;
+}
+
+function displayValue(value: unknown) {
+  const text = String(value ?? "").trim();
+  return !text || text === "undefined" || text === "null" ? "N/A" : text;
+}
+
+function normalizeWhatsAppPhone(value?: string) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 10) return "91" + digits;
+  return digits;
+}
+
+function buildWhatsAppMessage(voter: Voter) {
+  return [
+    "Voter Slip: " + voter.name,
+    voter.epicNo ? "EPIC: " + voter.epicNo : "",
+    voter.serialNo ? "S.No.: " + voter.serialNo : "",
+    voter.booth ? "Booth: " + voter.booth : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function openWhatsAppChat(phone: string, voter: Voter) {
+  const normalizedPhone = normalizeWhatsAppPhone(phone);
+  if (!normalizedPhone) return false;
+
+  const url =
+    "https://wa.me/" +
+    normalizedPhone +
+    "?text=" +
+    encodeURIComponent(buildWhatsAppMessage(voter));
+
+  try {
+    await Linking.openURL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function openWhatsAppRecipientPicker(voter: Voter) {
+  const url =
+    "https://wa.me/?text=" + encodeURIComponent(buildWhatsAppMessage(voter));
+
+  try {
+    await Linking.openURL(url);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -192,7 +266,7 @@ function buildSlipHtml(
    DOWNLOAD + PRINT (platform aware)
    ============================================================ */
 
-async function downloadSlip(
+export async function downloadSlip(
   voter: Voter,
   showBanner: boolean,
   bannerImage?: string,
@@ -239,7 +313,118 @@ async function downloadSlip(
   }
 }
 
-async function printSlip(
+export async function shareVoterSlipPdf(
+  voter: Voter,
+  showBanner: boolean,
+  bannerImage?: string,
+  whatsappNumber?: string,
+) {
+  const bannerDataUri = showBanner ? await toDataUri(bannerImage) : undefined;
+  const html = buildSlipHtml(voter, showBanner, bannerDataUri);
+
+  try {
+    if (Platform.OS === "web") {
+      Alert.alert("Share", "PDF sharing is available on mobile devices.");
+      return;
+    }
+
+    const { base64 } = await Print.printToFileAsync({ html, base64: true });
+    const pdfUri =
+      (FileSystem.cacheDirectory ?? "") +
+      "voter-slip-" +
+      slugFileName(voter.epicNo || voter.id || voter.name) +
+      ".pdf";
+
+    if (!base64) {
+      Alert.alert("Share failed", "Unable to create the voter slip PDF.");
+      return;
+    }
+
+    await FileSystem.writeAsStringAsync(pdfUri, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(pdfUri, {
+        mimeType: "application/pdf",
+        dialogTitle: whatsappNumber
+          ? "Share Voter Slip to " + voter.name
+          : "Share Voter Slip",
+        UTI: "com.adobe.pdf",
+      });
+
+      if (whatsappNumber) {
+        await openWhatsAppChat(whatsappNumber, voter);
+      } else {
+        await openWhatsAppRecipientPicker(voter);
+      }
+    } else {
+      Alert.alert("Share unavailable", "Sharing is not available on this device.");
+    }
+  } catch (error: any) {
+    Alert.alert("Share failed", error?.message ?? "Unable to share the slip.");
+  }
+}
+
+export async function shareVoterSlipImageFromRef(
+  paperRef: RefObject<View | null>,
+  voter: Voter,
+  whatsappNumber?: string,
+  showBanner = false,
+  bannerImage?: string,
+) {
+  try {
+    if (Platform.OS === "web") {
+      Alert.alert("Share", "Image sharing is available on mobile devices.");
+      return;
+    }
+
+    if (!paperRef.current) {
+      Alert.alert("Share failed", "Unable to prepare the voter slip image.");
+      return;
+    }
+
+    if (!(await Sharing.isAvailableAsync())) {
+      Alert.alert("Share unavailable", "Sharing is not available on this device.");
+      return;
+    }
+
+    // Expo Go and an already-installed development build do not receive newly
+    // added native libraries until the Android app is rebuilt. Use the PDF
+    // sharing path in that case, rather than exposing an RNViewShot error.
+    if (!NativeModules.RNViewShot) {
+      await shareVoterSlipPdf(voter, showBanner, bannerImage, whatsappNumber);
+      return;
+    }
+
+    const capturedUri = await captureRef(paperRef, {
+      format: "png",
+      quality: 1,
+      result: "tmpfile",
+    });
+    const imageUri =
+      (FileSystem.cacheDirectory ?? "") +
+      "voter-slip-" +
+      slugFileName(voter.epicNo || voter.id || voter.name) +
+      "-" +
+      Date.now() +
+      ".png";
+
+    await FileSystem.copyAsync({ from: capturedUri, to: imageUri });
+
+    await Sharing.shareAsync(imageUri, {
+      mimeType: "image/png",
+      dialogTitle: whatsappNumber
+        ? "Share Voter Slip to " + voter.name
+        : "Share Voter Slip",
+      UTI: "public.png",
+    });
+  } catch (error: any) {
+    Alert.alert("Share failed", error?.message ?? "Unable to share the slip.");
+  }
+}
+
+export async function printSlip(
   voter: Voter,
   showBanner: boolean,
   bannerImage?: string,
@@ -277,8 +462,131 @@ export function VoterSlipPreview({
   bannerImage,
   onDownload,
   onPrint,
+  onChangeDevice,
+  printerSelectionVersion = 0,
   variant = "modal",
 }: VoterSlipPreviewProps) {
+  const [savedPrinter, setSavedPrinter] = useState<ThermalPrinterDevice | null>(
+    null,
+  );
+
+  useEffect(() => {
+    void getSavedThermalPrinter().then(setSavedPrinter).catch(() => {
+      setSavedPrinter(null);
+    });
+  }, [printerSelectionVersion]);
+  async function handleDownload() {
+    await downloadSlip(voter, showBanner, bannerImage);
+    onDownload?.();
+  }
+
+  async function handlePrint() {
+    if (onPrint) {
+      try {
+        await onPrint();
+      } catch (error: any) {
+        Alert.alert("Print failed", error?.message ?? "Unable to print the voter slip.");
+      }
+      return;
+    }
+
+    await printSlip(voter, showBanner, bannerImage);
+  }
+
+  async function handleChangeDevice() {
+    if (!onChangeDevice) return;
+    try {
+      await onChangeDevice();
+    } catch (error: any) {
+      Alert.alert("Printer unavailable", error?.message ?? "Unable to prepare the voter slip.");
+    }
+  }
+
+  const slipContent = (
+    <VoterSlipPaper
+      voter={voter}
+      showBanner={showBanner}
+      bannerImage={bannerImage}
+    />
+  );
+
+  if (variant === "page") {
+    return (
+      <SafeAreaView style={styles.pageBackdrop}>
+        <ScrollView contentContainerStyle={styles.pageScrollContent}>
+          {slipContent}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.backdrop}>
+      <View style={styles.previewPanel}>
+        <View style={styles.previewHeader}>
+          <Text style={styles.previewTitle}>Voter Slip Preview</Text>
+          <Pressable
+            accessibilityLabel="Close voter slip preview"
+            onPress={onClose}
+            style={styles.closeButton}
+          >
+            <X color="#64748B" size={22} strokeWidth={2.2} />
+          </Pressable>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {slipContent}
+        </ScrollView>
+
+        <View style={styles.footerActions}>
+          {onChangeDevice ? (
+            <View style={styles.printerBar}>
+              <View style={styles.printerStatus}>
+                <Bluetooth color="#087568" size={19} strokeWidth={2.7} />
+                <View style={styles.printerCopy}>
+                  <Text style={styles.printerLabel}>Selected printer</Text>
+                  <Text numberOfLines={1} style={styles.printerName}>
+                    {savedPrinter?.name || savedPrinter?.address || "No printer selected"}
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                accessibilityLabel="Change Bluetooth printer"
+                onPress={handleChangeDevice}
+                style={styles.changeDeviceButton}>
+                <Text style={styles.changeDeviceText}>
+                  {savedPrinter ? "Change" : "Select"}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
+          <View style={styles.primaryFooterActions}>
+            <Pressable
+              accessibilityLabel="Download voter slip"
+              onPress={handleDownload}
+              style={[styles.footerButton, styles.downloadButton]}>
+              <Download color="#334155" size={17} strokeWidth={2.5} />
+              <Text style={styles.downloadText}>Download</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Print voter slip"
+              onPress={handlePrint}
+              style={[styles.footerButton, styles.printButton]}>
+              <Printer color="#FFFFFF" size={17} strokeWidth={2.5} />
+              <Text style={styles.printText}>Print</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+export function VoterSlipPaper({
+  voter,
+  showBanner,
+  bannerImage,
+}: VoterSlipPaperProps) {
   const address = [
     voter.houseNo && voter.houseNo !== "N/A"
       ? "House No. " + voter.houseNo
@@ -290,18 +598,8 @@ export function VoterSlipPreview({
     .filter(Boolean)
     .join(", ");
 
-  async function handleDownload() {
-    await downloadSlip(voter, showBanner, bannerImage);
-    onDownload?.();
-  }
-
-  async function handlePrint() {
-    await printSlip(voter, showBanner, bannerImage);
-    onPrint?.();
-  }
-
-  const slipContent = (
-    <View style={styles.paper}>
+  return (
+    <View collapsable={false} style={styles.paper}>
       {showBanner ? (
         bannerImage ? (
           <Image
@@ -349,60 +647,10 @@ export function VoterSlipPreview({
         <SlipBlock label="Address" value={address || "N/A"} />
         <SlipBlock
           label="Polling Station No. & Address"
-          value={voter.pollingStation || "N/A"}
+          value={displayValue(voter.pollingStation)}
         />
       </View>
     </View>
-  );
-
-  if (variant === "page") {
-    return (
-      <SafeAreaView style={styles.pageBackdrop}>
-        <ScrollView contentContainerStyle={styles.pageScrollContent}>
-          {slipContent}
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  return (
-    <SafeAreaView style={styles.backdrop}>
-      <View style={styles.previewPanel}>
-        <View style={styles.previewHeader}>
-          <Text style={styles.previewTitle}>Voter Slip Preview</Text>
-          <Pressable
-            accessibilityLabel="Close voter slip preview"
-            onPress={onClose}
-            style={styles.closeButton}
-          >
-            <X color="#64748B" size={22} strokeWidth={2.2} />
-          </Pressable>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          {slipContent}
-        </ScrollView>
-
-        <View style={styles.footerActions}>
-          <Pressable
-            accessibilityLabel="Download voter slip"
-            onPress={handleDownload}
-            style={[styles.footerButton, styles.downloadButton]}
-          >
-            <Download color="#334155" size={17} strokeWidth={2.5} />
-            <Text style={styles.downloadText}>Download</Text>
-          </Pressable>
-          <Pressable
-            accessibilityLabel="Print voter slip"
-            onPress={handlePrint}
-            style={[styles.footerButton, styles.printButton]}
-          >
-            <Printer color="#FFFFFF" size={17} strokeWidth={2.5} />
-            <Text style={styles.printText}>Print</Text>
-          </Pressable>
-        </View>
-      </View>
-    </SafeAreaView>
   );
 }
 
@@ -413,7 +661,7 @@ export function VoterSlipPreview({
 function SlipInline({ label, value }: { label: string; value: string }) {
   return (
     <Text style={styles.inlineText}>
-      {label} : <Text style={styles.inlineValue}>{value}</Text>
+      {label} : <Text style={styles.inlineValue}>{displayValue(value)}</Text>
     </Text>
   );
 }
@@ -421,7 +669,7 @@ function SlipInline({ label, value }: { label: string; value: string }) {
 function SlipLine({ label, value }: { label: string; value: string }) {
   return (
     <Text style={styles.lineText}>
-      {label} : <Text style={styles.lineValue}>{value}</Text>
+      {label} : <Text style={styles.lineValue}>{displayValue(value)}</Text>
     </Text>
   );
 }
@@ -430,7 +678,7 @@ function SlipBlock({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.blockRow}>
       <Text style={styles.blockText}>
-        {label} : {value}
+        {label} : {displayValue(value)}
       </Text>
     </View>
   );
@@ -444,18 +692,15 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(2, 6, 23, 0.78)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 32,
+    padding: 0,
   },
   pageBackdrop: { flex: 1, backgroundColor: "#F8FAFC" },
   pageScrollContent: { padding: 15, paddingBottom: 28 },
   previewPanel: {
     width: "100%",
-    maxWidth: 362,
-    maxHeight: "92%",
+    height: "100%",
     backgroundColor: "#F8FAFC",
-    borderRadius: 5,
+    borderRadius: 0,
     overflow: "hidden",
     shadowColor: "#000000",
     shadowOpacity: 0.24,
@@ -585,10 +830,36 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderTopWidth: 1,
     borderTopColor: "#E5E7EB",
-    flexDirection: "row",
-    gap: 8,
     padding: 12,
   },
+  primaryFooterActions: { flexDirection: "row", gap: 8 },
+  printerBar: {
+    minHeight: 54,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#C5EEE7",
+    backgroundColor: "#F0FDFA",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingLeft: 11,
+    paddingRight: 7,
+    marginBottom: 8,
+  },
+  printerStatus: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
+  printerCopy: { flex: 1 },
+  printerLabel: { color: "#64748B", fontSize: 10, fontWeight: "700" },
+  printerName: { color: "#075E54", fontSize: 13, fontWeight: "900", marginTop: 1 },
+  changeDeviceButton: {
+    height: 34,
+    minWidth: 76,
+    borderRadius: 6,
+    backgroundColor: "#087568",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  changeDeviceText: { color: "#FFFFFF", fontSize: 12, fontWeight: "900" },
   footerButton: {
     flex: 1,
     height: 42,

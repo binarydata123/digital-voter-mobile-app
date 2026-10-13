@@ -1,285 +1,403 @@
-import { Image } from "expo-image";
-import { router } from "expo-router";
-import { useState } from "react";
+import { Redirect, router } from "expo-router";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useLoginDestination } from "@/hooks/use-login-destination";
 
-import { loginPolitician } from "@/services/authentication";
+import {
+  getDefaultPoliticianRoute,
+  loginPolitician,
+  logoutPolitician,
+} from "@/services/authentication";
+import { Eye, EyeOff, ImagePlus, Lock, Phone, X } from "lucide-react-native";
 
 export default function LoginScreen() {
+  const destination = useLoginDestination();
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const passwordInputRef = useRef<TextInput>(null);
 
   async function handleLogin() {
-    if (phone.trim().length < 10 || !password) {
-      Alert.alert(
-        "Login required",
-        "Enter politician phone number and password.",
-      );
-      return;
-    }
+    if (loading) return;
+    const nextPhoneError = !phone.trim()
+      ? "Phone number is required."
+      : phone.trim().length !== 10
+        ? "Enter a valid 10 digit phone number."
+        : "";
+    const nextPasswordError = !password ? "Password is required." : "";
+    setPhoneError(nextPhoneError);
+    setPasswordError(nextPasswordError);
+    setLoginError("");
+    if (nextPhoneError || nextPasswordError) return;
 
     setLoading(true);
     try {
-      await loginPolitician({ phone: phone.trim(), password });
-      router.replace("/politician/voters");
+      const { user } = await loginPolitician({ phone: phone.trim(), password });
+      const nextRoute = getDefaultPoliticianRoute(user);
+
+      if (!nextRoute) {
+        logoutPolitician();
+        setLoginError(
+          "No mobile pages are enabled for this politician account.",
+        );
+        return;
+      }
+
+      router.replace(nextRoute);
     } catch (error: any) {
-      Alert.alert("Unable to login", error?.message ?? "Please try again.");
+      setLoginError(error?.message ?? "Unable to login. Please try again.");
     } finally {
       setLoading(false);
     }
   }
 
+  if (!destination) return null;
+  if (destination !== "/login") return <Redirect href={destination} />;
+
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.container}
-      >
-        <View style={styles.hero}>
-          <View style={styles.brandRow}>
-            <View style={styles.brandMark}>
-              <Image
-                source={require("../../assets/icons/election_icon_192x192.png")}
-                style={styles.brandIcon}
-                contentFit="contain"
-              />
-            </View>
-            <View>
-              <Text style={styles.brandTitle}>Digital Voter</Text>
+        behavior={
+          Platform.OS === "ios"
+            ? "padding"
+            : Platform.OS === "android"
+              ? "height"
+              : undefined
+        }
+        style={styles.container}>
+        <ScrollView
+          style={styles.container}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}>
+          <View style={styles.content}>
+            {/* Header / Logo Section */}
+            <View style={styles.header}>
+              <View style={styles.logoContainer}>
+                <Image
+                  source={require("../../assets/icons/logo.png")}
+                  style={styles.logoIcon}
+                  resizeMode="contain"
+                />
+              </View>
+              <Text style={styles.brandTitle}>
+                Politic<Text style={styles.brandTitleBold}>Ease</Text>
+              </Text>
               <Text style={styles.brandMeta}>POLITICIAN APP</Text>
             </View>
-          </View>
 
-          <Text style={styles.headline}>
-            Manage voters, booths, and election work securely.
-          </Text>
-          <Text style={styles.subhead}>
-            Login with your VoterSakha politician account to access your
-            assigned voter list.
-          </Text>
-        </View>
-
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-          <Text style={styles.formTitle}>Politician Login</Text>
-
-          <Text style={styles.label}>Phone Number</Text>
-          <TextInput
-            value={phone}
-            onChangeText={(value) =>
-              setPhone(value.replace(/\D/g, "").slice(0, 10))
-            }
-            keyboardType="phone-pad"
-            placeholder="Enter 10 digit number"
-            placeholderTextColor="#94A3B8"
-            style={styles.input}
-            maxLength={10}
-          />
-
-          <Text style={styles.label}>Password</Text>
-          <View style={styles.passwordRow}>
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Enter password"
-              placeholderTextColor="#94A3B8"
-              secureTextEntry={!showPassword}
-              style={styles.passwordInput}
-            />
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setShowPassword((value) => !value)}
-              style={styles.smallButton}
-            >
-              <Text style={styles.smallButtonText}>
-                {showPassword ? "Hide" : "Show"}
+            {/* Form Card Section */}
+            <View style={styles.formCard}>
+              <Text style={styles.headline}>Welcome Back</Text>
+              <Text style={styles.subHeadline}>
+                Access your politician portal
               </Text>
-            </Pressable>
-          </View>
 
-          <Pressable
-            accessibilityRole="button"
-            disabled={loading}
-            onPress={handleLogin}
-            style={({ pressed }) => [
-              styles.loginButton,
-              (pressed || loading) && styles.loginButtonPressed,
-            ]}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.loginButtonText}>Sign In</Text>
-            )}
-          </Pressable>
-        </View>
+              {/* Phone Input */}
+              <Text style={styles.label}>PHONE NUMBER</Text>
+              <View style={styles.inputWrapper}>
+                <Phone
+                  size={18}
+                  color="#4A5568"
+                  style={styles.inputIcon}
+                  strokeWidth={2}
+                />
+                <TextInput
+                  value={phone}
+                  onChangeText={(value) => {
+                    setPhone(value.replace(/\D/g, "").slice(0, 10));
+                    setPhoneError("");
+                    setLoginError("");
+                  }}
+                  keyboardType="phone-pad"
+                  placeholder="Enter 10 digit number"
+                  placeholderTextColor="#A0AEC0"
+                  returnKeyType="next"
+                  style={styles.input}
+                  maxLength={10}
+                  onSubmitEditing={() => passwordInputRef.current?.focus()}
+                />
+                {phone ? (
+                  <Pressable
+                    accessibilityLabel="Clear phone number"
+                    accessibilityRole="button"
+                    onPress={() => {
+                      setPhone("");
+                      setPhoneError("");
+                      setLoginError("");
+                    }}
+                    style={styles.clearButton}>
+                    <X size={20} color="#718096" strokeWidth={2} />
+                  </Pressable>
+                ) : null}
+              </View>
+              {phoneError ? (
+                <Text accessibilityRole="alert" style={styles.fieldError}>
+                  {phoneError}
+                </Text>
+              ) : null}
+
+              {/* Password Input */}
+              <Text style={styles.label}>PASSWORD</Text>
+              <View style={styles.inputWrapper}>
+                <Lock
+                  size={18}
+                  color="#4A5568"
+                  style={styles.inputIcon}
+                  strokeWidth={2}
+                />
+                <TextInput
+                  ref={passwordInputRef}
+                  value={password}
+                  onChangeText={(value) => {
+                    setPassword(value);
+                    setPasswordError("");
+                    setLoginError("");
+                  }}
+                  placeholder="••••••••"
+                  placeholderTextColor="#A0AEC0"
+                  secureTextEntry={!showPassword}
+                  returnKeyType="done"
+                  style={styles.input}
+                  onSubmitEditing={handleLogin}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setShowPassword((value) => !value)}
+                  style={styles.eyeButton}>
+                  {showPassword ? (
+                    <EyeOff size={20} color="#718096" strokeWidth={2} />
+                  ) : (
+                    <Eye size={20} color="#718096" strokeWidth={2} />
+                  )}
+                </Pressable>
+              </View>
+              {passwordError ? (
+                <Text accessibilityRole="alert" style={styles.fieldError}>
+                  {passwordError}
+                </Text>
+              ) : null}
+
+              {/* Sign In Button */}
+              <Pressable
+                // Keep NativeWind from processing Pressable's style callback.
+                cssInterop={false}
+                accessibilityRole="button"
+                disabled={loading}
+                onPress={handleLogin}
+                style={({ pressed }) => [
+                  styles.loginButton,
+                  (pressed || loading) && styles.loginButtonPressed,
+                ]}>
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={styles.loginButtonText}>Sign in</Text>
+                )}
+              </Pressable>
+              {loginError ? (
+                <Text accessibilityRole="alert" style={styles.errorText}>
+                  {loginError}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </ScrollView>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open politician banner generation"
+          onPress={() => router.push("/banner-generation")}
+          style={styles.bannerButton}>
+          <ImagePlus size={26} color="#FFFFFF" strokeWidth={2} />
+        </Pressable>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  bannerButton: {
+    position: "absolute",
+    right: 24,
+    bottom: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#0F4C4E",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  errorText: {
+    color: "#B91C1C",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  fieldError: {
+    color: "#B91C1C",
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: -12,
+    marginBottom: 20,
+  },
   safe: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F4F7F6", // MATCHED: Light background from inner pages
   },
   container: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F4F7F6", // MATCHED
   },
-  hero: {
-    backgroundColor: "#134E4A",
+  scrollContent: {
+    flexGrow: 1,
+  },
+  content: {
+    flexGrow: 1,
+    justifyContent: "center",
     paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 71,
+    paddingTop: 24,
+    paddingBottom: 120,
   },
-  brandRow: {
-    flexDirection: "row",
+  header: {
     alignItems: "center",
-    gap: 12,
-    marginBottom: 28,
+    marginBottom: 32,
   },
-  brandMark: {
+  logoContainer: {
+    width: 60,
+    height: 60,
+    marginBottom: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#12474B", // Kept dark green for brand identity
+    borderRadius: 16,
+    shadowColor: "#12474B",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  logoIcon: {
     width: 48,
     height: 48,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.13)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
-    overflow: "hidden",
-  },
-  brandIcon: {
-    width: 40,
-    height: 40,
   },
   brandTitle: {
-    color: "#FFFFFF",
-    fontSize: 21,
+    fontSize: 24,
+    color: "#1A202C", // MATCHED: Dark text for light background
+    fontWeight: "400",
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  brandTitleBold: {
     fontWeight: "900",
+    color: "#0F4C4E", // MATCHED: Dark green instead of bright cyan
   },
   brandMeta: {
-    color: "#6EE7B7",
+    color: "#0F4C4E", // MATCHED
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.5,
+    marginTop: 4,
+  },
+  formCard: {
+    backgroundColor: "#FFFFFF", // MATCHED: White card like inner pages
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: "#E2E8F0", // MATCHED: Light border
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   headline: {
-    color: "#FFFFFF",
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: "900",
-    marginBottom: 12,
-    maxWidth: 350,
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#1A202C", // MATCHED
+    marginBottom: 4,
   },
-  subhead: {
-    color: "#CCFBF1",
+  subHeadline: {
     fontSize: 14,
-    lineHeight: 22,
-    maxWidth: 350,
-  },
-  sheet: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    paddingHorizontal: 24,
-    paddingTop: 18,
-    paddingBottom: 30,
-    marginTop: -28,
-  },
-  handle: {
-    width: 48,
-    height: 4,
-    borderRadius: 4,
-    backgroundColor: "#CBD5E1",
-    alignSelf: "center",
-    marginBottom: 22,
-  },
-  formTitle: {
-    color: "#0F172A",
-    fontSize: 22,
-    fontWeight: "900",
-    marginBottom: 22,
+    color: "#718096", // MATCHED
+    marginBottom: 24,
   },
   label: {
-    color: "#334155",
-    fontSize: 12,
-    fontWeight: "800",
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#4A5568", // MATCHED
+    letterSpacing: 1,
     marginBottom: 8,
   },
-  input: {
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: "#EFF6FF",
-    borderWidth: 1,
-    borderColor: "#DBEAFE",
-    color: "#0F172A",
-    fontSize: 15,
-    fontWeight: "700",
-    paddingHorizontal: 15,
-    marginBottom: 16,
-    outlineWidth: 0,
-    outlineColor: "transparent",
-  },
-  passwordRow: {
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: "#EFF6FF",
-    borderWidth: 1,
-    borderColor: "#DBEAFE",
+  inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    paddingLeft: 15,
+    backgroundColor: "#F8FAFC", // Slightly lighter gray for inputs
+    borderRadius: 8,
+    height: 52,
     marginBottom: 20,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
-  passwordInput: {
+  inputIcon: {
+    fontSize: 16,
+    marginRight: 10,
+    color: "#4A5568",
+  },
+  input: {
     flex: 1,
-    color: "#0F172A",
+    height: "100%",
+    color: "#1A202C",
     fontSize: 15,
-    fontWeight: "700",
-    paddingVertical: 0,
-    outlineWidth: 0,
-    outlineColor: "transparent",
+    fontWeight: "500",
   },
-  smallButton: {
-    height: 40,
-    paddingHorizontal: 12,
-    alignItems: "center",
-    justifyContent: "center",
+  clearButton: {
+    padding: 4,
   },
-  smallButtonText: {
-    color: "#0F766E",
-    fontSize: 12,
-    fontWeight: "900",
+  eyeButton: {
+    padding: 4,
   },
   loginButton: {
     height: 52,
-    borderRadius: 14,
-    backgroundColor: "#134E4A",
+    borderRadius: 8,
+    backgroundColor: "#0F4C4E", // Kept as requested
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 8,
+    marginBottom: 8,
+    width: "100%",
   },
   loginButtonPressed: {
-    opacity: 0.82,
+    opacity: 0.85,
   },
   loginButtonText: {
     color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "900",
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
+    width: "100%",
+  },
+  footerText: {
+    textAlign: "center",
+    fontSize: 11,
+    color: "#718096", // MATCHED: Darker gray so it's readable on light bg
+    marginTop: 32,
+    lineHeight: 18,
+    paddingHorizontal: 20,
   },
 });

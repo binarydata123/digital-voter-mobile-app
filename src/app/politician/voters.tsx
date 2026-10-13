@@ -1,24 +1,32 @@
+import { BannerStudioMenuItem } from "@/features/banner-generation/BannerStudioMenuItem";
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import {
+  ArrowUp,
   LogOut,
   MapPin,
+  Menu,
   Printer,
   RefreshCw,
   Search,
   SlidersHorizontal,
   UsersRound,
-  X,
 } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
+import {
+  Animated,
   FlatList,
   Modal,
-  Platform,
   Pressable,
-  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -27,10 +35,50 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/common/EmptyState";
+import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 import { VoterCard } from "@/features/voters/components/VoterCard";
-import { VoterSlipPreview } from "@/features/voters/components/VoterSlipPreview";
-import { getCurrentUser, logoutPolitician } from "@/services/authentication";
-import { buildVoterStats, fetchVoters, type Voter } from "@/services/voters";
+import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
+import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleton";
+import { searchRank, searchTerms } from "@/utils/voterSearch";
+
+import {
+  shareVoterSlipImageFromRef,
+  VoterSlipPaper,
+  VoterSlipPreview,
+} from "@/features/voters/components/VoterSlipPreview";
+import {
+  ensureAuthSession,
+  getCurrentUser,
+  getDefaultPoliticianRoute,
+  hasPoliticianPageAccess,
+  logoutPolitician,
+} from "@/services/authentication";
+import {
+  getLocalVoterOverview,
+  getLocalVoterPage,
+  hasLocalVoters,
+  replaceLocalVotersFromPages,
+} from "@/services/local-voters";
+import {
+  getSavedThermalPrinter,
+  printThermalVoterSlip,
+} from "@/services/thermal-printer";
+import { isLocalVoterDatabaseAvailable } from "@/services/voter-database";
+import {
+  buildVoterStats,
+  fetchVoters,
+  forEachVoterPage,
+  type Voter,
+} from "@/services/voters";
+
+const VOTER_PAGE_SIZE = 50;
+const STICKY_CONTROL_INDICES = [1];
+type VoterListItem =
+  | { type: "controls" | "booths" }
+  | { type: "voter"; voter: Voter };
+const CONTROLS_ITEM: VoterListItem = { type: "controls" };
+const BOOTHS_ITEM: VoterListItem = { type: "booths" };
+const getVoterListItemType = (item: VoterListItem) => item.type;
 
 type PrintScope = "single" | "family";
 type SlipPreviewRequest = {
@@ -39,12 +87,29 @@ type SlipPreviewRequest = {
   withBanner: boolean;
 };
 type PrintTypeRequest = { voter: Voter; scope: PrintScope };
+type ThermalPrintRequest = {
+  bannerImage?: string;
+  showBanner: boolean;
+  voter: Voter;
+};
+type ShareImageRequest = { voter: Voter; resolve: () => void };
 
 export default function VotersScreen() {
   const [voters, setVoters] = useState<Voter[]>([]);
+  const [localPoliticianId, setLocalPoliticianId] = useState<string | null>(
+    null,
+  );
+  const [localTotal, setLocalTotal] = useState(0);
+  const [localAllVoterTotal, setLocalAllVoterTotal] = useState(0);
+  const [localBoothCounts, setLocalBoothCounts] = useState<
+    Record<string, number>
+  >({});
+  const [loadingMore, setLoadingMore] = useState(false);
   const [query, setQuery] = useState("");
   const [activeBooth, setActiveBooth] = useState("All");
-  const [loading, setLoading] = useState(true);
+  const [pendingBooth, setPendingBooth] = useState<string | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [slipPreview, setSlipPreview] = useState<SlipPreviewRequest | null>(
@@ -52,49 +117,292 @@ export default function VotersScreen() {
   );
   const [printTypeRequest, setPrintTypeRequest] =
     useState<PrintTypeRequest | null>(null);
-  const [logoutChoiceVisible, setLogoutChoiceVisible] = useState(false);
+  const [thermalPrintRequest, setThermalPrintRequest] =
+    useState<ThermalPrintRequest | null>(null);
+  const [printerSelectionVersion, setPrinterSelectionVersion] = useState(0);
+  const [shareImageRequest, setShareImageRequest] =
+    useState<ShareImageRequest | null>(null);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const boothSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shareSlipRef = useRef<View>(null);
+  const listRef = useRef<FlashListRef<VoterListItem>>(null);
+  const [scrollTopOpacity] = useState(() => new Animated.Value(0));
+  const lastLocalQueryKey = useRef("");
+  const localRequestId = useRef(0);
+  const currentUser = getCurrentUser();
+  const headerTitle =
+    currentUser?.ward ||
+    currentUser?.constituency ||
+    currentUser?.district ||
+    "Assigned area";
+  const headerLocation = [
+    currentUser?.city || currentUser?.district,
+    currentUser?.state,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const accountBannerImage = currentUser?.bannerImage;
+  const canOpenSurvey = hasPoliticianPageAccess("survey", currentUser);
+  const canUseTemplates = hasPoliticianPageAccess("template", currentUser);
+  const deferredQuery = useDeferredValue(query);
+  const isSearchPending = query !== deferredQuery;
+  const localMode = Boolean(localPoliticianId);
+
+  const loadInitialLocalPage = useCallback(async (politicianId: string) => {
+    const [page, overview] = await Promise.all([
+      getLocalVoterPage(politicianId, {}, VOTER_PAGE_SIZE),
+      getLocalVoterOverview(politicianId),
+    ]);
+    lastLocalQueryKey.current = `${politicianId}|All|`;
+    setVoters(page.voters);
+    setLocalTotal(page.total);
+    setLocalAllVoterTotal(overview.total);
+    setLocalBoothCounts(overview.boothCounts);
+    setLocalPoliticianId(politicianId);
+  }, []);
 
   const loadVoters = useCallback(async () => {
-    setLoading(true);
+    const signedInUser = getCurrentUser();
+    if (signedInUser && !hasPoliticianPageAccess("voters", signedInUser)) {
+      const nextRoute = getDefaultPoliticianRoute(signedInUser);
+      router.replace(nextRoute ?? "/login");
+      setInitialLoading(false);
+      return;
+    }
+
+    setInitialLoading(true);
     try {
+      const session = await ensureAuthSession();
+      const currentPoliticianId = session.user?.id ?? null;
+
+      if (isLocalVoterDatabaseAvailable() && currentPoliticianId) {
+        if (await hasLocalVoters(currentPoliticianId)) {
+          await loadInitialLocalPage(currentPoliticianId);
+          setError("");
+          return;
+        }
+
+        await replaceLocalVotersFromPages(currentPoliticianId, (savePage) =>
+          forEachVoterPage({}, savePage),
+        );
+        await loadInitialLocalPage(currentPoliticianId);
+        setError("");
+        return;
+      }
+
       const list = await fetchVoters();
+      setLocalPoliticianId(null);
       setVoters(list);
       setError("");
     } catch (loadError: any) {
       if (loadError?.message === "Please sign in again to continue.") {
-        logoutPolitician();
+        await logoutPolitician();
         router.replace("/login");
         return;
       }
       setVoters([]);
       setError(loadError?.message ?? "Unable to load voters from the backend.");
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
     }
-  }, []);
+  }, [loadInitialLocalPage]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadVoters();
   }, [loadVoters]);
 
-  const refreshCurrentVoters = useCallback(() => {
-    loadVoters();
-  }, [loadVoters]);
+  useEffect(
+    () => () => {
+      if (boothSwitchTimer.current) {
+        clearTimeout(boothSwitchTimer.current);
+      }
+    },
+    [],
+  );
 
-  const refreshAllVoterData = useCallback(() => {
+  useEffect(() => {
+    if (localMode || !pendingBooth || pendingBooth !== activeBooth) {
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => setPendingBooth(null));
+    return () => cancelAnimationFrame(frame);
+  }, [activeBooth, localMode, pendingBooth]);
+
+  useEffect(() => {
+    if (!shareImageRequest) return;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const frame = requestAnimationFrame(() => {
+      const waitForBanner = canUseTemplates && accountBannerImage ? 250 : 0;
+
+      timer = setTimeout(() => {
+        shareVoterSlipImageFromRef(
+          shareSlipRef,
+          shareImageRequest.voter,
+          shareImageRequest.voter.whatsappNumber ||
+            shareImageRequest.voter.mobileNumber,
+          canUseTemplates,
+          accountBannerImage,
+        ).finally(() => {
+          shareImageRequest.resolve();
+          setShareImageRequest(null);
+        });
+      }, waitForBanner);
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      if (timer) clearTimeout(timer);
+    };
+  }, [canUseTemplates, accountBannerImage, shareImageRequest]);
+
+  // Animate the scroll-to-top button opacity whenever visibility changes.
+  useEffect(() => {
+    Animated.timing(scrollTopOpacity, {
+      toValue: showScrollTop ? 1 : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [showScrollTop, scrollTopOpacity]);
+
+  const refreshAllVoterData = useCallback(async () => {
+    if (refreshing) return;
     setActiveBooth("All");
     setQuery("");
-    loadVoters();
-  }, [loadVoters]);
+    setRefreshing(true);
+    try {
+      const session = await ensureAuthSession();
+      const currentPoliticianId = session.user?.id ?? null;
 
-  const booths = useMemo(
-    () => ["All", ...Array.from(new Set(voters.map((voter) => voter.booth)))],
-    [voters],
+      if (isLocalVoterDatabaseAvailable() && currentPoliticianId) {
+        await replaceLocalVotersFromPages(currentPoliticianId, (savePage) =>
+          forEachVoterPage({}, savePage),
+        );
+        await loadInitialLocalPage(currentPoliticianId);
+      } else {
+        const downloadedVoters = await fetchVoters();
+        setLocalPoliticianId(null);
+        setVoters(downloadedVoters);
+      }
+
+      setError("");
+    } catch (refreshError: any) {
+      if (refreshError?.message === "Please sign in again to continue.") {
+        await logoutPolitician();
+        router.replace("/login");
+        return;
+      }
+      setError(refreshError?.message ?? "Unable to refresh voter data.");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadInitialLocalPage, refreshing]);
+
+  useEffect(() => {
+    if (!localPoliticianId) return;
+
+    const normalizedSearch = deferredQuery.trim();
+    const queryKey = `${localPoliticianId}|${activeBooth}|${normalizedSearch}`;
+    if (lastLocalQueryKey.current === queryKey) {
+      setPendingBooth(null);
+      setLoadingMore(false);
+      return;
+    }
+
+    const requestId = ++localRequestId.current;
+    let cancelled = false;
+    setLoadingMore(true);
+    getLocalVoterPage(
+      localPoliticianId,
+      { booth: activeBooth, search: normalizedSearch || undefined },
+      VOTER_PAGE_SIZE,
+    )
+      .then((page) => {
+        if (cancelled || requestId !== localRequestId.current) return;
+        lastLocalQueryKey.current = queryKey;
+        setVoters(page.voters);
+        setLocalTotal(page.total);
+      })
+      .catch((pageError: any) => {
+        if (!cancelled && requestId === localRequestId.current) {
+          setVoters([]);
+          setError(pageError?.message ?? "Unable to load local voters.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled && requestId === localRequestId.current) {
+          setLoadingMore(false);
+          setPendingBooth(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeBooth, deferredQuery, localPoliticianId]);
+
+  const loadMoreLocalVoters = useCallback(async () => {
+    if (
+      !localPoliticianId ||
+      pendingBooth ||
+      loadingMore ||
+      voters.length >= localTotal
+    ) {
+      return;
+    }
+
+    const requestId = ++localRequestId.current;
+    setLoadingMore(true);
+    try {
+      const page = await getLocalVoterPage(
+        localPoliticianId,
+        { booth: activeBooth, search: deferredQuery.trim() || undefined },
+        VOTER_PAGE_SIZE,
+        voters.length,
+      );
+      if (requestId !== localRequestId.current) return;
+      setVoters((current) => [...current, ...page.voters]);
+      setLocalTotal(page.total);
+    } catch (pageError: any) {
+      if (requestId === localRequestId.current) {
+        setError(pageError?.message ?? "Unable to load more voters.");
+      }
+    } finally {
+      if (requestId === localRequestId.current) setLoadingMore(false);
+    }
+  }, [
+    activeBooth,
+    deferredQuery,
+    loadingMore,
+    localPoliticianId,
+    localTotal,
+    pendingBooth,
+    voters.length,
+  ]);
+
+  const stats = useMemo(
+    () =>
+      localMode
+        ? {
+            total: localAllVoterTotal,
+            boothCounts: localBoothCounts,
+            male: 0,
+            female: 0,
+            senior: 0,
+          }
+        : buildVoterStats(voters),
+    [localAllVoterTotal, localBoothCounts, localMode, voters],
   );
-  const stats = useMemo(() => buildVoterStats(voters), [voters]);
+  const booths = useMemo(
+    () =>
+      localMode
+        ? ["All", ...Object.keys(localBoothCounts)]
+        : ["All", ...Array.from(new Set(voters.map((voter) => voter.booth)))],
+    [localBoothCounts, localMode, voters],
+  );
 
-  // Count per booth tab (All = total, others = boothCounts[booth] or 0)
   const boothCounts = useMemo(() => {
     const counts: Record<string, number> = { All: stats.total };
     booths.forEach((booth) => {
@@ -104,155 +412,237 @@ export default function VotersScreen() {
     return counts;
   }, [booths, stats]);
 
+  const voterSearchIndex = useMemo(
+    () =>
+      localMode
+        ? []
+        : voters.map((voter) => ({
+            words: searchTerms(
+              [
+                voter.name,
+                voter.hindiName ?? "",
+                voter.epicNo,
+                voter.serialNo ?? "",
+              ].join(" "),
+            ),
+            voter,
+          })),
+    [localMode, voters],
+  );
+
   const filteredVoters = useMemo(() => {
-    const lowered = query.trim().toLowerCase();
-    return voters.filter((voter) => {
+    if (localMode) return voters;
+    const lowered = deferredQuery.trim().toLowerCase();
+    const terms = searchTerms(lowered);
+    const matched: Voter[] = [];
+
+    for (const { voter, words } of voterSearchIndex) {
       const boothMatch = activeBooth === "All" || voter.booth === activeBooth;
-      const queryMatch =
-        !lowered ||
-        voter.name.toLowerCase().includes(lowered) ||
-        voter.epicNo.toLowerCase().includes(lowered) ||
-        (voter.serialNo ?? "").toLowerCase().includes(lowered);
-      return boothMatch && queryMatch;
+      const queryMatch = terms.every((term) =>
+        words.some((word) => word.startsWith(term)),
+      );
+      if (boothMatch && queryMatch) matched.push(voter);
+    }
+
+    return matched.sort((a, b) => {
+      const fields = (voter: Voter) => [
+        voter.name,
+        voter.hindiName ?? "",
+        voter.epicNo,
+        voter.serialNo ?? "",
+      ];
+      return (
+        (lowered
+          ? searchRank(fields(a), lowered) - searchRank(fields(b), lowered)
+          : 0) ||
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) ||
+        a.id.localeCompare(b.id)
+      );
     });
-  }, [activeBooth, query, voters]);
+  }, [activeBooth, deferredQuery, localMode, voterSearchIndex, voters]);
 
-  function handleLogout() {
-    setLogoutChoiceVisible(true);
-  }
+  const selectBooth = useCallback(
+    (booth: string) => {
+      if (booth === activeBooth && !pendingBooth) {
+        return;
+      }
 
-  function confirmLogout() {
-    setLogoutChoiceVisible(false);
-    logoutPolitician();
+      if (boothSwitchTimer.current) {
+        clearTimeout(boothSwitchTimer.current);
+      }
+
+      setPendingBooth(booth);
+      // Ignore any response still in flight for the previously selected booth.
+      ++localRequestId.current;
+      boothSwitchTimer.current = setTimeout(() => {
+        boothSwitchTimer.current = null;
+        setActiveBooth(booth);
+      }, 0);
+    },
+    [activeBooth, pendingBooth],
+  );
+
+  async function confirmLogout() {
+    await logoutPolitician();
     router.replace("/login");
   }
 
   function openSurveyPage() {
-    setLogoutChoiceVisible(false);
-    router.push("/politician/survey");
-  }
-
-  function handlePrint(voter: Voter) {
-    setPrintTypeRequest({ voter, scope: "single" });
-  }
-
-  function handleFamily(voter: Voter) {
-    setPrintTypeRequest({ voter, scope: "family" });
-  }
-
-  function openSlipPreview(withBanner: boolean) {
-    if (!printTypeRequest) return;
-    setSlipPreview({ ...printTypeRequest, withBanner });
-    setPrintTypeRequest(null);
-  }
-
-  function handleDownloadSlip() {
-    Alert.alert(
-      "Download",
-      "Slip download will be connected to the print image exporter.",
-    );
-  }
-
-  function handlePrintSlip() {
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      window.print();
-      return;
+    if (canOpenSurvey) {
+      router.push("/politician/survey");
     }
-    Alert.alert("Print", "Thermal printer integration will print this slip.");
   }
 
-  return (
-    <SafeAreaView style={styles.safe}>
-      {/* ================= HEADER ================= */}
-      <View style={styles.header}>
-        <Image
-          source={require("../../../assets/images/vote.jpeg")}
-          style={styles.headerImage}
-          contentFit="cover"
-          transition={120}
-        />
-        <View style={styles.headerOverlay} />
+  const handlePrint = useCallback((voter: Voter) => {
+    setPrintTypeRequest({ voter, scope: "single" });
+  }, []);
 
-        <View style={styles.headerTop}>
-          <View />
-          <View style={styles.headerActions}>
-            <Pressable
-              accessibilityLabel="Refresh offline voter data"
-              onPress={refreshAllVoterData}
-              disabled={loading}
-              style={[
-                styles.headerIconButton,
-                loading && styles.headerIconButtonDisabled,
-              ]}
-            >
-              <RefreshCw color="#0F766E" size={18} strokeWidth={2.8} />
-            </Pressable>
-            <Pressable
-              accessibilityLabel="Logout"
-              onPress={handleLogout}
-              style={[styles.headerIconButton, styles.logoutButton]}
-            >
-              <LogOut color="#FFFFFF" size={18} strokeWidth={2.8} />
-            </Pressable>
-          </View>
-        </View>
+  const handleFamily = useCallback((voter: Voter) => {
+    setPrintTypeRequest({ voter, scope: "family" });
+  }, []);
 
-        {/* Title block starts on next line (not beside back arrow) */}
-        <View style={styles.headerCopy}>
-          <Text style={styles.eyebrow}>VOTER LIST</Text>
-          <Text style={styles.title}>Ward-14</Text>
-          <Text style={styles.boothTitle}>Booth-1, 2</Text>
-          <View style={styles.locationRow}>
-            <MapPin color="#087568" size={14} strokeWidth={2.8} />
-            <Text style={styles.location}>Ganganagar, Rajasthan</Text>
-          </View>
-        </View>
-      </View>
+  const handleShareVoterSlip = useCallback(async (voter: Voter) => {
+    await new Promise<void>((resolve) => {
+      setShareImageRequest({ voter, resolve });
+    });
+  }, []);
 
-      <View style={styles.body}>
-        {error ? <Text style={styles.warning}>{error}</Text> : null}
+  const renderVoter = useCallback(
+    (voter: Voter) => (
+      <VoterCard
+        voter={voter}
+        onPrint={handlePrint}
+        onFamily={handleFamily}
+        onShare={handleShareVoterSlip}
+      />
+    ),
+    [handleFamily, handlePrint, handleShareVoterSlip],
+  );
 
-        {/* Total Voters card with Users icon */}
-        {/* <Pressable
-          onPress={() => setModalVisible(true)}
-          style={styles.totalCard}
-        >
-          <View style={styles.totalCardLeft}>
-            <View style={styles.totalIconWrap}>
-              <UsersRound color="#087568" size={22} strokeWidth={2.5} />
+  const voterKeyExtractor = useCallback(
+    (item: VoterListItem) =>
+      item.type === "voter" ? `voter:${item.voter.id}` : item.type,
+    [],
+  );
+
+  const listData = useMemo<VoterListItem[]>(
+    // `deferredQuery` keeps the previous result visible during a search. Do
+    // not clear it here: unmounting every card on each key press is expensive.
+    () => [
+      BOOTHS_ITEM,
+      CONTROLS_ITEM,
+      ...(pendingBooth
+        ? []
+        : filteredVoters.map(
+            (voter): VoterListItem => ({ type: "voter", voter }),
+          )),
+    ],
+    [filteredVoters, pendingBooth],
+  );
+
+  // Toggle scroll-to-top visibility based on how far the user scrolled.
+  const handleListScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const offsetY = event.nativeEvent.contentOffset.y;
+      const shouldShow = offsetY > 400;
+      setShowScrollTop((prev) => (prev === shouldShow ? prev : shouldShow));
+    },
+    [],
+  );
+
+  const scrollToTop = useCallback(() => {
+    listRef.current?.scrollToOffset({
+      offset: 0,
+      animated: true,
+    });
+  }, []);
+
+  const renderScreenHeader = useCallback(
+    () => (
+      <>
+        <View style={styles.header}>
+          <Image
+            source={require("../../../assets/images/vote.jpeg")}
+            style={styles.headerImage}
+            contentFit="cover"
+            contentPosition="right center"
+            transition={120}
+          />
+          <View style={styles.headerOverlay} />
+
+          <View style={styles.headerTop}>
+            <View />
+            <View style={styles.headerActions}>
+              <Pressable
+                accessibilityLabel="Refresh offline voter data"
+                onPress={refreshAllVoterData}
+                disabled={refreshing}
+                style={styles.headerIconButton}>
+                <RefreshCw color="#0F766E" size={18} strokeWidth={2.8} />
+              </Pressable>
+              <Pressable
+                accessibilityLabel="Open voter menu"
+                onPress={() => setMenuVisible(true)}
+                style={[styles.headerIconButton, styles.menuButton]}>
+                <Menu color="#FFFFFF" size={21} strokeWidth={2.8} />
+              </Pressable>
             </View>
-            <View>
-              <Text style={styles.cardLabel}>Total Voters</Text>
-              <Text style={styles.totalValue}>{stats.total}</Text>
-            </View>
           </View>
-          <Info color="#0F766E" size={20} strokeWidth={2.5} />
-        </Pressable> */}
 
-        {/* Search + Filter */}
-        <View style={styles.searchRow}>
-          <View style={styles.searchBox}>
-            <Search color="#94A3B8" size={18} strokeWidth={2.6} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search name, EPIC No. or Serial No."
-              placeholderTextColor="#94A3B8"
-              style={styles.searchInput}
-              returnKeyType="search"
-            />
+          <View style={styles.headerCopy}>
+            <Text style={styles.eyebrow}>VOTER LIST</Text>
+            <Text style={styles.title} numberOfLines={1}>
+              {headerTitle}
+            </Text>
+            {headerLocation ? (
+              <View style={styles.locationRow}>
+                <MapPin color="#087568" size={14} strokeWidth={2.8} />
+                <Text style={styles.location} numberOfLines={1}>
+                  {headerLocation}
+                </Text>
+              </View>
+            ) : null}
           </View>
-          <Pressable
-            style={styles.filterButton}
-            onPress={() => setModalVisible(true)}
-          >
-            <SlidersHorizontal color="#FFFFFF" size={15} strokeWidth={2.8} />
-            <Text style={styles.filterButtonText}>Filter</Text>
-          </Pressable>
         </View>
 
-        {/* Booth tabs with counts */}
-        <View style={styles.boothTabsWrap}>
+        {error ? (
+          <View style={styles.warningWrap}>
+            <Text style={styles.warning}>{error}</Text>
+          </View>
+        ) : null}
+      </>
+    ),
+    [error, refreshAllVoterData, refreshing, headerTitle, headerLocation],
+  );
+
+  const renderStickyControls = useCallback(
+    (section: "controls" | "booths") => (
+      <View
+        style={
+          section === "controls" ? styles.stickyControls : styles.boothControls
+        }>
+        {section === "controls" ? (
+          <View style={styles.searchRow}>
+            <View style={styles.searchBox}>
+              <Search color="#94A3B8" size={18} strokeWidth={2.6} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search name, EPIC No. or Serial No."
+                placeholderTextColor="#94A3B8"
+                style={styles.searchInput}
+                returnKeyType="search"
+              />
+            </View>
+            <Pressable
+              style={styles.filterButton}
+              onPress={() => setModalVisible(true)}>
+              <SlidersHorizontal color="#FFFFFF" size={15} strokeWidth={2.8} />
+              <Text style={styles.filterButtonText}>Filter</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {section === "booths" ? (
           <FlatList
             horizontal
             data={booths}
@@ -260,14 +650,14 @@ export default function VotersScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.boothTabs}
             renderItem={({ item }) => {
-              const isActive = activeBooth === item;
+              const isActive = (pendingBooth ?? activeBooth) === item;
               const label = item === "All" ? "All Voters" : item;
               const count = boothCounts[item] ?? 0;
+
               return (
                 <Pressable
-                  onPress={() => setActiveBooth(item)}
-                  style={[styles.boothTab, isActive && styles.boothTabActive]}
-                >
+                  onPress={() => selectBooth(item)}
+                  style={[styles.boothTab, isActive && styles.boothTabActive]}>
                   {item === "All" ? (
                     <UsersRound
                       color={isActive ? "#FFFFFF" : "#087568"}
@@ -279,22 +669,19 @@ export default function VotersScreen() {
                     style={[
                       styles.boothTabText,
                       isActive && styles.boothTabTextActive,
-                    ]}
-                  >
+                    ]}>
                     {label}
                   </Text>
                   <View
                     style={[
                       styles.countBadge,
                       isActive && styles.countBadgeActive,
-                    ]}
-                  >
+                    ]}>
                     <Text
                       style={[
                         styles.countBadgeText,
                         isActive && styles.countBadgeTextActive,
-                      ]}
-                    >
+                      ]}>
                       {count}
                     </Text>
                   </View>
@@ -302,86 +689,199 @@ export default function VotersScreen() {
               );
             }}
           />
-        </View>
-
-        <FlatList
-          data={filteredVoters}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={loading}
-              onRefresh={refreshCurrentVoters}
-              tintColor="#0F766E"
-            />
-          }
-          ListEmptyComponent={
-            loading ? (
-              <ActivityIndicator color="#0F766E" />
-            ) : (
-              <EmptyState
-                title="No voters found"
-                message="Try a different name, EPIC number, or booth."
-              />
-            )
-          }
-          renderItem={({ item }) => (
-            <VoterCard
-              voter={item}
-              // onScan={handleScan}
-              onPrint={handlePrint}
-              onFamily={handleFamily}
-            />
-          )}
-        />
+        ) : null}
       </View>
+    ),
+    [activeBooth, boothCounts, booths, pendingBooth, query, selectBooth],
+  );
 
-      {logoutChoiceVisible ? (
-        <View style={styles.logoutChoiceOverlay}>
-          <Pressable
-            accessibilityLabel="Cancel logout"
-            onPress={() => setLogoutChoiceVisible(false)}
-            style={styles.logoutChoiceBackdrop}
-          />
-          <View style={styles.logoutChoicePanel}>
-            <Text style={styles.logoutChoiceTitle}>Before you leave</Text>
-            <Pressable
-              accessibilityLabel="Close logout options"
-              onPress={() => setLogoutChoiceVisible(false)}
-              style={styles.logoutChoiceClose}
-            >
-              <X color="#64748B" size={20} strokeWidth={2.6} />
-            </Pressable>
-
-            <Text style={styles.logoutChoiceMessage}>
-              Open the survey report or confirm logout from this account.
-            </Text>
-
-            <View style={styles.logoutChoiceActions}>
-              <Pressable onPress={openSurveyPage} style={styles.surveyChoiceButton}>
-                <Text style={styles.surveyChoiceText}>Open Survey Page</Text>
-              </Pressable>
-              <Pressable onPress={confirmLogout} style={styles.logoutConfirmButton}>
-                <Text style={styles.logoutConfirmText}>Logout</Text>
-              </Pressable>
-            </View>
-          </View>
+  const renderListFooter = useCallback(() => {
+    if (pendingBooth || isSearchPending || loadingMore) {
+      return (
+        <View style={styles.listFooterWrap}>
+          <VoterListSkeleton />
         </View>
-      ) : null}
+      );
+    }
+
+    if (filteredVoters.length === 0) {
+      return (
+        <View style={styles.listFooterWrap}>
+          <EmptyState
+            title="No voters found"
+            message="Try a different name, EPIC number, or booth."
+          />
+        </View>
+      );
+    }
+
+    return null;
+  }, [
+    filteredVoters.length,
+    isSearchPending,
+    loadingMore,
+    pendingBooth,
+  ]);
+
+  const renderVoterItem = useCallback(
+    ({ item }: { item: VoterListItem }) =>
+      item.type === "voter" ? (
+        <View style={styles.voterItemWrap}>{renderVoter(item.voter)}</View>
+      ) : (
+        renderStickyControls(item.type)
+      ),
+    [renderStickyControls, renderVoter],
+  );
+  const listHeader = useMemo(() => renderScreenHeader(), [renderScreenHeader]);
+
+  function openSlipPreview(withBanner: boolean) {
+    if (!printTypeRequest) return;
+    setSlipPreview({ ...printTypeRequest, withBanner });
+    setPrintTypeRequest(null);
+  }
+
+  const handleSlipPreviewPrint = useCallback(async () => {
+    if (!slipPreview) return;
+    const request = {
+      bannerImage: getCurrentUser()?.bannerImage,
+      showBanner: slipPreview.withBanner,
+      voter: slipPreview.voter,
+    };
+
+    const savedPrinter = await getSavedThermalPrinter();
+    if (!savedPrinter) {
+      setThermalPrintRequest(request);
+      return;
+    }
+
+    try {
+      await printThermalVoterSlip(request.voter, savedPrinter, request);
+      setSlipPreview(null);
+    } catch {
+      // The saved printer is no longer reachable. Let the user reconnect or
+      // choose another device instead of leaving them at a failed print alert.
+      setThermalPrintRequest(request);
+    }
+  }, [slipPreview]);
+
+  const handleChangeThermalPrinter = useCallback(async () => {
+    if (!slipPreview) return;
+    setThermalPrintRequest({
+      bannerImage: getCurrentUser()?.bannerImage,
+      showBanner: slipPreview.withBanner,
+      voter: slipPreview.voter,
+    });
+  }, [slipPreview]);
+
+  if (initialLoading || refreshing) {
+    return <VoterDataSetup />;
+  }
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      <FlashList
+        ref={listRef}
+        data={listData}
+        keyExtractor={voterKeyExtractor}
+        renderItem={renderVoterItem}
+        getItemType={getVoterListItemType}
+        stickyHeaderIndices={STICKY_CONTROL_INDICES}
+        onEndReached={localMode ? loadMoreLocalVoters : undefined}
+        onEndReachedThreshold={0.25}
+        onScroll={handleListScroll}
+        scrollEventThrottle={16}
+        // decelerationRate={1}
+        drawDistance={400}
+        keyboardDismissMode="none"
+        keyboardShouldPersistTaps="always"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={listHeader}
+        ListFooterComponent={renderListFooter}
+      />
+
+      <Modal
+        transparent
+        visible={menuVisible}
+        animationType="slide"
+        onRequestClose={() => setMenuVisible(false)}>
+        <Pressable
+          style={styles.menuBackdrop}
+          onPress={() => setMenuVisible(false)}>
+          <Pressable
+            style={styles.menuDrawer}
+            onPress={(event) => event.stopPropagation()}>
+            <View style={styles.menuHandle} />
+            <View style={styles.menuHeader}></View>
+            {canOpenSurvey ? (
+              <Pressable
+                onPress={() => {
+                  setMenuVisible(false);
+                  openSurveyPage();
+                }}
+                style={styles.menuRow}>
+                <View style={styles.menuIconWrap}>
+                  <UsersRound color="#087568" size={20} strokeWidth={2.6} />
+                </View>
+                <View style={styles.menuCopy}>
+                  <Text style={styles.menuRowTitle}>Open survey page</Text>
+                  <Text style={styles.menuRowSubtitle}>
+                    Manage voter surveys
+                  </Text>
+                </View>
+              </Pressable>
+            ) : null}
+
+            {canUseTemplates ? (
+              <Pressable
+                onPress={() => {
+                  setMenuVisible(false);
+                  router.push("/politician/templates");
+                }}
+                style={styles.menuRow}>
+                <View style={styles.menuIconWrap}>
+                  <Printer color="#087568" size={20} strokeWidth={2.6} />
+                </View>
+                <View style={styles.menuCopy}>
+                  <Text style={styles.menuRowTitle}>Open template page</Text>
+                  <Text style={styles.menuRowSubtitle}>
+                    Build booth voter banner templates
+                  </Text>
+                </View>
+              </Pressable>
+            ) : null}
+
+            <BannerStudioMenuItem onPress={() => { setMenuVisible(false); router.push("/banner-generation"); }} />
+            <Pressable
+              onPress={() => {
+                setMenuVisible(false);
+                void confirmLogout();
+              }}
+              style={[styles.menuRow, styles.logoutMenuRow]}>
+              <View style={[styles.menuIconWrap, styles.logoutMenuIconWrap]}>
+                <LogOut color="#B91C1C" size={20} strokeWidth={2.6} />
+              </View>
+              <View style={styles.menuCopy}>
+                <Text style={styles.logoutMenuTitle}>Logout</Text>
+                <Text style={styles.menuRowSubtitle}>
+                  Sign out from this device
+                </Text>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Print type modal */}
       <Modal
         transparent
         visible={Boolean(printTypeRequest)}
         animationType="fade"
-        onRequestClose={() => setPrintTypeRequest(null)}
-      >
+        onRequestClose={() => setPrintTypeRequest(null)}>
         {printTypeRequest ? (
           <Pressable
             style={styles.printChoiceBackdrop}
-            onPress={() => setPrintTypeRequest(null)}
-          >
+            onPress={() => setPrintTypeRequest(null)}>
             <Pressable style={styles.printChoicePanel}>
               <View style={styles.printChoiceHeader}>
                 <Text style={styles.printChoiceTitle}>
@@ -392,28 +892,31 @@ export default function VotersScreen() {
                 <Pressable
                   accessibilityLabel="Close print type"
                   onPress={() => setPrintTypeRequest(null)}
-                  style={styles.printChoiceClose}
-                >
+                  style={styles.printChoiceClose}>
                   <Text style={styles.printChoiceCloseText}>x</Text>
                 </Pressable>
               </View>
 
-              <PrintChoiceRow
-                icon={
-                  printTypeRequest.scope === "family" ? "family-print" : "print"
-                }
-                title={
-                  printTypeRequest.scope === "family"
-                    ? "Print Family Members with Banner"
-                    : "Print Voter Slip with Banner"
-                }
-                subtitle={
-                  printTypeRequest.scope === "family"
-                    ? "Family member slips with banner."
-                    : "Voter slip with banner image."
-                }
-                onPress={() => openSlipPreview(true)}
-              />
+              {canUseTemplates ? (
+                <PrintChoiceRow
+                  icon={
+                    printTypeRequest.scope === "family"
+                      ? "family-print"
+                      : "print"
+                  }
+                  title={
+                    printTypeRequest.scope === "family"
+                      ? "Print Family Members with Banner"
+                      : "Print Voter Slip with Banner"
+                  }
+                  subtitle={
+                    printTypeRequest.scope === "family"
+                      ? "Family member slips with banner."
+                      : "Voter slip with banner image."
+                  }
+                  onPress={() => openSlipPreview(true)}
+                />
+              ) : null}
               <PrintChoiceRow
                 icon={printTypeRequest.scope === "family" ? "family" : "print"}
                 title={
@@ -438,31 +941,58 @@ export default function VotersScreen() {
         transparent
         visible={Boolean(slipPreview)}
         animationType="fade"
-        onRequestClose={() => setSlipPreview(null)}
-      >
+        onRequestClose={() => setSlipPreview(null)}>
         {slipPreview ? (
           <VoterSlipPreview
             voter={slipPreview.voter}
             onClose={() => setSlipPreview(null)}
             showBanner={slipPreview.withBanner}
             bannerImage={getCurrentUser()?.bannerImage}
-            onDownload={handleDownloadSlip}
-            onPrint={handlePrintSlip}
+            onPrint={handleSlipPreviewPrint}
+            onChangeDevice={handleChangeThermalPrinter}
+            printerSelectionVersion={printerSelectionVersion}
           />
         ) : null}
       </Modal>
+
+      {thermalPrintRequest ? (
+        <ThermalPrinterDialog
+          visible
+          voter={thermalPrintRequest.voter}
+          bannerImage={thermalPrintRequest.bannerImage}
+          showBanner={thermalPrintRequest.showBanner}
+          onClose={() => setThermalPrintRequest(null)}
+          onSelected={() =>
+            setPrinterSelectionVersion((version) => version + 1)
+          }
+          onPrinted={() => {
+            setThermalPrintRequest(null);
+            setSlipPreview(null);
+          }}
+        />
+      ) : null}
+
+      {shareImageRequest ? (
+        <View pointerEvents="none" style={styles.shareCaptureHost}>
+          <View collapsable={false} ref={shareSlipRef}>
+            <VoterSlipPaper
+              voter={shareImageRequest.voter}
+              showBanner={canUseTemplates}
+              bannerImage={accountBannerImage}
+            />
+          </View>
+        </View>
+      ) : null}
 
       {/* Booth wise modal */}
       <Modal
         transparent
         visible={modalVisible}
         animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
-      >
+        onRequestClose={() => setModalVisible(false)}>
         <Pressable
           style={styles.modalBackdrop}
-          onPress={() => setModalVisible(false)}
-        >
+          onPress={() => setModalVisible(false)}>
           <View style={styles.modalSheet}>
             <View style={styles.handle} />
             <Text style={styles.modalTitle}>Booth Wise Voters</Text>
@@ -471,11 +1001,10 @@ export default function VotersScreen() {
                 <Pressable
                   key={booth}
                   onPress={() => {
-                    setActiveBooth(booth);
+                    selectBooth(booth);
                     setModalVisible(false);
                   }}
-                  style={styles.modalCard}
-                >
+                  style={styles.modalCard}>
                   <Text style={styles.modalCardLabel}>{booth}</Text>
                   <Text style={styles.modalCardValue}>{count}</Text>
                 </Pressable>
@@ -484,6 +1013,23 @@ export default function VotersScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      {/* Scroll-to-top floating button */}
+      <Animated.View
+        pointerEvents={showScrollTop ? "auto" : "none"}
+        style={[styles.scrollTopWrap, { opacity: scrollTopOpacity }]}>
+        <Pressable
+          // Preserve the native Pressable style callback on Android.
+          cssInterop={false}
+          accessibilityLabel="Scroll to top"
+          onPress={scrollToTop}
+          style={({ pressed }) => [
+            styles.scrollTopButton,
+            pressed && { transform: [{ scale: 0.92 }] },
+          ]}>
+          <ArrowUp color="#FFFFFF" size={20} strokeWidth={3} />
+        </Pressable>
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -520,6 +1066,13 @@ function PrintChoiceRow({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F4FBF7" },
+  shareCaptureHost: {
+    position: "absolute",
+    left: -10000,
+    top: 0,
+    width: 420,
+    backgroundColor: "#FFFFFF",
+  },
 
   /* ---------- Header ---------- */
   header: {
@@ -536,8 +1089,7 @@ const styles = StyleSheet.create({
     top: 0,
     right: 0,
     bottom: 0,
-    width: "155%",
-    height: "100%",
+    left: 0,
   },
   headerOverlay: {
     position: "absolute",
@@ -566,8 +1118,7 @@ const styles = StyleSheet.create({
     shadowRadius: 9,
     elevation: 3,
   },
-  headerIconButtonDisabled: { opacity: 0.62 },
-  logoutButton: { backgroundColor: "#087568" },
+  menuButton: { backgroundColor: "#087568" },
   headerCopy: { marginTop: 2 },
   eyebrow: {
     color: "#55718A",
@@ -581,12 +1132,6 @@ const styles = StyleSheet.create({
     lineHeight: 34,
     fontWeight: "900",
     marginTop: 2,
-  },
-  boothTitle: {
-    color: "#087568",
-    fontSize: 23,
-    lineHeight: 27,
-    fontWeight: "900",
   },
   locationRow: {
     flexDirection: "row",
@@ -621,6 +1166,11 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginBottom: 10,
   },
+  warningWrap: {
+    backgroundColor: "#F4FBF7",
+    paddingHorizontal: 16,
+    paddingTop: 14,
+  },
 
   /* Total voters card */
   totalCard: {
@@ -651,15 +1201,36 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  /* Search + Filter */
+  /* Search */
+  stickyControls: {
+    position: "relative",
+    backgroundColor: "#F4FBF7",
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 24,
+    zIndex: 24,
+  },
+  boothControls: {
+    backgroundColor: "#F4FBF7",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 2,
+  },
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    marginBottom: 10,
+    gap: 8,
   },
   searchBox: {
     flex: 1,
+    minWidth: 0,
     height: 40,
     borderRadius: 14,
     backgroundColor: "#FFFFFF",
@@ -672,12 +1243,16 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
+    minWidth: 0,
+    paddingVertical: 0,
+    fontSize: 13,
     color: "#0F172A",
     fontWeight: "700",
     outlineWidth: 0,
     outlineColor: "transparent",
   },
   filterButton: {
+    flexShrink: 0,
     height: 40,
     borderRadius: 14,
     backgroundColor: "#064E3B",
@@ -689,7 +1264,6 @@ const styles = StyleSheet.create({
   filterButtonText: { color: "#FFFFFF", fontWeight: "900", fontSize: 13 },
 
   /* Booth tabs */
-  boothTabsWrap: { height: 50, marginBottom: 0 },
   boothTabs: { gap: 8, paddingBottom: 4, paddingTop: 2 },
   boothTab: {
     height: 36,
@@ -719,7 +1293,131 @@ const styles = StyleSheet.create({
   countBadgeTextActive: { color: "#064E3B" },
 
   /* List */
-  listContent: { paddingBottom: 28, gap: 6, paddingTop: 2 },
+  listContent: { paddingBottom: 96, backgroundColor: "#F4FBF7" },
+  voterItemWrap: {
+    position: "relative",
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    marginTop: 10,
+    zIndex: 0,
+    elevation: 0,
+  },
+  listFooterWrap: {
+    paddingHorizontal: 16,
+  },
+  boothFilterHandleButton: {
+    position: "absolute",
+    left: "50%",
+    bottom: 1,
+    width: 78,
+    height: 15,
+    marginLeft: -59,
+    // borderRadius: 16,
+    // backgroundColor: "#FFFFFF",
+    // borderWidth: 1,
+    // borderColor: "#E2E8F0",
+    alignItems: "center",
+    justifyContent: "center",
+    // shadowColor: "#0F172A",
+    // shadowOpacity: 0.12,
+    // shadowRadius: 12,
+    // shadowOffset: { width: 0, height: 4 },
+    // elevation: 6,
+    // zIndex: 5,
+  },
+  boothFilterHandle: {
+    width: 92,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#CBD5E1",
+  },
+
+  /* ---------- Scroll to top ---------- */
+  scrollTopWrap: {
+    position: "absolute",
+    right: 18,
+    bottom: 26,
+    zIndex: 50,
+    elevation: 50,
+  },
+  scrollTopButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#087568",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+
+  /* ---------- Header menu drawer ---------- */
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.5)",
+    justifyContent: "flex-end",
+  },
+  menuDrawer: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 18,
+    paddingBottom: 32,
+  },
+  menuHandle: {
+    alignSelf: "center",
+    backgroundColor: "#CBD5E1",
+    borderRadius: 2,
+    height: 4,
+    marginBottom: 14,
+    width: 44,
+  },
+  menuHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  menuTitle: { color: "#0F172A", fontSize: 18, fontWeight: "900" },
+  menuClose: {
+    alignItems: "center",
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  menuRow: {
+    alignItems: "center",
+    borderBottomColor: "#EEF2F7",
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 66,
+    paddingVertical: 10,
+  },
+  menuIconWrap: {
+    alignItems: "center",
+    backgroundColor: "#ECFDF5",
+    borderRadius: 12,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  menuCopy: { flex: 1, minWidth: 0 },
+  menuRowTitle: { color: "#0F172A", fontSize: 14, fontWeight: "900" },
+  menuRowSubtitle: {
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  logoutMenuRow: { borderBottomWidth: 0, marginTop: 4 },
+  logoutMenuIconWrap: { backgroundColor: "#FEF2F2" },
+  logoutMenuTitle: { color: "#B91C1C", fontSize: 14, fontWeight: "900" },
 
   logoutChoiceOverlay: {
     position: "absolute",
@@ -747,13 +1445,16 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 8,
     padding: 18,
-    paddingTop: 46,
+    paddingTop: 18,
     gap: 10,
   },
+  logoutChoiceHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
   logoutChoiceClose: {
-    position: "absolute",
-    top: 10,
-    right: 10,
     width: 32,
     height: 32,
     borderRadius: 16,

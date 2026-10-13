@@ -1,0 +1,8 @@
+{
+  "expo.jsEngine": "hermes",
+  "EX_DEV_CLIENT_NETWORK_INSPECTOR": "true",
+  "expo.inlineModules.watchedDirectories": "[]",
+  "expo.inlineModules.xcodeProjectTargets": "{\"mainTarget\":\"DigitalVoterApp\",\"targets\":[]}",
+  "expo.sqlite.enableFTS": "true",
+  "expo.sqlite.useSQLCipher": "true"
+}

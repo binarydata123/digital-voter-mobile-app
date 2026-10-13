@@ -3,9 +3,12 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
 const AUTH_TOKEN_KEY = "votersakha.authToken";
-const LIVE_API_URL = "https://api.votersakha.tech/api";
+const LIVE_API_URL = "https://api.voter-app.ai-developer.cloud/api";
 
-const baseURL = (process.env.EXPO_PUBLIC_API_URL ?? LIVE_API_URL).replace(/\/+$/, "");
+const baseURL = (process.env.EXPO_PUBLIC_API_URL ?? LIVE_API_URL).replace(
+  /\/+$/,
+  "",
+);
 
 console.log("API BASE URL:", baseURL);
 

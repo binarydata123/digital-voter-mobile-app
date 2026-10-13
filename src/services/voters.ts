@@ -1,5 +1,9 @@
 import { api } from "./api";
-import { ensureAuthSession, getCurrentUser } from "./authentication";
+import {
+  ensureAuthSession,
+  getCurrentUser,
+  hasPoliticianPageAccess,
+} from "./authentication";
 
 export type Voter = {
   id: string;
@@ -17,6 +21,8 @@ export type Voter = {
   serialNo?: string;
   pollingStation?: string;
   relation?: string;
+  whatsappNumber?: string;
+  mobileNumber?: string;
 };
 
 export type VoterStats = {
@@ -33,7 +39,17 @@ export type VoterQuery = {
   ward?: string;
   district?: string;
   state?: string;
+  city?: string;
 };
+
+export type VoterTemplateSelection = {
+  template: "studio";
+  canvasLayout: "top" | "bottom" | "left" | "right" | "floating" | "dual" | "none";
+  recordsPerRow: 2 | 3 | 4;
+};
+
+const VOTER_PAGE_SIZE = 10000;
+const MAX_VOTER_PAGES = 500;
 
 let selectedVoter: Voter | null = null;
 
@@ -117,6 +133,30 @@ function formatGuardian(data: any) {
     : String(guardian);
 }
 
+function normalizeAge(value: unknown) {
+  const age = Number(value);
+  return Number.isFinite(age) && age >= 0 ? Math.trunc(age) : 0;
+}
+
+function normalizeBoothForMatch(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^booth[\s-_]*/i, "")
+    .replace(/^0+(\d)/, "$1");
+}
+
+export function isVoterInBooth(voter: Voter, booth?: string) {
+  if (!booth || booth === "All") {
+    return true;
+  }
+
+  const voterBooth = normalizeBoothForMatch(voter.booth);
+  const selectedBooth = normalizeBoothForMatch(booth);
+
+  return voterBooth === selectedBooth || voter.booth === booth;
+}
+
 function normalizeVoter(raw: any, index: number): Voter {
   const data = raw?.voterData ?? raw?.data?.voterData ?? raw;
 
@@ -162,7 +202,7 @@ function normalizeVoter(raw: any, index: number): Voter {
         "Unknown",
       ),
     ),
-    age: Number(
+    age: normalizeAge(
       firstValue(
         data?.Age,
         data?.voter_age,
@@ -249,6 +289,40 @@ function normalizeVoter(raw: any, index: number): Voter {
         "",
       ),
     ),
+    whatsappNumber: String(
+      firstValue(
+        data?.["WhatsApp No"],
+        data?.["Whatsapp No"],
+        data?.["WhatsApp Number"],
+        data?.["Whatsapp Number"],
+        data?.whatsappNumber,
+        data?.whatsappNo,
+        data?.whatsAppNumber,
+        data?.whats_app_number,
+        data?.whatsapp,
+        data?.WhatsApp,
+        raw?.whatsappNumber,
+        raw?.whatsappNo,
+        "",
+      ),
+    ),
+    mobileNumber: String(
+      firstValue(
+        data?.["Mobile No"],
+        data?.["Mobile Number"],
+        data?.Phone,
+        data?.phone,
+        data?.mobile,
+        data?.mobileNumber,
+        data?.mobile_no,
+        data?.contactNumber,
+        data?.contact_no,
+        raw?.mobileNumber,
+        raw?.mobile,
+        raw?.phone,
+        "",
+      ),
+    ),
   };
 }
 
@@ -264,6 +338,26 @@ function unwrapList(raw: any): any[] {
     raw;
 
   return Array.isArray(list) ? list : [];
+}
+
+function readTotalCount(raw: any): number | null {
+  const total = firstValue(
+    raw?.total,
+    raw?.totalCount,
+    raw?.count,
+    raw?.data?.total,
+    raw?.data?.totalCount,
+    raw?.data?.count,
+    raw?.pagination?.total,
+    raw?.pagination?.totalCount,
+    raw?.meta?.total,
+    raw?.meta?.totalCount,
+  );
+  const numericTotal = Number(total);
+
+  return Number.isFinite(numericTotal) && numericTotal > 0
+    ? numericTotal
+    : null;
 }
 
 export function buildVoterStats(voters: Voter[]): VoterStats {
@@ -287,31 +381,132 @@ export function buildVoterStats(voters: Voter[]): VoterStats {
   );
 }
 
-export async function fetchVoters(query: VoterQuery = {}): Promise<Voter[]> {
-  await ensureAuthSession();
+export async function forEachVoterPage(
+  query: VoterQuery = {},
+  onPage: (voters: Voter[]) => Promise<void> | void,
+): Promise<number> {
+  const { user } = await ensureAuthSession();
+  if (
+    !hasPoliticianPageAccess("voters", user) &&
+    !hasPoliticianPageAccess("template", user)
+  ) {
+    throw new Error("Voter data is disabled for this account.");
+  }
   const politician = getCurrentUser();
+  const baseParams = {
+    search: query.search || undefined,
+    district: query.district || politician?.district || undefined,
+    state: query.state || politician?.state || undefined,
+    wardNo: query.ward || politician?.ward || undefined,
+    ward: query.ward || politician?.ward || undefined,
+    boothNo: query.booth || undefined,
+    includeCounts: false,
+  };
+  let voterCount = 0;
+  let totalCount: number | null = null;
 
-  const response = await api.get("/politician/voters", {
-    params: {
-      page: 1,
-      limit: 10000,
-      search: query.search || undefined,
-      district: query.district || politician?.district || undefined,
-      state: query.state || politician?.state || undefined,
-      boothNo: query.booth || undefined,
-      includeCounts: false,
-    },
+  for (let page = 1; page <= MAX_VOTER_PAGES; page += 1) {
+    const response = await api.get("/politician/voters/assigned-data", {
+      params: {
+        ...baseParams,
+        page,
+        limit: VOTER_PAGE_SIZE,
+      },
+    });
+    const pageItems = unwrapList(response.data);
+
+    totalCount = totalCount ?? readTotalCount(response.data);
+
+    if (pageItems.length === 0) {
+      break;
+    }
+
+    const voters = Array.from(
+      new Map(
+        pageItems
+          .map((item, index) => normalizeVoter(item, voterCount + index))
+          .map((voter) => [voter.id, voter]),
+      ).values(),
+    );
+
+    if (voters.length === 0) {
+      break;
+    }
+
+    await onPage(voters);
+    voterCount += voters.length;
+
+    if (totalCount !== null && voterCount >= totalCount) {
+      break;
+    }
+    if (pageItems.length < VOTER_PAGE_SIZE) {
+      break;
+    }
+  }
+
+  return voterCount;
+}
+
+export async function fetchVoters(query: VoterQuery = {}): Promise<Voter[]> {
+  const voters: Voter[] = [];
+  await forEachVoterPage(query, (page) => {
+    voters.push(...page);
+  });
+  return voters;
+}
+
+export async function fetchTemplateVoters(query: VoterQuery): Promise<Voter[]> {
+  const { user } = await ensureAuthSession();
+  if (!hasPoliticianPageAccess("template", user)) {
+    throw new Error("Template page is disabled for this account.");
+  }
+
+  if (!query.district) {
+    throw new Error("District is required to load booth voters.");
+  }
+
+  const voters: Voter[] = [];
+  await forEachVoterPage(query, (page) => {
+    voters.push(...page);
   });
 
-  return unwrapList(response.data).map(normalizeVoter);
+  return voters.filter((voter) => isVoterInBooth(voter, query.booth));
+}
+
+export async function logVoterTemplatePrint({
+  booth,
+  district,
+  printCount = 1,
+  state,
+  templateSelection,
+}: {
+  booth: string;
+  district?: string;
+  printCount?: number;
+  state?: string;
+  templateSelection: VoterTemplateSelection;
+}) {
+  await ensureAuthSession();
+  await api.post("/politician/notifications/activity-log", {
+    action: "printed_voter_template",
+    district,
+    state,
+    voterId: booth,
+    voterName: `Booth ${booth} voter template`,
+    printCount,
+    templateSelection,
+  });
 }
 
 export async function fetchVoterById(epicNo: string): Promise<Voter | null> {
   try {
-    await ensureAuthSession();
+    const { user } = await ensureAuthSession();
+    if (!hasPoliticianPageAccess("voters", user)) {
+      throw new Error("Voter page is disabled for this account.");
+    }
 
     const response = await api.get(
-      `/politician/voters/epic/${encodeURIComponent(epicNo)}`,
+      `/politician/voters/epic/api/politician/voters?${encodeURIComponent(epicNo)}`,
     );
 
     return normalizeVoter(response.data, 0);
