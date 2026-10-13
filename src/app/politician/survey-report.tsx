@@ -410,10 +410,7 @@ export default function SurveyScreen() {
           </View>
         ) : null}
 
-        <SurveyLocationMap
-          locations={report.surveyLocations}
-          onInteractionChange={setMapInteracting}
-        />
+      
 
         <PieDistribution
           title="Vote share distribution"
@@ -474,6 +471,10 @@ export default function SurveyScreen() {
           showPercent
         />
         <MajorPublicConcernsChart data={issueRows} />
+          <SurveyLocationMap
+          locations={report.surveyLocations}
+          onInteractionChange={setMapInteracting}
+        />
         </>}
       </ScrollView>
     </SafeAreaView>
