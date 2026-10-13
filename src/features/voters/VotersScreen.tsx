@@ -1112,10 +1112,10 @@ function PrintChoiceRow({
 }
 
 const styles = StyleSheet.create({
-  searchPageHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, gap: 12, minHeight: 64 },
+  searchPageHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 4, gap: 10, minHeight: 48 },
   searchPageBack: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDE8E3', justifyContent: 'center', alignItems: 'center' },
   searchPageTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
-  searchPageSubtitle: { color: '#64748B', fontSize: 12, marginTop: 3 },
+  searchPageSubtitle: { color: '#64748B', fontSize: 11, marginTop: 1 },
   searchEmptyArea: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', paddingHorizontal: 32, paddingTop: 48, paddingBottom: 20, gap: 10 },
   searchEmptyIcon: { width: 68, height: 68, borderRadius: 34, backgroundColor: '#E4F1EB', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
   searchEmptyTitle: { color: '#0F172A', fontSize: 17, fontWeight: '700', textAlign: 'center' },
