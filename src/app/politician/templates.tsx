@@ -37,6 +37,9 @@ import {
   type AuthUser,
 } from "@/services/authentication";
 import { styles } from "@/features/templates/styles";
+import { getLocalVoterOverview, hasLocalVoters, replaceLocalVotersFromPages } from "@/services/local-voters";
+import { isLocalVoterDatabaseAvailable } from "@/services/voter-database";
+import { forEachVoterPage } from "@/services/voters";
 
 const FIELD_OPTIONS: { key: keyof TemplateFields; label: string }[] = [
   { key: "epicNo", label: "EPIC No" },
@@ -73,10 +76,8 @@ export default function TemplatesScreen() {
     getCurrentUser(),
   );
   const currentUser = profileUser;
-  const assignedBooths = useMemo(
-    () => uniqueValues(currentUser?.assignedBooths ?? []),
-    [currentUser?.assignedBooths],
-  );
+  const [boothOptions, setBoothOptions] = useState<string[]>([]);
+  const [boothError, setBoothError] = useState("");
   const assignedDistricts = useMemo(
     () => uniqueValues(currentUser?.districts ?? [currentUser?.district]),
     [currentUser?.district, currentUser?.districts],
@@ -89,9 +90,36 @@ export default function TemplatesScreen() {
   const savedTemplate = currentUser?.selectedVoterTemplate;
 
 
-  const [selectedBooth, setSelectedBooth] = useState(
-    () => profileUser?.assignedBooths?.[0] ?? profileUser?.booth ?? "",
-  );
+  const [selectedBooth, setSelectedBooth] = useState("");
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    async function loadBooths() {
+      const user = getCurrentUser();
+      if (!user) return;
+      let booths: string[];
+      if (isLocalVoterDatabaseAvailable()) {
+        if (!(await hasLocalVoters(user.id))) {
+          await replaceLocalVotersFromPages(user.id, (savePage) => forEachVoterPage({}, savePage));
+        }
+        const overview = await getLocalVoterOverview(user.id);
+        booths = Object.keys(overview.boothCounts);
+      } else {
+        const counts = new Set<string>();
+        await forEachVoterPage({}, (voters) => {
+          voters.forEach((voter) => { if (voter.booth) counts.add(voter.booth); });
+        });
+        booths = [...counts];
+      }
+      if (!active) return;
+      setBoothOptions(uniqueValues(booths));
+      setBoothError("");
+      setSelectedBooth((current) => current === "All" || booths.includes(current) ? current : "");
+    }
+    loadBooths().catch((error) => {
+      if (active) setBoothError(error?.message || "Unable to load voter booths. Reopen this page to retry.");
+    });
+    return () => { active = false; };
+  }, []));
   const [layout, setLayout] = useState<TemplateLayout>(() =>
     clampTemplateLayout(savedTemplate?.canvasLayout),
   );
@@ -124,9 +152,6 @@ export default function TemplatesScreen() {
         setLayout(
           clampTemplateLayout(user.selectedVoterTemplate?.canvasLayout),
         );
-        setSelectedBooth(
-          (current) => current || user.assignedBooths?.[0] || user.booth || "",
-        );
       })
       .catch(() => undefined);
 
@@ -135,11 +160,11 @@ export default function TemplatesScreen() {
     };
   }, []);
 
-  const boothOptions =
-    assignedBooths.length > 0
-      ? assignedBooths
-      : [selectedBooth].filter(Boolean);
   function openTemplatePreview(templateLayout: TemplateLayout) {
+    if (!selectedBooth) {
+      setBoothModalVisible(true);
+      return;
+    }
     router.push({
       pathname: "/politician/Template/template-preview",
       params: {
@@ -203,7 +228,7 @@ export default function TemplatesScreen() {
                 "Assigned area"}
             </Text>
             <Text className="text-[19px] font-black text-[#087568]">
-              {selectedBooth || "Assigned booth"}
+              {selectedBooth || "Select booth"}
             </Text>
             <View className="mt-1 flex-row items-center gap-1.5">
               <MapPinned color="#087568" size={14} strokeWidth={2.8} />
@@ -260,6 +285,7 @@ export default function TemplatesScreen() {
               <Pressable accessibilityLabel="Close booth filter" onPress={() => setBoothModalVisible(false)} className="p-2"><X color="#64748B" size={22} /></Pressable>
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
+              {boothError ? <Text className="mb-3 text-sm text-red-600">{boothError}</Text> : null}
               <View className="flex-row flex-wrap justify-between gap-y-3">
                 {["All", ...boothOptions.filter((booth) => booth !== "All")].map((booth) => {
                   const active = selectedBooth === booth;
@@ -431,4 +457,3 @@ export default function TemplatesScreen() {
     </SafeAreaView>
   );
 }
-

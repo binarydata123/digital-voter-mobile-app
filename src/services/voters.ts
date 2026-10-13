@@ -399,7 +399,7 @@ export async function forEachVoterPage(
     state: query.state || politician?.state || undefined,
     wardNo: query.ward || politician?.ward || undefined,
     ward: query.ward || politician?.ward || undefined,
-    boothNo: query.booth || undefined,
+    boothNo: query.booth && query.booth !== "All" ? query.booth : undefined,
     includeCounts: false,
   };
   let voterCount = 0;

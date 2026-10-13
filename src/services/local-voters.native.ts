@@ -136,7 +136,9 @@ export async function hasLocalVoters(politicianId: string) {
 
   const database = await getVoterDatabase();
   const result = await database.getFirstAsync<{ has_cache: number }>(
-    "SELECT 1 AS has_cache FROM sync_state WHERE politician_id = ?",
+    `SELECT 1 AS has_cache FROM sync_state
+     WHERE politician_id = ? AND voter_count > 0
+       AND EXISTS (SELECT 1 FROM voters WHERE voters.politician_id = sync_state.politician_id)`,
     politicianId,
   );
   return result?.has_cache === 1;
