@@ -87,10 +87,19 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (__DEV__) {
+      const requestBaseURL = error?.config?.baseURL ?? baseURL;
+      const requestUrl = error?.config?.url ?? "";
+      const fullUrl = requestUrl
+        ? new URL(requestUrl, `${requestBaseURL}/`).toString()
+        : requestBaseURL;
+
       console.log("API error", {
-        url: error?.config?.url,
+        baseURL: requestBaseURL,
+        code: error?.code,
+        fullUrl,
         method: error?.config?.method,
         status: error?.response?.status,
+        url: requestUrl,
         message: error?.response?.data?.message ?? error?.message,
       });
     }

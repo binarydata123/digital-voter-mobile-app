@@ -52,6 +52,7 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="login" />
+        <Stack.Screen name="location-map" />
         <Stack.Screen name="banner-generation" />
         <Stack.Screen name="politician/voters" />
         <Stack.Screen name="politician/templates" />

@@ -1,26 +1,14 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
-import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker } from "react-native-maps";
+import { WebView } from "react-native-webview";
 
 import type { SurveyLocationPoint } from "@/services/survey";
-
-function getMapRegion(locations: SurveyLocationPoint[]) {
-  const latitudes = locations.map((location) => location.latitude);
-  const longitudes = locations.map((location) => location.longitude);
-  const minLatitude = Math.min(...latitudes);
-  const maxLatitude = Math.max(...latitudes);
-  const minLongitude = Math.min(...longitudes);
-  const maxLongitude = Math.max(...longitudes);
-  const latitudeDelta = Math.max(0.01, (maxLatitude - minLatitude) * 1.8);
-  const longitudeDelta = Math.max(0.01, (maxLongitude - minLongitude) * 1.8);
-
-  return {
-    latitude: (minLatitude + maxLatitude) / 2,
-    longitude: (minLongitude + maxLongitude) / 2,
-    latitudeDelta,
-    longitudeDelta,
-  };
-}
+import {
+  buildSurveyLocationMapHtml,
+  getSurveyLocationMapRegion,
+  getValidSurveyLocations,
+} from "./surveyLocationMapHtml";
 
 function formatLocationTime(capturedAt?: string) {
   if (!capturedAt) return "";
@@ -29,27 +17,30 @@ function formatLocationTime(capturedAt?: string) {
   return date.toLocaleString();
 }
 
-const mapProvider = Platform.OS === "android" ? PROVIDER_GOOGLE : undefined;
-
 export function SurveyLocationMap({
   locations,
+  onInteractionChange,
 }: {
   locations: SurveyLocationPoint[];
+  onInteractionChange?: (isInteracting: boolean) => void;
 }) {
   const mapRef = useRef<MapView>(null);
   const validLocations = useMemo(
-    () =>
-      locations.filter(
-        (location) =>
-          Number.isFinite(location.latitude) &&
-          Number.isFinite(location.longitude),
-      ),
+    () => getValidSurveyLocations(locations),
     [locations],
   );
-  const region = validLocations.length ? getMapRegion(validLocations) : null;
+  const region = useMemo(
+    () =>
+      validLocations.length ? getSurveyLocationMapRegion(validLocations) : null,
+    [validLocations],
+  );
+  const mapHtml = useMemo(
+    () => buildSurveyLocationMapHtml(validLocations),
+    [validLocations],
+  );
 
   useEffect(() => {
-    if (!mapRef.current || validLocations.length === 0) {
+    if (Platform.OS === "android" || !mapRef.current || !region) {
       return;
     }
 
@@ -59,11 +50,11 @@ export function SurveyLocationMap({
         longitude: location.longitude,
       })),
       {
-        animated: true,
-        edgePadding: { bottom: 44, left: 44, right: 44, top: 44 },
+        animated: false,
+        edgePadding: { bottom: 32, left: 32, right: 32, top: 32 },
       },
     );
-  }, [validLocations]);
+  }, [region, validLocations]);
 
   return (
     <View style={styles.chartCard}>
@@ -73,43 +64,70 @@ export function SurveyLocationMap({
           {`${validLocations.length} saved location${validLocations.length === 1 ? "" : "s"}`}
         </Text>
       </View>
-      {!region ? (
+      {validLocations.length === 0 ? (
         <Text style={styles.emptyChartText}>No saved survey locations yet.</Text>
       ) : (
-        <MapView
-          ref={mapRef}
-          initialRegion={region}
-          provider={mapProvider}
-          style={styles.map}
-          mapType="standard"
-          showsCompass={false}
-          showsUserLocation={false}
-          toolbarEnabled={false}>
-          {validLocations.map((location, index) => (
-            <Marker
-              key={location.id ?? `${location.latitude}-${location.longitude}-${index}`}
-              coordinate={{
-                latitude: location.latitude,
-                longitude: location.longitude,
-              }}
-              pinColor="#DC2626"
-              title={location.location ?? location.wardNo ?? `Survey ${index + 1}`}
-              description={
-                [
-                  location.wardNo && location.location !== location.wardNo
-                    ? `Ward ${location.wardNo}`
-                    : "",
-                  location.preferredPolitician
-                    ? `${location.preferredPolitician}${location.preferredParty ? ` (${location.preferredParty})` : ""}`
-                    : "",
-                  formatLocationTime(location.capturedAt),
-                ]
-                  .filter(Boolean)
-                  .join(" · ") || undefined
-              }
+        <View
+          onTouchCancel={() => onInteractionChange?.(false)}
+          onTouchEnd={() => onInteractionChange?.(false)}
+          onTouchStart={() => onInteractionChange?.(true)}
+          style={styles.map}>
+          {Platform.OS === "android" ? (
+            <WebView
+              originWhitelist={["*"]}
+              source={{ html: mapHtml }}
+              style={styles.webView}
+              javaScriptEnabled
+              domStorageEnabled
+              nestedScrollEnabled
+              overScrollMode="never"
             />
-          ))}
-        </MapView>
+          ) : (
+            <MapView
+              ref={mapRef}
+              initialRegion={region ?? undefined}
+              style={styles.nativeMap}
+              mapType="standard"
+              scrollEnabled
+              zoomEnabled
+              pitchEnabled
+              rotateEnabled
+              showsCompass={false}
+              showsUserLocation={false}>
+              {validLocations.map((location, index) => (
+                <Marker
+                  key={
+                    location.id ??
+                    `${location.latitude}-${location.longitude}-${index}`
+                  }
+                  coordinate={{
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                  }}
+                  pinColor="#DC2626"
+                  title={
+                    location.location ??
+                    location.wardNo ??
+                    `Survey ${index + 1}`
+                  }
+                  description={
+                    [
+                      location.wardNo && location.location !== location.wardNo
+                        ? `Ward ${location.wardNo}`
+                        : "",
+                      location.preferredPolitician
+                        ? `${location.preferredPolitician}${location.preferredParty ? ` (${location.preferredParty})` : ""}`
+                        : "",
+                      formatLocationTime(location.capturedAt),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || undefined
+                  }
+                />
+              ))}
+            </MapView>
+          )}
+        </View>
       )}
     </View>
   );
@@ -138,5 +156,11 @@ const styles = StyleSheet.create({
     height: 240,
     overflow: "hidden",
     width: "100%",
+  },
+  nativeMap: {
+    flex: 1,
+  },
+  webView: {
+    flex: 1,
   },
 });

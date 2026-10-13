@@ -193,6 +193,7 @@ export default function SurveyScreen() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [mapInteracting, setMapInteracting] = useState(false);
   const autoLoadedScopeKey = useRef<string | null>(null);
   const currentUser = getCurrentUser();
 
@@ -346,6 +347,7 @@ export default function SurveyScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
+        scrollEnabled={!mapInteracting}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
@@ -408,7 +410,10 @@ export default function SurveyScreen() {
           </View>
         ) : null}
 
-        <SurveyLocationMap locations={report.surveyLocations} />
+        <SurveyLocationMap
+          locations={report.surveyLocations}
+          onInteractionChange={setMapInteracting}
+        />
 
         <PieDistribution
           title="Vote share distribution"
