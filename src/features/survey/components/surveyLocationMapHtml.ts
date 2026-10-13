@@ -108,7 +108,8 @@ export function buildSurveyLocationMapHtml(locations: SurveyLocationPoint[]) {
       var markers = ${serializeScriptValue(markerData)};
       var map = L.map("map", {
         attributionControl: false,
-        zoomControl: true
+        zoomControl: true,
+        zoomSnap: 0.25
       }).setView([${center.latitude}, ${center.longitude}], ${markerData.length > 1 ? 12 : 14});
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -117,6 +118,8 @@ export function buildSurveyLocationMapHtml(locations: SurveyLocationPoint[]) {
       }).addTo(map);
 
       var markerLayer = L.featureGroup();
+      var distinctMarkerLatLngs = [];
+      var seenMarkerCoordinates = {};
       var escapeHtml = function (value) {
         return String(value)
           .replace(/&/g, "&amp;")
@@ -127,12 +130,18 @@ export function buildSurveyLocationMapHtml(locations: SurveyLocationPoint[]) {
       };
 
       markers.forEach(function (location) {
+        var coordinateKey = location.latitude.toFixed(5) + "," + location.longitude.toFixed(5);
         var popupDetails = location.details
           .map(function (detail) {
             return '<div class="popup-detail">' + escapeHtml(detail) + '</div>';
           })
           .join("");
         var popupHtml = '<div class="popup-title">' + escapeHtml(location.title) + '</div>' + popupDetails;
+
+        if (!seenMarkerCoordinates[coordinateKey]) {
+          seenMarkerCoordinates[coordinateKey] = true;
+          distinctMarkerLatLngs.push([location.latitude, location.longitude]);
+        }
 
         L.marker([location.latitude, location.longitude])
           .bindPopup(popupHtml)
@@ -141,11 +150,32 @@ export function buildSurveyLocationMapHtml(locations: SurveyLocationPoint[]) {
 
       markerLayer.addTo(map);
 
-      if (markers.length > 1) {
-        map.fitBounds(markerLayer.getBounds().pad(0.15));
-      } else if (markers.length === 1) {
-        map.setView([markers[0].latitude, markers[0].longitude], 15);
-      }
+      var fitMapToMarkers = function () {
+        map.invalidateSize(false);
+
+        if (distinctMarkerLatLngs.length > 1) {
+          var bounds = L.latLngBounds(distinctMarkerLatLngs);
+          if (bounds.isValid()) {
+            map.fitBounds(bounds, {
+              animate: false,
+              maxZoom: 12,
+              paddingTopLeft: [40, 28],
+              paddingBottomRight: [40, 48]
+            });
+          }
+        } else if (markers.length === 1) {
+          map.setView([markers[0].latitude, markers[0].longitude], 15, {
+            animate: false
+          });
+        }
+      };
+
+      map.whenReady(function () {
+        fitMapToMarkers();
+        requestAnimationFrame(fitMapToMarkers);
+        setTimeout(fitMapToMarkers, 100);
+        setTimeout(fitMapToMarkers, 350);
+      });
     </script>
   </body>
 </html>`;
