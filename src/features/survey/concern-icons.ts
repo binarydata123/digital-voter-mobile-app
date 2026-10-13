@@ -1,0 +1,33 @@
+import {
+  Route, ShieldCheck, Hospital, TrendingUp, GraduationCap,
+  BriefcaseBusiness, ChartNoAxesCombined, Droplets, Zap, Wheat,
+  House, Bus, Baby, Lightbulb, Leaf, Landmark, Scale,
+  HandHeart, Pill, Tractor, Building2, Wifi, CircleHelp,
+  type LucideIcon,
+} from "lucide-react-native";
+
+export const CONCERN_ICONS: Record<string, LucideIcon> = {
+  "Roads / Infrastructure": Route,
+  "Public Safety / Crime": ShieldCheck,
+  "Healthcare / Hospitals": Hospital,
+  "Cost of Living / Inflation": TrendingUp,
+  "Education / Schools": GraduationCap,
+  "Jobs / Employment": BriefcaseBusiness,
+  "Business / Economic Development": ChartNoAxesCombined,
+  "Water / Sanitation / Utilities": Droplets,
+  "Electricity / Power Supply": Zap,
+  "Agriculture / Farmers": Wheat,
+  "Housing / Land": House,
+  "Public Transport / Traffic": Bus,
+  "Women / Child Welfare": Baby,
+  "Youth / Skills / Opportunities": Lightbulb,
+  "Environment / Pollution": Leaf,
+  "Government Services / Administration": Landmark,
+  "Corruption / Transparency": Scale,
+  "Social Welfare / Pensions": HandHeart,
+  "Drug Abuse / Addiction": Pill,
+  "Rural Development": Tractor,
+  "Urban Development": Building2,
+  "Digital Connectivity / Internet": Wifi,
+  "Other": CircleHelp,
+};

@@ -1,16 +1,19 @@
-import { BannerStudioMenuItem } from "@/features/banner-generation/BannerStudioMenuItem";
 import { Shimmer } from "@/components/common/Shimmer";
+import { BannerStudioMenuItem } from "@/features/banner-generation/BannerStudioMenuItem";
+import { CONCERN_ICONS } from "@/features/survey/concern-icons";
+import {
+  GENDER_ICONS,
+  OCCUPATION_ICONS,
+} from "@/features/survey/demographic-icons";
 import { Image } from "expo-image";
 import * as Location from "expo-location";
 import { router } from "expo-router";
 import type { LucideIcon } from "lucide-react-native";
 import {
   BarChart3,
-  BriefcaseBusiness,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
-  CircleAlert,
   ClipboardList,
   FileText,
   GraduationCap,
@@ -18,7 +21,6 @@ import {
   MapPin,
   Menu,
   RotateCcw,
-  UserRound,
   WalletCards,
 } from "lucide-react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -197,9 +199,16 @@ export default function SurveyScreen() {
   const scrollToMissingField = useCallback(() => {
     const target = missingField ? requiredViews.current[missingField] : null;
     if (target && contentRef.current) {
-      target.measureLayout(contentRef.current, (_x, y) => {
-        scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
-      }, () => {});
+      target.measureLayout(
+        contentRef.current,
+        (_x, y) => {
+          scrollRef.current?.scrollTo({
+            y: Math.max(0, y - 12),
+            animated: true,
+          });
+        },
+        () => {},
+      );
     }
   }, [missingField]);
   useEffect(() => {
@@ -458,21 +467,38 @@ export default function SurveyScreen() {
   async function handleSave() {
     const validationError = validate();
     if (validationError) {
-      const firstMissingScope = visibleScopeFields.find((field) => !scope[field]);
-      const firstMissingProfile = (["gender", "ageBracket", "education", "incomeBracket", "occupation"] as const)
-        .find((field) => !form[field]);
-      const firstMissing = firstMissingScope
-        ?? (constituencyElection && !scope.wardNo ? "wardNo" : null)
-        ?? firstMissingProfile
-        ?? (!form.issues.length ? "issues" : "preferredPolitician");
+      const firstMissingScope = visibleScopeFields.find(
+        (field) => !scope[field],
+      );
+      const firstMissingProfile = (
+        [
+          "gender",
+          "ageBracket",
+          "education",
+          "incomeBracket",
+          "occupation",
+        ] as const
+      ).find((field) => !form[field]);
+      const firstMissing =
+        firstMissingScope ??
+        (constituencyElection && !scope.wardNo ? "wardNo" : null) ??
+        firstMissingProfile ??
+        (!form.issues.length ? "issues" : "preferredPolitician");
       setMissingField(firstMissing);
       setError(validationError);
       requestAnimationFrame(() => {
         const target = requiredViews.current[firstMissing];
         if (target && contentRef.current) {
-          target.measureLayout(contentRef.current, (_x, y) => {
-            scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
-          }, () => {});
+          target.measureLayout(
+            contentRef.current,
+            (_x, y) => {
+              scrollRef.current?.scrollTo({
+                y: Math.max(0, y - 12),
+                animated: true,
+              });
+            },
+            () => {},
+          );
         }
       });
       return;
@@ -554,22 +580,22 @@ export default function SurveyScreen() {
               accessibilityLabel="Reset survey answers"
               disabled={saving || loadingScope}
               onPress={resetForm}
-              style={[styles.headerIconButton, (saving || loadingScope) && styles.disabledButton]}
-            >
+              style={[
+                styles.headerIconButton,
+                (saving || loadingScope) && styles.disabledButton,
+              ]}>
               <RotateCcw color="#087568" size={18} strokeWidth={2.8} />
             </Pressable>
             <Pressable
               accessibilityLabel="Survey report"
               onPress={openSurveyReport}
-              style={styles.headerIconButton}
-            >
+              style={styles.headerIconButton}>
               <BarChart3 color="#0F766E" size={18} strokeWidth={2.8} />
             </Pressable>
             <Pressable
               accessibilityLabel="Open survey menu"
               onPress={() => setMenuVisible(true)}
-              style={[styles.headerIconButton, styles.logoutButton]}
-            >
+              style={[styles.headerIconButton, styles.logoutButton]}>
               <Menu color="#FFFFFF" size={21} strokeWidth={2.8} />
             </Pressable>
           </View>
@@ -598,191 +624,247 @@ export default function SurveyScreen() {
         <ScrollView
           ref={scrollRef}
           onContentSizeChange={scrollToMissingField}
-          showsVerticalScrollIndicator={false}
-        >
+          showsVerticalScrollIndicator={false}>
           <View ref={contentRef} collapsable={false} style={styles.content}>
-          {message ? <Text style={styles.success}>{message}</Text> : null}
-          <View style={styles.scopeCard}>
-            <View style={styles.scopeGrid}>
-              {visibleScopeFields.map((field) => (
-                <DropdownField
-                  key={field}
-                  label={getScopeLabel(field, scope.electionType)}
-                  value={scope[field]}
-                  onPress={() => setActiveDropdown(field)}
-                  missing={missingField === field}
-                  fieldRef={(view) => { requiredViews.current[field] = view; }}
-                />
-              ))}
-            </View>
-          </View>
-
-          {constituencyElection ? (
-            <View ref={(view) => { requiredViews.current.wardNo = view; }} collapsable={false} style={[styles.section, missingField === "wardNo" && styles.missingSection]}>
-              <Text style={styles.sectionTitle}>Ward No. *</Text>
-              {loadingScope || loadingWards ? <OptionSkeleton label="Loading wards" /> : null}
-              {!loadingScope && !loadingWards && scopeOptions.wardNo.length ? (
-                <View style={styles.optionGrid}>
-                  {scopeOptions.wardNo.map((ward) => (
-                    <OptionButton
-                      key={ward}
-                      label={
-                        ward.toLowerCase().startsWith("ward")
-                          ? ward
-                          : `Ward ${ward}`
-                      }
-                      selected={scope.wardNo === ward}
-                      onPress={() => updateScope("wardNo", ward)}
-                      columns={2}
-                    />
-                  ))}
-                </View>
-              ) : null}
-              {!loadingScope && !loadingWards && !scopeOptions.wardNo.length ? (
-                <Text style={styles.politicianHint}>
-                  No ward options are available for this constituency.
-                </Text>
-              ) : null}
-            </View>
-          ) : null}
-
-          {loadingScope ? (
-            <ActivityIndicator color="#0F766E" style={styles.scopeLoader} />
-          ) : null}
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-
-          <View ref={(view) => { requiredViews.current.gender = view; }} collapsable={false} style={missingField === "gender" && styles.missingSection}>
-          <OptionSection
-            title="Gender"
-            options={GENDERS}
-            value={form.gender}
-            field="gender"
-            onSelect={setSingle}
-            columns={3}
-            icon={UserRound}
-          />
-          </View>
-          <View ref={(view) => { requiredViews.current.ageBracket = view; }} collapsable={false} style={missingField === "ageBracket" && styles.missingSection}>
-          <OptionSection
-            title="Age bracket"
-            options={AGE_BRACKETS}
-            value={form.ageBracket}
-            field="ageBracket"
-            onSelect={setSingle}
-            columns={4}
-            icon={CalendarDays}
-          />
-          </View>
-          <View ref={(view) => { requiredViews.current.education = view; }} collapsable={false} style={missingField === "education" && styles.missingSection}>
-          <OptionSection
-            title="Education"
-            options={EDUCATION}
-            value={form.education}
-            field="education"
-            onSelect={setSingle}
-            columns={2}
-            icon={GraduationCap}
-          />
-          </View>
-          <View ref={(view) => { requiredViews.current.incomeBracket = view; }} collapsable={false} style={missingField === "incomeBracket" && styles.missingSection}>
-          <OptionSection
-            title="Monthly household income"
-            options={INCOME}
-            value={form.incomeBracket}
-            field="incomeBracket"
-            onSelect={setSingle}
-            columns={2}
-            icon={WalletCards}
-          />
-          </View>
-          <View ref={(view) => { requiredViews.current.occupation = view; }} collapsable={false} style={missingField === "occupation" && styles.missingSection}>
-          <OptionSection
-            title="Occupation"
-            options={OCCUPATIONS}
-            value={form.occupation}
-            field="occupation"
-            onSelect={setSingle}
-            columns={2}
-            icon={BriefcaseBusiness}
-          />
-          </View>
-
-          <View ref={(view) => { requiredViews.current.issues = view; }} collapsable={false} style={missingField === "issues" && styles.missingSection}>
-            <ConcernSection issues={form.issues} onToggle={toggleConcern} />
-          </View>
-
-          <View ref={(view) => { requiredViews.current.preferredPolitician = view; }} collapsable={false} style={[styles.section, missingField === "preferredPolitician" && styles.missingSection]}>
-            <Text style={styles.sectionTitle}>Likely preferred politician</Text>
-            <View style={styles.optionGrid}>
-              {loadingScope || (politicianLocationReady && loadingPoliticians) ? <OptionSkeleton label="Loading politicians" detail /> : null}
-              {!loadingScope && !politicianLocationReady ? (
-                <Text style={styles.politicianHint}>
-                  Select a valid survey location to load active politicians.
-                </Text>
-              ) : null}
-              {politicianLocationReady &&
-              !loadingScope && !loadingPoliticians &&
-              politicianOptions.length === 0 ? (
-                <Text style={styles.politicianHint}>
-                  No active politicians are available for this location.
-                </Text>
-              ) : null}
-              {politicianLocationReady &&
-                !loadingScope && !loadingPoliticians &&
-                politicianOptions.map((candidate) => (
-                  <Pressable
-                    key={candidate.id}
-                    onPress={() => choosePolitician(candidate)}
-                    style={[
-                      styles.optionButton,
-                      styles.twoColumn,
-                      styles.politicianOption,
-                      form.preferredPolitician === candidate.name &&
-                        styles.optionButtonActive,
-                    ]}
-                  >
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        styles.optionText,
-                        form.preferredPolitician === candidate.name &&
-                          styles.optionTextActive,
-                      ]}
-                    >
-                      {candidate.name}
-                    </Text>
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        styles.partyText,
-                        form.preferredPolitician === candidate.name &&
-                          styles.optionTextActive,
-                      ]}
-                    >
-                      {candidate.party}
-                    </Text>
-                  </Pressable>
+            {message ? <Text style={styles.success}>{message}</Text> : null}
+            <View style={styles.scopeCard}>
+              <View style={styles.scopeGrid}>
+                {visibleScopeFields.map((field) => (
+                  <DropdownField
+                    key={field}
+                    label={getScopeLabel(field, scope.electionType)}
+                    value={scope[field]}
+                    onPress={() => setActiveDropdown(field)}
+                    missing={missingField === field}
+                    fieldRef={(view) => {
+                      requiredViews.current[field] = view;
+                    }}
+                  />
                 ))}
+              </View>
             </View>
-          </View>
 
-          <Pressable
-            disabled={saving || loadingScope}
-            onPress={handleSave}
-            style={[
-              styles.saveButton,
-              (saving || loadingScope) && styles.disabledButton,
-            ]}
-          >
-            {saving ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <CheckCircle2 color="#FFFFFF" size={18} strokeWidth={2.8} />
-            )}
-            <Text style={styles.saveText}>Save</Text>
-          </Pressable>
+            {constituencyElection ? (
+              <View
+                ref={(view) => {
+                  requiredViews.current.wardNo = view;
+                }}
+                collapsable={false}
+                style={[
+                  styles.section,
+                  missingField === "wardNo" && styles.missingSection,
+                ]}>
+                <Text style={styles.sectionTitle}>Ward No. *</Text>
+                {loadingScope || loadingWards ? (
+                  <OptionSkeleton label="Loading wards" />
+                ) : null}
+                {!loadingScope &&
+                !loadingWards &&
+                scopeOptions.wardNo.length ? (
+                  <View style={styles.optionGrid}>
+                    {scopeOptions.wardNo.map((ward) => (
+                      <OptionButton
+                        key={ward}
+                        label={
+                          ward.toLowerCase().startsWith("ward")
+                            ? ward
+                            : `Ward ${ward}`
+                        }
+                        selected={scope.wardNo === ward}
+                        onPress={() => updateScope("wardNo", ward)}
+                        columns={2}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+                {!loadingScope &&
+                !loadingWards &&
+                !scopeOptions.wardNo.length ? (
+                  <Text style={styles.politicianHint}>
+                    No ward options are available for this constituency.
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
 
-          {/* <Pressable
+            {loadingScope ? (
+              <ActivityIndicator color="#0F766E" style={styles.scopeLoader} />
+            ) : null}
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+
+            <View
+              ref={(view) => {
+                requiredViews.current.gender = view;
+              }}
+              collapsable={false}
+              style={missingField === "gender" && styles.missingSection}>
+              <OptionSection
+                title="Gender"
+                options={GENDERS}
+                value={form.gender}
+                field="gender"
+                onSelect={setSingle}
+                columns={3}
+                optionIcons={GENDER_ICONS}
+              />
+            </View>
+            <View
+              ref={(view) => {
+                requiredViews.current.ageBracket = view;
+              }}
+              collapsable={false}
+              style={missingField === "ageBracket" && styles.missingSection}>
+              <OptionSection
+                title="Age bracket"
+                options={AGE_BRACKETS}
+                value={form.ageBracket}
+                field="ageBracket"
+                onSelect={setSingle}
+                columns={4}
+                icon={CalendarDays}
+              />
+            </View>
+            <View
+              ref={(view) => {
+                requiredViews.current.education = view;
+              }}
+              collapsable={false}
+              style={missingField === "education" && styles.missingSection}>
+              <OptionSection
+                title="Education"
+                options={EDUCATION}
+                value={form.education}
+                field="education"
+                onSelect={setSingle}
+                columns={2}
+                icon={GraduationCap}
+              />
+            </View>
+            <View
+              ref={(view) => {
+                requiredViews.current.incomeBracket = view;
+              }}
+              collapsable={false}
+              style={missingField === "incomeBracket" && styles.missingSection}>
+              <OptionSection
+                title="Monthly household income"
+                options={INCOME}
+                value={form.incomeBracket}
+                field="incomeBracket"
+                onSelect={setSingle}
+                columns={2}
+                icon={WalletCards}
+              />
+            </View>
+            <View
+              ref={(view) => {
+                requiredViews.current.occupation = view;
+              }}
+              collapsable={false}
+              style={missingField === "occupation" && styles.missingSection}>
+              <OptionSection
+                title="Occupation"
+                options={OCCUPATIONS}
+                value={form.occupation}
+                field="occupation"
+                onSelect={setSingle}
+                columns={2}
+                optionIcons={OCCUPATION_ICONS}
+              />
+            </View>
+
+            <View
+              ref={(view) => {
+                requiredViews.current.issues = view;
+              }}
+              collapsable={false}
+              style={missingField === "issues" && styles.missingSection}>
+              <ConcernSection issues={form.issues} onToggle={toggleConcern} />
+            </View>
+
+            <View
+              ref={(view) => {
+                requiredViews.current.preferredPolitician = view;
+              }}
+              collapsable={false}
+              style={[
+                styles.section,
+                missingField === "preferredPolitician" && styles.missingSection,
+              ]}>
+              <Text style={styles.sectionTitle}>
+                Likely preferred politician
+              </Text>
+              <View style={styles.optionGrid}>
+                {loadingScope ||
+                (politicianLocationReady && loadingPoliticians) ? (
+                  <OptionSkeleton label="Loading politicians" detail />
+                ) : null}
+                {!loadingScope && !politicianLocationReady ? (
+                  <Text style={styles.politicianHint}>
+                    Select a valid survey location to load active politicians.
+                  </Text>
+                ) : null}
+                {politicianLocationReady &&
+                !loadingScope &&
+                !loadingPoliticians &&
+                politicianOptions.length === 0 ? (
+                  <Text style={styles.politicianHint}>
+                    No active politicians are available for this location.
+                  </Text>
+                ) : null}
+                {politicianLocationReady &&
+                  !loadingScope &&
+                  !loadingPoliticians &&
+                  politicianOptions.map((candidate) => (
+                    <Pressable
+                      key={candidate.id}
+                      onPress={() => choosePolitician(candidate)}
+                      style={[
+                        styles.optionButton,
+                        styles.twoColumn,
+                        styles.politicianOption,
+                        form.preferredPolitician === candidate.name &&
+                          styles.optionButtonActive,
+                      ]}>
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.optionText,
+                          form.preferredPolitician === candidate.name &&
+                            styles.optionTextActive,
+                        ]}>
+                        {candidate.name}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.partyText,
+                          form.preferredPolitician === candidate.name &&
+                            styles.optionTextActive,
+                        ]}>
+                        {candidate.party}
+                      </Text>
+                    </Pressable>
+                  ))}
+              </View>
+            </View>
+
+            <Pressable
+              disabled={saving || loadingScope}
+              onPress={handleSave}
+              style={[
+                styles.saveButton,
+                (saving || loadingScope) && styles.disabledButton,
+              ]}>
+              {saving ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <CheckCircle2 color="#FFFFFF" size={18} strokeWidth={2.8} />
+              )}
+              <Text style={styles.saveText}>Save</Text>
+            </Pressable>
+
+            {/* <Pressable
             onPress={openSurveyReport}
             style={styles.reportButton}>
             <ClipboardList color="#087568" size={17} strokeWidth={2.7} />
@@ -796,16 +878,13 @@ export default function SurveyScreen() {
         transparent
         visible={menuVisible}
         animationType="slide"
-        onRequestClose={() => setMenuVisible(false)}
-      >
+        onRequestClose={() => setMenuVisible(false)}>
         <Pressable
           style={styles.menuBackdrop}
-          onPress={() => setMenuVisible(false)}
-        >
+          onPress={() => setMenuVisible(false)}>
           <Pressable
             style={styles.menuDrawer}
-            onPress={(event) => event.stopPropagation()}
-          >
+            onPress={(event) => event.stopPropagation()}>
             <View style={styles.menuHandle} />
             {canOpenVoters ? (
               <Pressable
@@ -813,8 +892,7 @@ export default function SurveyScreen() {
                   setMenuVisible(false);
                   openVoterPage();
                 }}
-                style={styles.menuRow}
-              >
+                style={styles.menuRow}>
                 <View style={styles.menuIconWrap}>
                   <ClipboardList color="#087568" size={20} strokeWidth={2.6} />
                 </View>
@@ -832,8 +910,7 @@ export default function SurveyScreen() {
                   setMenuVisible(false);
                   openTemplatePage();
                 }}
-                style={styles.menuRow}
-              >
+                style={styles.menuRow}>
                 <View style={styles.menuIconWrap}>
                   <FileText color="#087568" size={20} strokeWidth={2.6} />
                 </View>
@@ -845,14 +922,18 @@ export default function SurveyScreen() {
                 </View>
               </Pressable>
             ) : null}
-            <BannerStudioMenuItem onPress={() => { setMenuVisible(false); router.push("/banner-generation"); }} />
+            <BannerStudioMenuItem
+              onPress={() => {
+                setMenuVisible(false);
+                router.push("/banner-generation");
+              }}
+            />
             <Pressable
               onPress={() => {
                 setMenuVisible(false);
                 confirmLogout();
               }}
-              style={[styles.menuRow, styles.logoutMenuRow]}
-            >
+              style={[styles.menuRow, styles.logoutMenuRow]}>
               <View style={[styles.menuIconWrap, styles.logoutMenuIconWrap]}>
                 <LogOut color="#B91C1C" size={20} strokeWidth={2.6} />
               </View>
@@ -871,13 +952,11 @@ export default function SurveyScreen() {
         transparent
         visible={Boolean(activeDropdown)}
         animationType="fade"
-        onRequestClose={() => setActiveDropdown(null)}
-      >
+        onRequestClose={() => setActiveDropdown(null)}>
         {activeDropdown ? (
           <Pressable
             style={styles.dropdownBackdrop}
-            onPress={() => setActiveDropdown(null)}
-          >
+            onPress={() => setActiveDropdown(null)}>
             <Pressable style={styles.dropdownSheet}>
               <View style={styles.handle} />
               <Text style={styles.dropdownTitle}>
@@ -892,14 +971,12 @@ export default function SurveyScreen() {
                     style={[
                       styles.dropdownOption,
                       selected && styles.dropdownOptionActive,
-                    ]}
-                  >
+                    ]}>
                     <Text
                       style={[
                         styles.dropdownOptionText,
                         selected && styles.dropdownOptionTextActive,
-                      ]}
-                    >
+                      ]}>
                       {option || "Assigned after login"}
                     </Text>
                     {selected ? (
@@ -920,13 +997,45 @@ export default function SurveyScreen() {
   );
 }
 
-function OptionSkeleton({ label, detail = false }: { label: string; detail?: boolean }) {
-  return <View accessible accessibilityLabel={label} accessibilityState={{ busy: true }} style={[styles.optionGrid, { width: "100%" }]}>
-    {[0, 1, 2, 3].map((index) => <Shimmer key={index} style={[styles.optionSkeleton, detail && { minHeight: 60 }]}>
-      <View style={{ height: 10, width: "65%", borderRadius: 5, backgroundColor: "#B4DCD0" }} />
-      {detail ? <View style={{ height: 8, width: "40%", borderRadius: 4, backgroundColor: "#C8E6DC" }} /> : null}
-    </Shimmer>)}
-  </View>;
+function OptionSkeleton({
+  label,
+  detail = false,
+}: {
+  label: string;
+  detail?: boolean;
+}) {
+  return (
+    <View
+      accessible
+      accessibilityLabel={label}
+      accessibilityState={{ busy: true }}
+      style={[styles.optionGrid, { width: "100%" }]}>
+      {[0, 1, 2, 3].map((index) => (
+        <Shimmer
+          key={index}
+          style={[styles.optionSkeleton, detail && { minHeight: 60 }]}>
+          <View
+            style={{
+              height: 10,
+              width: "65%",
+              borderRadius: 5,
+              backgroundColor: "#B4DCD0",
+            }}
+          />
+          {detail ? (
+            <View
+              style={{
+                height: 8,
+                width: "40%",
+                borderRadius: 4,
+                backgroundColor: "#C8E6DC",
+              }}
+            />
+          ) : null}
+        </Shimmer>
+      ))}
+    </View>
+  );
 }
 
 function uniqueValues(...values: string[]) {
@@ -950,7 +1059,14 @@ function DropdownField({
   fieldRef?: (view: View | null) => void;
 }) {
   return (
-    <View ref={fieldRef} collapsable={false} style={[styles.fieldWrap, fullWidth && styles.fullFieldWrap, missing && styles.missingSection]}>
+    <View
+      ref={fieldRef}
+      collapsable={false}
+      style={[
+        styles.fieldWrap,
+        fullWidth && styles.fullFieldWrap,
+        missing && styles.missingSection,
+      ]}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <Pressable onPress={onPress} style={styles.dropdownField}>
         <Text numberOfLines={1} style={styles.dropdownText}>
@@ -970,6 +1086,7 @@ const OptionSection = memo(function OptionSection({
   field,
   columns,
   icon,
+  optionIcons,
 }: {
   title: string;
   options: string[];
@@ -978,6 +1095,7 @@ const OptionSection = memo(function OptionSection({
   field: keyof FormState;
   columns: 2 | 3 | 4;
   icon?: LucideIcon;
+  optionIcons?: Record<string, LucideIcon>;
 }) {
   return (
     <View style={styles.section}>
@@ -990,7 +1108,7 @@ const OptionSection = memo(function OptionSection({
             selected={value === option}
             onPress={() => onSelect(field, option)}
             columns={columns}
-            icon={icon}
+            icon={optionIcons?.[option] ?? icon}
           />
         ))}
       </View>
@@ -1018,7 +1136,7 @@ const ConcernSection = memo(function ConcernSection({
             selected={issues.includes(issue)}
             onPress={() => onToggle(issue)}
             columns={2}
-            icon={CircleAlert}
+            icon={CONCERN_ICONS[issue]}
           />
         ))}
       </View>
@@ -1051,8 +1169,7 @@ const OptionButton = memo(function OptionButton({
             ? styles.twoColumn
             : styles.threeColumn,
         selected && styles.optionButtonActive,
-      ]}
-    >
+      ]}>
       <OptionContent label={label} selected={selected} icon={Icon} />
     </Pressable>
   );
@@ -1078,8 +1195,11 @@ const OptionContent = memo(function OptionContent({
       ) : null}
       <Text
         numberOfLines={2}
-        style={[styles.optionText, Icon && styles.iconOptionText, selected && styles.optionTextActive]}
-      >
+        style={[
+          styles.optionText,
+          Icon && styles.iconOptionText,
+          selected && styles.optionTextActive,
+        ]}>
         {label === "< ₹15k" ? "Below ₹15k" : label}
       </Text>
     </>
@@ -1087,8 +1207,21 @@ const OptionContent = memo(function OptionContent({
 });
 
 const styles = StyleSheet.create({
-  optionSkeleton: { width: "48.7%", minHeight: 44, borderRadius: 14, backgroundColor: "#E3F2EC", alignItems: "center", justifyContent: "center", gap: 8 },
-  missingSection: { borderWidth: 1, borderColor: "#DC2626", borderRadius: 14, padding: 6 },
+  optionSkeleton: {
+    width: "48.7%",
+    minHeight: 44,
+    borderRadius: 14,
+    backgroundColor: "#E3F2EC",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  missingSection: {
+    borderWidth: 1,
+    borderColor: "#DC2626",
+    borderRadius: 14,
+    padding: 6,
+  },
   safe: { flex: 1, backgroundColor: "#F4FBF7" },
   header: {
     minHeight: 198,
@@ -1286,7 +1419,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 8,
   },
-  iconOptionButton: { justifyContent: "flex-start", paddingHorizontal: 12, gap: 8 },
+  iconOptionButton: {
+    justifyContent: "flex-start",
+    paddingHorizontal: 12,
+    gap: 8,
+  },
   iconOptionText: { textAlign: "left" },
   optionButtonActive: { backgroundColor: "#064E3B", borderColor: "#064E3B" },
   politicianOption: {
