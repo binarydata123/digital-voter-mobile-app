@@ -28,13 +28,16 @@ import {
   FlatList,
   Modal,
   Pressable,
-  StyleSheet,
   StatusBar,
+  StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
@@ -96,7 +99,13 @@ type ThermalPrintRequest = {
 };
 type ShareImageRequest = { voter: Voter; resolve: () => void };
 
-export default function VotersScreen({ searchMode = false, initialBooth = "All" }: { searchMode?: boolean; initialBooth?: string }) {
+export default function VotersScreen({
+  searchMode = false,
+  initialBooth = "All",
+}: {
+  searchMode?: boolean;
+  initialBooth?: string;
+}) {
   const safeAreaInsets = useSafeAreaInsets();
   const [voters, setVoters] = useState<Voter[]>([]);
   const [localPoliticianId, setLocalPoliticianId] = useState<string | null>(
@@ -152,25 +161,28 @@ export default function VotersScreen({ searchMode = false, initialBooth = "All" 
   const isSearchPending = query !== deferredQuery;
   const localMode = Boolean(localPoliticianId);
 
-  const loadInitialLocalPage = useCallback(async (politicianId: string) => {
-    if (searchMode) {
-      const overview = await getLocalVoterOverview(politicianId);
+  const loadInitialLocalPage = useCallback(
+    async (politicianId: string) => {
+      if (searchMode) {
+        const overview = await getLocalVoterOverview(politicianId);
+        setLocalAllVoterTotal(overview.total);
+        setLocalBoothCounts(overview.boothCounts);
+        setLocalPoliticianId(politicianId);
+        return;
+      }
+      const [page, overview] = await Promise.all([
+        getLocalVoterPage(politicianId, {}, VOTER_PAGE_SIZE),
+        getLocalVoterOverview(politicianId),
+      ]);
+      lastLocalQueryKey.current = `${politicianId}|All|`;
+      setVoters(page.voters);
+      setLocalTotal(page.total);
       setLocalAllVoterTotal(overview.total);
       setLocalBoothCounts(overview.boothCounts);
       setLocalPoliticianId(politicianId);
-      return;
-    }
-    const [page, overview] = await Promise.all([
-      getLocalVoterPage(politicianId, {}, VOTER_PAGE_SIZE),
-      getLocalVoterOverview(politicianId),
-    ]);
-    lastLocalQueryKey.current = `${politicianId}|All|`;
-    setVoters(page.voters);
-    setLocalTotal(page.total);
-    setLocalAllVoterTotal(overview.total);
-    setLocalBoothCounts(overview.boothCounts);
-    setLocalPoliticianId(politicianId);
-  }, [searchMode]);
+    },
+    [searchMode],
+  );
 
   const loadVoters = useCallback(async () => {
     const signedInUser = getCurrentUser();
@@ -548,7 +560,7 @@ export default function VotersScreen({ searchMode = false, initialBooth = "All" 
     // not clear it here: unmounting every card on each key press is expensive.
     () => [
       ...(searchMode ? [] : [BOOTHS_ITEM, CONTROLS_ITEM]),
-      ...((pendingBooth || (searchMode && !query.trim()))
+      ...(pendingBooth || (searchMode && !query.trim())
         ? []
         : filteredVoters.map(
             (voter): VoterListItem => ({ type: "voter", voter }),
@@ -640,28 +652,48 @@ export default function VotersScreen({ searchMode = false, initialBooth = "All" 
         }>
         {section === "controls" ? (
           <View style={styles.searchRow}>
-            {searchMode ? <View style={styles.searchBox}>
-              <Search color="#94A3B8" size={18} strokeWidth={2.6} />
-              <TextInput
-                autoFocus
-                value={query}
-                onChangeText={value => {
-                  setQuery(value);
-                  if (localMode && !value.trim()) {
-                    ++localRequestId.current;
-                    lastLocalQueryKey.current = "";
-                    setVoters([]); setLocalTotal(0); setLoadingMore(false); setPendingBooth(null);
-                  }
-                }}
-                placeholder="Search name, EPIC No. or Serial No."
-                placeholderTextColor="#94A3B8"
-                style={styles.searchInput}
-                returnKeyType="search"
-              />
-            </View> : <Pressable accessibilityRole="button" accessibilityLabel="Open voter search" style={styles.searchBox} onPress={() => router.push({ pathname: './voter-search', params: { booth: activeBooth } })}>
-              <Search color="#94A3B8" size={18} strokeWidth={2.6} />
-              <Text style={[styles.searchInput, { color: '#94A3B8' }]} numberOfLines={1}>Search name, EPIC No. or Serial No.</Text>
-            </Pressable>}
+            {searchMode ? (
+              <View style={styles.searchBox}>
+                <Search color="#94A3B8" size={18} strokeWidth={2.6} />
+                <TextInput
+                  autoFocus
+                  value={query}
+                  onChangeText={(value) => {
+                    setQuery(value);
+                    if (localMode && !value.trim()) {
+                      ++localRequestId.current;
+                      lastLocalQueryKey.current = "";
+                      setVoters([]);
+                      setLocalTotal(0);
+                      setLoadingMore(false);
+                      setPendingBooth(null);
+                    }
+                  }}
+                  placeholder="Search name, EPIC No. or Serial No."
+                  placeholderTextColor="#94A3B8"
+                  style={styles.searchInput}
+                  returnKeyType="search"
+                />
+              </View>
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open voter search"
+                style={styles.searchBox}
+                onPress={() =>
+                  router.push({
+                    pathname: "./voter-search",
+                    params: { booth: activeBooth },
+                  })
+                }>
+                <Search color="#94A3B8" size={18} strokeWidth={2.6} />
+                <Text
+                  style={[styles.searchInput, { color: "#94A3B8" }]}
+                  numberOfLines={1}>
+                  Search name, EPIC No. or Serial No.
+                </Text>
+              </Pressable>
+            )}
             <Pressable
               style={styles.filterButton}
               onPress={() => setModalVisible(true)}>
@@ -720,15 +752,28 @@ export default function VotersScreen({ searchMode = false, initialBooth = "All" 
         ) : null}
       </View>
     ),
-    [activeBooth, boothCounts, booths, pendingBooth, query, selectBooth, searchMode, localMode],
+    [
+      activeBooth,
+      boothCounts,
+      booths,
+      pendingBooth,
+      query,
+      selectBooth,
+      searchMode,
+      localMode,
+    ],
   );
 
   const renderListFooter = useCallback(() => {
-    if (searchMode && !query.trim()) return (
-      <View style={styles.listFooterWrap}>
-        <EmptyState title="Search for a voter" message="Enter a name, EPIC number, or serial number above to find voters." />
-      </View>
-    );
+    if (searchMode && !query.trim())
+      return (
+        <View style={styles.listFooterWrap}>
+          <EmptyState
+            title="Search for a voter"
+            message="Enter a name, EPIC number, or serial number above to find voters."
+          />
+        </View>
+      );
     if (searchMode && initialLoading) return null;
     if (pendingBooth || isSearchPending || loadingMore) {
       return (
@@ -817,39 +862,84 @@ export default function VotersScreen({ searchMode = false, initialBooth = "All" 
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" />
-      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: safeAreaInsets.top, backgroundColor: '#087568' }} />
-      {searchMode && <>
-        <View style={styles.searchPageHeader}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Back to voter list" onPress={() => router.canGoBack() ? router.back() : router.replace('/politician/voters')} style={styles.searchPageBack}><ArrowLeft size={22} color="#087568" /></Pressable>
-          <View style={{ flex: 1 }}><Text style={styles.searchPageTitle}>Search voters</Text><Text style={styles.searchPageSubtitle} numberOfLines={1}>{activeBooth === 'All' ? 'All voters' : activeBooth}</Text></View>
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: safeAreaInsets.top,
+          backgroundColor: "#087568",
+        }}
+      />
+      {searchMode && (
+        <>
+          <View style={styles.searchPageHeader}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back to voter list"
+              onPress={() =>
+                router.canGoBack()
+                  ? router.back()
+                  : router.replace("/politician/voters")
+              }
+              style={styles.searchPageBack}>
+              <ArrowLeft size={22} color="#087568" />
+            </Pressable>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.searchPageTitle}>Search voters</Text>
+              <Text style={styles.searchPageSubtitle} numberOfLines={1}>
+                {activeBooth === "All" ? "All voters" : activeBooth}
+              </Text>
+            </View>
+          </View>
+          {renderStickyControls("controls")}
+          {!!error && <Text style={styles.warning}>{error}</Text>}
+        </>
+      )}
+      {searchMode &&
+      (!query.trim() ||
+        (!initialLoading &&
+          !isSearchPending &&
+          !loadingMore &&
+          !pendingBooth &&
+          filteredVoters.length === 0)) ? (
+        <View style={styles.searchEmptyArea}>
+          <View style={styles.searchEmptyIcon}>
+            <Search size={30} color="#087568" strokeWidth={1.8} />
+          </View>
+          <Text style={styles.searchEmptyTitle}>
+            {query.trim() ? "No voters found" : "Search for a voter"}
+          </Text>
+          <Text style={styles.searchEmptyMessage}>
+            {query.trim()
+              ? "Try a different name, EPIC number, serial number, or booth."
+              : "Enter a name, EPIC number, or serial number above to find voters."}
+          </Text>
         </View>
-        {renderStickyControls('controls')}
-        {!!error && <Text style={styles.warning}>{error}</Text>}
-      </>}
-      {searchMode && (!query.trim() || (!initialLoading && !isSearchPending && !loadingMore && !pendingBooth && filteredVoters.length === 0)) ? <View style={styles.searchEmptyArea}>
-        <View style={styles.searchEmptyIcon}><Search size={30} color="#087568" strokeWidth={1.8} /></View>
-        <Text style={styles.searchEmptyTitle}>{query.trim() ? 'No voters found' : 'Search for a voter'}</Text>
-        <Text style={styles.searchEmptyMessage}>{query.trim() ? 'Try a different name, EPIC number, serial number, or booth.' : 'Enter a name, EPIC number, or serial number above to find voters.'}</Text>
-      </View> : <FlashList
-        ref={listRef}
-        data={listData}
-        keyExtractor={voterKeyExtractor}
-        renderItem={renderVoterItem}
-        getItemType={getVoterListItemType}
-        stickyHeaderIndices={searchMode ? undefined : STICKY_CONTROL_INDICES}
-        onEndReached={localMode ? loadMoreLocalVoters : undefined}
-        onEndReachedThreshold={0.25}
-        onScroll={handleListScroll}
-        scrollEventThrottle={16}
-        // decelerationRate={1}
-        drawDistance={400}
-        keyboardDismissMode="none"
-        keyboardShouldPersistTaps="always"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
-        ListHeaderComponent={searchMode ? undefined : listHeader}
-        ListFooterComponent={renderListFooter}
-      />}
+      ) : (
+        <FlashList
+          ref={listRef}
+          data={listData}
+          keyExtractor={voterKeyExtractor}
+          renderItem={renderVoterItem}
+          getItemType={getVoterListItemType}
+          stickyHeaderIndices={searchMode ? undefined : STICKY_CONTROL_INDICES}
+          onEndReached={localMode ? loadMoreLocalVoters : undefined}
+          onEndReachedThreshold={0.25}
+          onScroll={handleListScroll}
+          scrollEventThrottle={16}
+          // decelerationRate={1}
+          drawDistance={400}
+          keyboardDismissMode="none"
+          keyboardShouldPersistTaps="always"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.listContent}
+          ListHeaderComponent={searchMode ? undefined : listHeader}
+          ListFooterComponent={renderListFooter}
+        />
+      )}
 
       <Modal
         transparent
@@ -902,7 +992,12 @@ export default function VotersScreen({ searchMode = false, initialBooth = "All" 
               </Pressable>
             ) : null}
 
-            <BannerStudioMenuItem onPress={() => { setMenuVisible(false); router.push("/banner-generation"); }} />
+            <BannerStudioMenuItem
+              onPress={() => {
+                setMenuVisible(false);
+                router.push("/banner-generation");
+              }}
+            />
             <Pressable
               onPress={() => {
                 setMenuVisible(false);
@@ -1116,14 +1211,57 @@ function PrintChoiceRow({
 }
 
 const styles = StyleSheet.create({
-  searchPageHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 4, gap: 10, minHeight: 48 },
-  searchPageBack: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDE8E3', justifyContent: 'center', alignItems: 'center' },
-  searchPageTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
-  searchPageSubtitle: { color: '#64748B', fontSize: 11, marginTop: 1 },
-  searchEmptyArea: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', paddingHorizontal: 32, paddingTop: 48, paddingBottom: 20, gap: 10 },
-  searchEmptyIcon: { width: 68, height: 68, borderRadius: 34, backgroundColor: '#E4F1EB', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  searchEmptyTitle: { color: '#0F172A', fontSize: 17, fontWeight: '700', textAlign: 'center' },
-  searchEmptyMessage: { color: '#64748B', fontSize: 13, lineHeight: 20, textAlign: 'center', maxWidth: 300 },
+  searchPageHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    gap: 10,
+    minHeight: 48,
+  },
+  searchPageBack: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#DDE8E3",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  searchPageTitle: { fontSize: 18, fontWeight: "700", color: "#0F172A" },
+  searchPageSubtitle: { color: "#64748B", fontSize: 11, marginTop: 1 },
+  searchEmptyArea: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    paddingHorizontal: 32,
+    paddingTop: 48,
+    paddingBottom: 20,
+    gap: 10,
+  },
+  searchEmptyIcon: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: "#E4F1EB",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  searchEmptyTitle: {
+    color: "#0F172A",
+    fontSize: 17,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  searchEmptyMessage: {
+    color: "#64748B",
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: "center",
+    maxWidth: 300,
+  },
   safe: { flex: 1, backgroundColor: "#F4FBF7" },
   shareCaptureHost: {
     position: "absolute",
