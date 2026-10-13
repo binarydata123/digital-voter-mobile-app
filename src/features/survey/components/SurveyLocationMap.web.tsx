@@ -1,16 +1,20 @@
 import { StyleSheet, Text, View } from "react-native";
 
 import type { SurveyLocationPoint } from "@/services/survey";
+import {
+  buildSurveyLocationMapHtml,
+  getValidSurveyLocations,
+} from "./surveyLocationMapHtml";
 
 export function SurveyLocationMap({
   locations,
+  onInteractionChange,
 }: {
   locations: SurveyLocationPoint[];
+  onInteractionChange?: (isInteracting: boolean) => void;
 }) {
-  const validLocations = locations.filter(
-    (location) =>
-      Number.isFinite(location.latitude) && Number.isFinite(location.longitude),
-  );
+  const validLocations = getValidSurveyLocations(locations);
+  const mapHtml = buildSurveyLocationMapHtml(validLocations);
 
   return (
     <View style={styles.chartCard}>
@@ -23,14 +27,16 @@ export function SurveyLocationMap({
       {validLocations.length === 0 ? (
         <Text style={styles.emptyChartText}>No saved survey locations yet.</Text>
       ) : (
-        <View style={styles.mapFallback}>
-          {validLocations.slice(0, 8).map((location, index) => (
-            <Text
-              key={location.id ?? `${location.latitude}-${location.longitude}-${index}`}
-              style={styles.mapFallbackText}>
-              {`${index + 1}. ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`}
-            </Text>
-          ))}
+        <View
+          onTouchCancel={() => onInteractionChange?.(false)}
+          onTouchEnd={() => onInteractionChange?.(false)}
+          onTouchStart={() => onInteractionChange?.(true)}
+          style={styles.mapFrame}>
+          <iframe
+            title="Survey locations map"
+            srcDoc={mapHtml}
+            style={{ border: 0, height: "100%", width: "100%" }}
+          />
         </View>
       )}
     </View>
@@ -55,17 +61,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     paddingVertical: 4,
   },
-  mapFallback: {
+  mapFrame: {
     backgroundColor: "#F8FAFC",
     borderColor: "#E2E8F0",
     borderRadius: 8,
     borderWidth: 1,
-    gap: 6,
-    padding: 12,
-  },
-  mapFallbackText: {
-    color: "#334155",
-    fontSize: 12,
-    fontWeight: "800",
+    height: 280,
+    overflow: "hidden",
+    width: "100%",
   },
 });

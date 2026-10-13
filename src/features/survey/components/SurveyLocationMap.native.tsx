@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
-import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker } from "react-native-maps";
+import { WebView } from "react-native-webview";
 
 import type { SurveyLocationPoint } from "@/services/survey";
+import {
+  buildSurveyLocationMapHtml,
+  getValidSurveyLocations,
+} from "./surveyLocationMapHtml";
 
 function getMapRegion(locations: SurveyLocationPoint[]) {
   const latitudes = locations.map((location) => location.latitude);
@@ -29,27 +34,29 @@ function formatLocationTime(capturedAt?: string) {
   return date.toLocaleString();
 }
 
-const mapProvider = Platform.OS === "android" ? PROVIDER_GOOGLE : undefined;
-
 export function SurveyLocationMap({
   locations,
+  onInteractionChange,
 }: {
   locations: SurveyLocationPoint[];
+  onInteractionChange?: (isInteracting: boolean) => void;
 }) {
   const mapRef = useRef<MapView>(null);
   const validLocations = useMemo(
-    () =>
-      locations.filter(
-        (location) =>
-          Number.isFinite(location.latitude) &&
-          Number.isFinite(location.longitude),
-      ),
+    () => getValidSurveyLocations(locations),
     [locations],
   );
-  const region = validLocations.length ? getMapRegion(validLocations) : null;
+  const region = useMemo(
+    () => (validLocations.length ? getMapRegion(validLocations) : null),
+    [validLocations],
+  );
+  const mapHtml = useMemo(
+    () => buildSurveyLocationMapHtml(validLocations),
+    [validLocations],
+  );
 
   useEffect(() => {
-    if (!mapRef.current || validLocations.length === 0) {
+    if (Platform.OS === "android" || !mapRef.current || !region) {
       return;
     }
 
@@ -63,7 +70,7 @@ export function SurveyLocationMap({
         edgePadding: { bottom: 44, left: 44, right: 44, top: 44 },
       },
     );
-  }, [validLocations]);
+  }, [region, validLocations]);
 
   return (
     <View style={styles.chartCard}>
@@ -73,43 +80,70 @@ export function SurveyLocationMap({
           {`${validLocations.length} saved location${validLocations.length === 1 ? "" : "s"}`}
         </Text>
       </View>
-      {!region ? (
+      {validLocations.length === 0 ? (
         <Text style={styles.emptyChartText}>No saved survey locations yet.</Text>
       ) : (
-        <MapView
-          ref={mapRef}
-          initialRegion={region}
-          provider={mapProvider}
-          style={styles.map}
-          mapType="standard"
-          showsCompass={false}
-          showsUserLocation={false}
-          toolbarEnabled={false}>
-          {validLocations.map((location, index) => (
-            <Marker
-              key={location.id ?? `${location.latitude}-${location.longitude}-${index}`}
-              coordinate={{
-                latitude: location.latitude,
-                longitude: location.longitude,
-              }}
-              pinColor="#DC2626"
-              title={location.location ?? location.wardNo ?? `Survey ${index + 1}`}
-              description={
-                [
-                  location.wardNo && location.location !== location.wardNo
-                    ? `Ward ${location.wardNo}`
-                    : "",
-                  location.preferredPolitician
-                    ? `${location.preferredPolitician}${location.preferredParty ? ` (${location.preferredParty})` : ""}`
-                    : "",
-                  formatLocationTime(location.capturedAt),
-                ]
-                  .filter(Boolean)
-                  .join(" · ") || undefined
-              }
+        <View
+          onTouchCancel={() => onInteractionChange?.(false)}
+          onTouchEnd={() => onInteractionChange?.(false)}
+          onTouchStart={() => onInteractionChange?.(true)}
+          style={styles.map}>
+          {Platform.OS === "android" ? (
+            <WebView
+              originWhitelist={["*"]}
+              source={{ html: mapHtml }}
+              style={styles.webView}
+              javaScriptEnabled
+              domStorageEnabled
+              nestedScrollEnabled
+              overScrollMode="never"
             />
-          ))}
-        </MapView>
+          ) : (
+            <MapView
+              ref={mapRef}
+              initialRegion={region ?? undefined}
+              style={styles.nativeMap}
+              mapType="standard"
+              scrollEnabled
+              zoomEnabled
+              pitchEnabled
+              rotateEnabled
+              showsCompass={false}
+              showsUserLocation={false}>
+              {validLocations.map((location, index) => (
+                <Marker
+                  key={
+                    location.id ??
+                    `${location.latitude}-${location.longitude}-${index}`
+                  }
+                  coordinate={{
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                  }}
+                  pinColor="#DC2626"
+                  title={
+                    location.location ??
+                    location.wardNo ??
+                    `Survey ${index + 1}`
+                  }
+                  description={
+                    [
+                      location.wardNo && location.location !== location.wardNo
+                        ? `Ward ${location.wardNo}`
+                        : "",
+                      location.preferredPolitician
+                        ? `${location.preferredPolitician}${location.preferredParty ? ` (${location.preferredParty})` : ""}`
+                        : "",
+                      formatLocationTime(location.capturedAt),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || undefined
+                  }
+                />
+              ))}
+            </MapView>
+          )}
+        </View>
       )}
     </View>
   );
@@ -138,5 +172,11 @@ const styles = StyleSheet.create({
     height: 240,
     overflow: "hidden",
     width: "100%",
+  },
+  nativeMap: {
+    flex: 1,
+  },
+  webView: {
+    flex: 1,
   },
 });

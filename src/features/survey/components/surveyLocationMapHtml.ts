@@ -1,0 +1,152 @@
+import type { SurveyLocationPoint } from "@/services/survey";
+
+const DEFAULT_CENTER = {
+  latitude: 30.80192,
+  longitude: 76.8966656,
+};
+
+type LeafletLocationPoint = {
+  id: string;
+  latitude: number;
+  longitude: number;
+  title: string;
+  details: string[];
+};
+
+function formatLocationTime(capturedAt?: string) {
+  if (!capturedAt) return "";
+  const date = new Date(capturedAt);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString();
+}
+
+export function getValidSurveyLocations(locations: SurveyLocationPoint[]) {
+  return locations.filter(
+    (location) =>
+      Number.isFinite(location.latitude) && Number.isFinite(location.longitude),
+  );
+}
+
+function toLeafletPoint(
+  location: SurveyLocationPoint,
+  index: number,
+): LeafletLocationPoint {
+  const title =
+    location.location ??
+    (location.wardNo ? `Ward ${location.wardNo}` : `Survey ${index + 1}`);
+  const preference = location.preferredPolitician
+    ? `${location.preferredPolitician}${location.preferredParty ? ` (${location.preferredParty})` : ""}`
+    : "";
+
+  return {
+    id: location.id ?? `${location.latitude}-${location.longitude}-${index}`,
+    latitude: location.latitude,
+    longitude: location.longitude,
+    title,
+    details: [
+      location.wardNo && location.location !== location.wardNo
+        ? `Ward ${location.wardNo}`
+        : "",
+      location.boothNo ? `Booth ${location.boothNo}` : "",
+      preference,
+      formatLocationTime(location.capturedAt),
+    ].filter(Boolean),
+  };
+}
+
+function serializeScriptValue(value: unknown) {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+export function buildSurveyLocationMapHtml(locations: SurveyLocationPoint[]) {
+  const validLocations = getValidSurveyLocations(locations);
+  const markerData = validLocations.map(toLeafletPoint);
+  const center = markerData[0] ?? DEFAULT_CENTER;
+
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+      html, body, #map {
+        height: 100%;
+        margin: 0;
+        width: 100%;
+      }
+
+      body {
+        background: #F8FAFC;
+        color: #0F172A;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .leaflet-container {
+        background: #E2E8F0;
+      }
+
+      .popup-title {
+        color: #0F172A;
+        font-size: 14px;
+        font-weight: 800;
+        margin-bottom: 4px;
+      }
+
+      .popup-detail {
+        color: #475569;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.35;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      var markers = ${serializeScriptValue(markerData)};
+      var map = L.map("map", {
+        attributionControl: false,
+        zoomControl: true
+      }).setView([${center.latitude}, ${center.longitude}], ${markerData.length > 1 ? 12 : 14});
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors"
+      }).addTo(map);
+
+      var markerLayer = L.featureGroup();
+      var escapeHtml = function (value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      };
+
+      markers.forEach(function (location) {
+        var popupDetails = location.details
+          .map(function (detail) {
+            return '<div class="popup-detail">' + escapeHtml(detail) + '</div>';
+          })
+          .join("");
+        var popupHtml = '<div class="popup-title">' + escapeHtml(location.title) + '</div>' + popupDetails;
+
+        L.marker([location.latitude, location.longitude])
+          .bindPopup(popupHtml)
+          .addTo(markerLayer);
+      });
+
+      markerLayer.addTo(map);
+
+      if (markers.length > 1) {
+        map.fitBounds(markerLayer.getBounds().pad(0.15));
+      } else if (markers.length === 1) {
+        map.setView([markers[0].latitude, markers[0].longitude], 15);
+      }
+    </script>
+  </body>
+</html>`;
+}
