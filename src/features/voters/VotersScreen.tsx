@@ -47,8 +47,6 @@ import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleto
 import { searchRank, searchTerms } from "@/utils/voterSearch";
 
 import {
-  shareVoterSlipImageFromRef,
-  VoterSlipPaper,
   VoterSlipPreview,
 } from "@/features/voters/components/VoterSlipPreview";
 import {
@@ -97,7 +95,6 @@ type ThermalPrintRequest = {
   showBanner: boolean;
   voter: Voter;
 };
-type ShareImageRequest = { voter: Voter; resolve: () => void };
 
 export default function VotersScreen({
   searchMode = false,
@@ -132,12 +129,9 @@ export default function VotersScreen({
   const [thermalPrintRequest, setThermalPrintRequest] =
     useState<ThermalPrintRequest | null>(null);
   const [printerSelectionVersion, setPrinterSelectionVersion] = useState(0);
-  const [shareImageRequest, setShareImageRequest] =
-    useState<ShareImageRequest | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const boothSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const shareSlipRef = useRef<View>(null);
   const listRef = useRef<FlashListRef<VoterListItem>>(null);
   const [scrollTopOpacity] = useState(() => new Animated.Value(0));
   const lastLocalQueryKey = useRef("");
@@ -154,7 +148,6 @@ export default function VotersScreen({
   ]
     .filter(Boolean)
     .join(", ");
-  const accountBannerImage = currentUser?.bannerImage;
   const canOpenSurvey = hasPoliticianPageAccess("survey", currentUser);
   const canUseTemplates = hasPoliticianPageAccess("template", currentUser);
   const deferredQuery = useDeferredValue(query);
@@ -252,34 +245,6 @@ export default function VotersScreen({
     const frame = requestAnimationFrame(() => setPendingBooth(null));
     return () => cancelAnimationFrame(frame);
   }, [activeBooth, localMode, pendingBooth]);
-
-  useEffect(() => {
-    if (!shareImageRequest) return;
-
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const frame = requestAnimationFrame(() => {
-      const waitForBanner = canUseTemplates && accountBannerImage ? 250 : 0;
-
-      timer = setTimeout(() => {
-        shareVoterSlipImageFromRef(
-          shareSlipRef,
-          shareImageRequest.voter,
-          shareImageRequest.voter.whatsappNumber ||
-            shareImageRequest.voter.mobileNumber,
-          canUseTemplates,
-          accountBannerImage,
-        ).finally(() => {
-          shareImageRequest.resolve();
-          setShareImageRequest(null);
-        });
-      }, waitForBanner);
-    });
-
-    return () => {
-      cancelAnimationFrame(frame);
-      if (timer) clearTimeout(timer);
-    };
-  }, [canUseTemplates, accountBannerImage, shareImageRequest]);
 
   // Animate the scroll-to-top button opacity whenever visibility changes.
   useEffect(() => {
@@ -531,22 +496,15 @@ export default function VotersScreen({
     setPrintTypeRequest({ voter, scope: "family" });
   }, []);
 
-  const handleShareVoterSlip = useCallback(async (voter: Voter) => {
-    await new Promise<void>((resolve) => {
-      setShareImageRequest({ voter, resolve });
-    });
-  }, []);
-
   const renderVoter = useCallback(
     (voter: Voter) => (
       <VoterCard
         voter={voter}
         onPrint={handlePrint}
         onFamily={handleFamily}
-        onShare={handleShareVoterSlip}
       />
     ),
-    [handleFamily, handlePrint, handleShareVoterSlip],
+    [handleFamily, handlePrint],
   );
 
   const voterKeyExtractor = useCallback(
@@ -1118,18 +1076,6 @@ export default function VotersScreen({
         />
       ) : null}
 
-      {shareImageRequest ? (
-        <View pointerEvents="none" style={styles.shareCaptureHost}>
-          <View collapsable={false} ref={shareSlipRef}>
-            <VoterSlipPaper
-              voter={shareImageRequest.voter}
-              showBanner={canUseTemplates}
-              bannerImage={accountBannerImage}
-            />
-          </View>
-        </View>
-      ) : null}
-
       {/* Booth wise modal */}
       <Modal
         transparent
@@ -1263,14 +1209,6 @@ const styles = StyleSheet.create({
     maxWidth: 300,
   },
   safe: { flex: 1, backgroundColor: "#F4FBF7" },
-  shareCaptureHost: {
-    position: "absolute",
-    left: -10000,
-    top: 0,
-    width: 420,
-    backgroundColor: "#FFFFFF",
-  },
-
   /* ---------- Header ---------- */
   header: {
     minHeight: 190,

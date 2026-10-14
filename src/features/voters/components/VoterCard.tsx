@@ -8,7 +8,6 @@ import {
 } from "lucide-react-native";
 import { memo, useCallback, useState } from "react";
 import {
-  ActivityIndicator,
   Image,
   Modal,
   Pressable,
@@ -19,6 +18,7 @@ import {
 import QRCode from "react-native-qrcode-svg";
 
 import type { Voter } from "@/services/voters";
+import { VoterTemplateCarousel } from "./VoterTemplateCarousel";
 
 const boyImage = require("@/assets/icons/boy.png");
 const girlImage = require("@/assets/icons/girl.png");
@@ -37,7 +37,6 @@ type VoterCardProps = {
   onScan?: (voter: Voter) => void;
   onPrint?: (voter: Voter) => void;
   onFamily?: (voter: Voter) => void;
-  onShare?: (voter: Voter) => Promise<void> | void;
 };
 
 function VoterCardComponent({
@@ -45,26 +44,14 @@ function VoterCardComponent({
   onScan,
   onPrint,
   onFamily,
-  onShare,
 }: VoterCardProps) {
   const [qrVisible, setQrVisible] = useState(false);
-  const [sharing, setSharing] = useState(false);
+  const [filterVisible, setFilterVisible] = useState(false);
 
   const handleQrPress = useCallback(() => {
     setQrVisible(true);
     onScan?.(voter);
   }, [onScan, voter]);
-
-  const handleSharePress = useCallback(async () => {
-    if (!onShare || sharing) return;
-
-    setSharing(true);
-    try {
-      await onShare(voter);
-    } finally {
-      setSharing(false);
-    }
-  }, [onShare, sharing, voter]);
 
   const handlePrintPress = useCallback(
     () => onPrint?.(voter),
@@ -103,17 +90,9 @@ function VoterCardComponent({
 
                   <Pressable
                     accessibilityLabel="Share voter slip"
-                    disabled={sharing}
-                    onPress={handleSharePress}
-                    style={[
-                      styles.scanButton,
-                      sharing && styles.scanButtonDisabled,
-                    ]}>
-                    {sharing ? (
-                      <ActivityIndicator color="#087568" size="small" />
-                    ) : (
-                      <Share2 color="#087568" size={16} strokeWidth={2.7} />
-                    )}
+                    onPress={() => setFilterVisible(true)}
+                    style={styles.scanButton}>
+                    <Share2 color="#087568" size={16} strokeWidth={2.7} />
                   </Pressable>
                 </View>
               </View>
@@ -154,6 +133,8 @@ function VoterCardComponent({
           <Text style={styles.printText}>Family</Text>
         </Pressable>
       </View>
+
+      {filterVisible ? <VoterTemplateCarousel voter={voter} onClose={() => setFilterVisible(false)} /> : null}
 
       {qrVisible ? (
         <Modal
@@ -207,7 +188,6 @@ function areVoterCardPropsEqual(
     previous.onScan === next.onScan &&
     previous.onPrint === next.onPrint &&
     previous.onFamily === next.onFamily &&
-    previous.onShare === next.onShare &&
     before.id === after.id &&
     before.name === after.name &&
     before.gender === after.gender &&
@@ -383,7 +363,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  scanButtonDisabled: { opacity: 0.7 },
   cardFooter: {
     marginTop: 10,
     flexDirection: "row",
