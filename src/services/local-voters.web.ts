@@ -50,6 +50,20 @@ export async function replaceLocalVoters(
   // Voter data is never cached locally by the web build.
 }
 
+export async function updateLocalVoter(
+  _politicianId: string,
+  _voter: Voter,
+) {
+  // Voter data is never cached locally by the web build.
+}
+
+export async function deleteLocalVoter(
+  _politicianId: string,
+  _voterId: string,
+) {
+  // Voter data is never cached locally by the web build.
+}
+
 export async function replaceLocalVotersFromPages(
   _politicianId: string,
   _loadPages: LocalVoterPageLoader,

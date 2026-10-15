@@ -4,9 +4,14 @@ import {
   getCurrentUser,
   hasPoliticianPageAccess,
 } from "./authentication";
+import { imageUpload } from "./background-removal-file";
 
 export type Voter = {
   id: string;
+  voterKey?: string;
+  voterSource?: "district_collection" | "user";
+  voterCollection?: string;
+  voterDocumentId?: string;
   name: string;
   gender: string;
   age: number;
@@ -23,6 +28,7 @@ export type Voter = {
   relation?: string;
   whatsappNumber?: string;
   mobileNumber?: string;
+  photoUri?: string;
 };
 
 export type VoterStats = {
@@ -44,14 +50,58 @@ export type VoterQuery = {
 
 export type VoterTemplateSelection = {
   template: "studio";
-  canvasLayout: "top" | "bottom" | "left" | "right" | "floating" | "dual" | "none";
+  canvasLayout:
+    | "top"
+    | "bottom"
+    | "left"
+    | "right"
+    | "floating"
+    | "dual"
+    | "none";
   recordsPerRow: 2 | 3 | 4;
+};
+
+type VoterStarStanceKey =
+  | "fully_confirmed"
+  | "favorable"
+  | "undecided"
+  | "unfavorable"
+  | "against"
+  | "party_worker"
+  | "unassigned";
+
+type VoterStarRating = {
+  voterKey?: string;
+  voterSource?: "district_collection" | "user";
+  voterCollection?: string;
+  voterDocumentId?: string;
+  stanceKey?: VoterStarStanceKey;
+  photoUri?: string;
+  mobileNumber?: string;
+  whatsappNumber?: string;
+  duplicateVote?: boolean;
+  voted?: boolean;
+  dead?: boolean;
+  notes?: string;
+};
+
+type VoterStarResponse = {
+  star?: VoterStarRating | null;
+};
+
+type VoterIdentity = {
+  voterKey: string;
+  voterSource: "district_collection" | "user";
+  voterCollection: string;
+  voterDocumentId: string;
 };
 
 const VOTER_PAGE_SIZE = 10000;
 const MAX_VOTER_PAGES = 500;
 
 let selectedVoter: Voter | null = null;
+const managedVoters = new Map<string, Voter>();
+const deletedVoterIds = new Set<string>();
 
 export function setSelectedVoter(voter: Voter | null) {
   selectedVoter = voter;
@@ -61,14 +111,64 @@ export function getSelectedVoter() {
   return selectedVoter;
 }
 
+export function saveManagedVoter(voter: Voter) {
+  deletedVoterIds.delete(voter.id);
+  managedVoters.set(voter.id, voter);
+  setSelectedVoter(voter);
+}
+
+export function deleteManagedVoter(voterId: string) {
+  deletedVoterIds.add(voterId);
+  managedVoters.delete(voterId);
+
+  if (selectedVoter?.id === voterId) {
+    setSelectedVoter(null);
+  }
+}
+
+export function applyManagedVoterChanges(voters: Voter[]) {
+  return voters
+    .filter((voter) => !deletedVoterIds.has(voter.id))
+    .map((voter) => managedVoters.get(voter.id) ?? voter);
+}
+
 function firstValue(...values: unknown[]) {
+  let emptyFallback: unknown;
+
   for (const value of values) {
-    if (value !== undefined && value !== null && String(value).trim() !== "") {
+    if (value === undefined || value === null) {
+      continue;
+    }
+
+    const text = String(value).trim();
+    const normalizedText = text.toLowerCase();
+
+    if (normalizedText === "undefined" || normalizedText === "null") {
+      continue;
+    }
+
+    if (text !== "") {
       return value;
     }
+
+    emptyFallback = value;
   }
 
-  return undefined;
+  return emptyFallback;
+}
+
+function cleanOptionalText(value: unknown) {
+  const text = String(value ?? "").trim();
+  const normalizedText = text.toLowerCase();
+
+  return normalizedText === "undefined" || normalizedText === "null"
+    ? ""
+    : text;
+}
+
+function cleanEditableDetailText(value: unknown) {
+  const text = cleanOptionalText(value);
+  return text.toUpperCase() === "N/A" ? "" : text;
 }
 
 function normalizeRelation(value: unknown) {
@@ -78,10 +178,13 @@ function normalizeRelation(value: unknown) {
 }
 
 function isEmptyValue(value: unknown) {
+  const text = String(value ?? "").trim();
+
   return (
-    !value ||
-    String(value).trim() === "" ||
-    String(value).trim().toUpperCase() === "N/A"
+    !text ||
+    text.toLowerCase() === "undefined" ||
+    text.toLowerCase() === "null" ||
+    text.toUpperCase() === "N/A"
   );
 }
 
@@ -146,6 +249,44 @@ function normalizeBoothForMatch(value: unknown) {
     .replace(/^0+(\d)/, "$1");
 }
 
+function parseVoterKey(value?: string): VoterIdentity {
+  const voterKey = cleanOptionalText(value);
+  const [collectionName, ...documentParts] = voterKey.split(":");
+  const documentId = documentParts.join(":");
+
+  if (collectionName && documentId) {
+    return {
+      voterCollection: collectionName,
+      voterDocumentId: documentId,
+      voterKey,
+      voterSource: "district_collection" as const,
+    };
+  }
+
+  return {
+    voterCollection: "",
+    voterDocumentId: voterKey,
+    voterKey,
+    voterSource: "user" as const,
+  };
+}
+
+function getDistrictVoterCollectionName(district?: string) {
+  const districtName = cleanOptionalText(district);
+
+  if (!districtName) return "";
+
+  return `${districtName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")}_voters`;
+}
+
+function isManagedVoterKey(value: string) {
+  const { voterCollection, voterDocumentId } = parseVoterKey(value);
+  return /^[A-Za-z0-9_]+_voters$/.test(voterCollection) && Boolean(voterDocumentId);
+}
+
 export function isVoterInBooth(voter: Voter, booth?: string) {
   if (!booth || booth === "All") {
     return true;
@@ -159,19 +300,80 @@ export function isVoterInBooth(voter: Voter, booth?: string) {
 
 function normalizeVoter(raw: any, index: number): Voter {
   const data = raw?.voterData ?? raw?.data?.voterData ?? raw;
+  const district = cleanOptionalText(
+    firstValue(
+      data?.District,
+      data?.district,
+      data?.Distt,
+      data?.districtName,
+      raw?.district,
+      raw?.districtName,
+      getCurrentUser()?.district,
+      "",
+    ),
+  );
+  const state = cleanOptionalText(
+    firstValue(
+      data?.State,
+      data?.state,
+      data?.stateName,
+      raw?.state,
+      raw?.stateName,
+      getCurrentUser()?.state,
+      "",
+    ),
+  );
+  const documentId = cleanOptionalText(
+    firstValue(
+      raw?.voterDocumentId,
+      raw?.documentId,
+      raw?.voter_document_id,
+      data?._id,
+      raw?._id,
+      data?.mongoId,
+      raw?.mongoId,
+      "",
+    ),
+  );
+  const collectionName = cleanOptionalText(
+    firstValue(
+      raw?.voterCollection,
+      raw?.collectionName,
+      raw?.collection,
+      data?.voterCollection,
+      getDistrictVoterCollectionName(district),
+      "",
+    ),
+  );
+  const parsedVoterKey = parseVoterKey(
+    cleanOptionalText(
+      firstValue(
+        [raw?.id, raw?.voterKey, data?.voterKey]
+          .map(cleanOptionalText)
+          .find(isManagedVoterKey),
+        collectionName && documentId ? `${collectionName}:${documentId}` : "",
+        raw?.voterKey,
+        data?.voterKey,
+      ),
+    ),
+  );
 
   return {
-    id: String(
+    id: cleanOptionalText(
       firstValue(
+        parsedVoterKey.voterKey,
         raw?.id,
-        data?._id,
-        raw?._id,
         data?.["Voter ID"],
         raw?.voterId,
+        documentId,
         index,
       ),
     ),
-    name: String(
+    voterKey: parsedVoterKey.voterKey,
+    voterSource: parsedVoterKey.voterSource,
+    voterCollection: parsedVoterKey.voterCollection,
+    voterDocumentId: parsedVoterKey.voterDocumentId,
+    name: cleanOptionalText(
       firstValue(
         data?.["Voter Name English"],
         data?.voterNameEnglish,
@@ -182,7 +384,7 @@ function normalizeVoter(raw: any, index: number): Voter {
         "Unknown voter",
       ),
     ),
-    hindiName: String(
+    hindiName: cleanOptionalText(
       firstValue(
         data?.["Voter Name Hindi"],
         data?.voterNameHindi,
@@ -192,7 +394,7 @@ function normalizeVoter(raw: any, index: number): Voter {
         "",
       ),
     ),
-    gender: String(
+    gender: cleanOptionalText(
       firstValue(
         data?.Gender,
         data?.voter_gender,
@@ -213,7 +415,7 @@ function normalizeVoter(raw: any, index: number): Voter {
       ),
     ),
     guardian: formatGuardian(data),
-    epicNo: String(
+    epicNo: cleanOptionalText(
       firstValue(
         data?.["EPIC No"],
         data?.Epic_no,
@@ -226,7 +428,7 @@ function normalizeVoter(raw: any, index: number): Voter {
         "N/A",
       ),
     ),
-    houseNo: String(
+    houseNo: cleanOptionalText(
       firstValue(
         data?.["House No"],
         data?.["House No."],
@@ -239,7 +441,7 @@ function normalizeVoter(raw: any, index: number): Voter {
         "N/A",
       ),
     ),
-    booth: String(
+    booth: cleanOptionalText(
       firstValue(
         data?.["Booth ID"],
         data?.["Booth No"],
@@ -257,7 +459,7 @@ function normalizeVoter(raw: any, index: number): Voter {
         "Booth",
       ),
     ),
-    ward: String(
+    ward: cleanOptionalText(
       firstValue(
         data?.Ward,
         data?.ward,
@@ -267,7 +469,9 @@ function normalizeVoter(raw: any, index: number): Voter {
         "",
       ),
     ),
-    serialNo: String(
+    district,
+    state,
+    serialNo: cleanOptionalText(
       firstValue(
         data?.["Serial No"],
         data?.["Serial No."],
@@ -279,7 +483,7 @@ function normalizeVoter(raw: any, index: number): Voter {
         "",
       ),
     ),
-    pollingStation: String(
+    pollingStation: cleanOptionalText(
       firstValue(
         data?.["Polling Station"],
         data?.["Polling Station No. & Address"],
@@ -289,7 +493,7 @@ function normalizeVoter(raw: any, index: number): Voter {
         "",
       ),
     ),
-    whatsappNumber: String(
+    whatsappNumber: cleanOptionalText(
       firstValue(
         data?.["WhatsApp No"],
         data?.["Whatsapp No"],
@@ -306,7 +510,7 @@ function normalizeVoter(raw: any, index: number): Voter {
         "",
       ),
     ),
-    mobileNumber: String(
+    mobileNumber: cleanOptionalText(
       firstValue(
         data?.["Mobile No"],
         data?.["Mobile Number"],
@@ -320,6 +524,19 @@ function normalizeVoter(raw: any, index: number): Voter {
         raw?.mobileNumber,
         raw?.mobile,
         raw?.phone,
+        "",
+      ),
+    ),
+    photoUri: cleanOptionalText(
+      firstValue(
+        data?.photoUri,
+        data?.photoUrl,
+        data?.voterPhoto,
+        data?.voterImage,
+        raw?.photoUri,
+        raw?.photoUrl,
+        raw?.voterPhoto,
+        raw?.voterImage,
         "",
       ),
     ),
@@ -452,7 +669,7 @@ export async function fetchVoters(query: VoterQuery = {}): Promise<Voter[]> {
   await forEachVoterPage(query, (page) => {
     voters.push(...page);
   });
-  return voters;
+  return applyManagedVoterChanges(voters);
 }
 
 export async function fetchTemplateVoters(query: VoterQuery): Promise<Voter[]> {
@@ -470,7 +687,9 @@ export async function fetchTemplateVoters(query: VoterQuery): Promise<Voter[]> {
     voters.push(...page);
   });
 
-  return voters.filter((voter) => isVoterInBooth(voter, query.booth));
+  return applyManagedVoterChanges(voters).filter((voter) =>
+    isVoterInBooth(voter, query.booth),
+  );
 }
 
 export async function logVoterTemplatePrint({
@@ -498,6 +717,255 @@ export async function logVoterTemplatePrint({
   });
 }
 
+function isLocalPhotoUri(uri?: string) {
+  return Boolean(
+    uri &&
+    !uri.startsWith("http://") &&
+    !uri.startsWith("https://") &&
+    !uri.startsWith("data:"),
+  );
+}
+
+function appendVoterStarPayload(
+  formData: FormData,
+  payload: Record<string, unknown>,
+) {
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      formData.append(key, String(value));
+    }
+  });
+}
+
+async function fetchVoterStar(
+  voterKey: string,
+): Promise<VoterStarRating | null> {
+  try {
+    const response = await api.get(
+      `/voter-stars/${encodeURIComponent(voterKey)}`,
+    );
+    return (response.data?.data as VoterStarResponse | undefined)?.star ?? null;
+  } catch (error: any) {
+    if (error?.response?.status === 404) return null;
+    throw error;
+  }
+}
+
+function getVoterApiKey(voter: Voter) {
+  const voterKey = cleanOptionalText(voter.voterKey);
+  const fullKey = [voter.id, voter.voterKey]
+    .map(cleanOptionalText)
+    .find(isManagedVoterKey);
+  if (fullKey) return fullKey;
+
+  const collectionName =
+    cleanOptionalText(voter.voterCollection) ||
+    getDistrictVoterCollectionName(voter.district);
+  const documentId = cleanOptionalText(voter.voterDocumentId);
+
+  if (collectionName && documentId) {
+    return `${collectionName}:${documentId}`;
+  }
+
+  return voterKey || cleanOptionalText(voter.id);
+}
+
+function getVoterIdentity(
+  voter: Voter,
+  star?: VoterStarRating | null,
+): VoterIdentity {
+  const parsed = parseVoterKey(getVoterApiKey(voter));
+  const collectionName =
+    cleanOptionalText(star?.voterCollection) ||
+    cleanOptionalText(voter.voterCollection) ||
+    parsed.voterCollection ||
+    getDistrictVoterCollectionName(voter.district);
+  const documentId =
+    cleanOptionalText(star?.voterDocumentId) ||
+    cleanOptionalText(voter.voterDocumentId) ||
+    parsed.voterDocumentId;
+  const voterKey =
+    cleanOptionalText(star?.voterKey) ||
+    cleanOptionalText(voter.voterKey) ||
+    (collectionName && documentId
+      ? `${collectionName}:${documentId}`
+      : parsed.voterKey);
+
+  return {
+    voterKey,
+    voterSource:
+      star?.voterSource ||
+      voter.voterSource ||
+      (collectionName && documentId
+        ? "district_collection"
+        : parsed.voterSource),
+    voterCollection: collectionName,
+    voterDocumentId: documentId,
+  };
+}
+
+async function resolveVoterIdentityFromBackend(
+  voter: Voter,
+): Promise<VoterIdentity | null> {
+  const search = cleanOptionalText(voter.epicNo) || cleanOptionalText(voter.id);
+
+  if (!search) return null;
+
+  try {
+    const politician = getCurrentUser();
+    const response = await api.get("/politician/voters/assigned-data", {
+      params: {
+        search,
+        district: voter.district || politician?.district || undefined,
+        state: voter.state || politician?.state || undefined,
+        includeCounts: false,
+        page: 1,
+        limit: 10,
+      },
+      timeout: 8000,
+    });
+    const voters = unwrapList(response.data)
+      .map((item, index) => normalizeVoter(item, index))
+      .filter((candidate) => {
+        const sameEpic =
+          !isEmptyValue(voter.epicNo) &&
+          cleanOptionalText(candidate.epicNo).toLowerCase() ===
+          cleanOptionalText(voter.epicNo).toLowerCase();
+        const sameId =
+          cleanOptionalText(candidate.id).toLowerCase() ===
+          cleanOptionalText(voter.id).toLowerCase();
+
+        return sameEpic || sameId;
+      });
+    const matches = voters.filter((candidate) =>
+      isManagedVoterKey(cleanOptionalText(candidate.voterKey)),
+    );
+    const uniqueMatches = new Map(matches.map((candidate) => [candidate.voterKey, candidate]));
+    const matchedVoter = uniqueMatches.size === 1 ? matches[0] : null;
+
+    return matchedVoter ? getVoterIdentity(matchedVoter) : null;
+  } catch (error) {
+    console.log("Voter identity lookup failed:", error);
+    return null;
+  }
+}
+
+async function getResolvedVoterIdentity(voter: Voter) {
+  const identity = getVoterIdentity(voter);
+
+  if (identity.voterKey.includes(":") && identity.voterDocumentId) {
+    return identity;
+  }
+
+  return (await resolveVoterIdentityFromBackend(voter)) ?? identity;
+}
+
+export async function updateVoterDetails(voter: Voter) {
+  await ensureAuthSession();
+
+  const resolvedIdentity = await getResolvedVoterIdentity(voter);
+  const voterKey = resolvedIdentity.voterKey || getVoterApiKey(voter);
+  const existingStar = await fetchVoterStar(voterKey);
+  const identity = {
+    ...resolvedIdentity,
+    ...getVoterIdentity(
+      {
+        ...voter,
+        voterKey,
+        voterSource: resolvedIdentity.voterSource,
+        voterCollection: resolvedIdentity.voterCollection,
+        voterDocumentId: resolvedIdentity.voterDocumentId,
+      },
+      existingStar,
+    ),
+  };
+  const payload = {
+    activityAction: "edit_details",
+    ...identity,
+    stanceKey: existingStar?.stanceKey ?? "unassigned",
+    voterName: cleanOptionalText(voter.name),
+    voterPhone:
+      cleanEditableDetailText(voter.mobileNumber) ||
+      cleanEditableDetailText(voter.whatsappNumber),
+    state: cleanOptionalText(voter.state),
+    district: cleanOptionalText(voter.district),
+    name: cleanOptionalText(voter.name),
+    hindiName: cleanOptionalText(voter.hindiName),
+    gender: cleanOptionalText(voter.gender),
+    age: voter.age,
+    guardian: cleanOptionalText(voter.guardian),
+    epicNo: cleanOptionalText(voter.epicNo),
+    houseNo: cleanOptionalText(voter.houseNo),
+    booth: cleanOptionalText(voter.booth),
+    ward: cleanOptionalText(voter.ward),
+    serialNo: cleanOptionalText(voter.serialNo),
+    pollingStation: cleanOptionalText(voter.pollingStation),
+    "Voter Name English": cleanOptionalText(voter.name),
+    "Voter Name Hindi": cleanOptionalText(voter.hindiName),
+    Gender: cleanOptionalText(voter.gender),
+    Age: voter.age,
+    "House No": cleanOptionalText(voter.houseNo),
+    "Booth ID": cleanOptionalText(voter.booth),
+    Ward: cleanOptionalText(voter.ward),
+    "Serial No": cleanOptionalText(voter.serialNo),
+    "EPIC No": cleanOptionalText(voter.epicNo),
+    mobileNumber:
+      cleanEditableDetailText(voter.mobileNumber) ||
+      cleanEditableDetailText(existingStar?.mobileNumber),
+    whatsappNumber:
+      cleanEditableDetailText(voter.whatsappNumber) ||
+      cleanEditableDetailText(existingStar?.whatsappNumber),
+    duplicateVote: existingStar?.duplicateVote ?? false,
+    voted: existingStar?.voted ?? false,
+    dead: existingStar?.dead ?? false,
+    notes: existingStar?.notes ?? "",
+    source: "voter_detail",
+  };
+
+  if (isLocalPhotoUri(voter.photoUri)) {
+    const formData = new FormData();
+    appendVoterStarPayload(formData, payload);
+    formData.append(
+      "voterPhotoFile",
+      await imageUpload(voter.photoUri!),
+      "voter-photo.jpg",
+    );
+
+    await api.put(`/voter-stars/${encodeURIComponent(voterKey)}`, formData);
+    return;
+  }
+
+  await api.put(`/voter-stars/${encodeURIComponent(voterKey)}`, {
+    ...payload,
+    photoUri: voter.photoUri ?? existingStar?.photoUri ?? "",
+  });
+}
+
+export async function deleteVoterDetails(voter: Voter) {
+  await ensureAuthSession();
+
+  let voterKey = getVoterApiKey(voter);
+
+  if (!isManagedVoterKey(voterKey)) {
+    const identity = await resolveVoterIdentityFromBackend(voter);
+    voterKey = identity?.voterKey ?? "";
+  }
+
+  if (!isManagedVoterKey(voterKey)) {
+    throw new Error(
+      "Full voter identifier is missing. Please refresh voter data and try again.",
+    );
+  }
+
+  const response = await api.delete(
+    `/politician/voters/${encodeURIComponent(voterKey)}`,
+  );
+
+  if (response.data?.success === false) {
+    throw new Error(response.data.message || "Unable to delete voter");
+  }
+}
+
 export async function fetchVoterById(epicNo: string): Promise<Voter | null> {
   try {
     const { user } = await ensureAuthSession();
@@ -509,7 +977,8 @@ export async function fetchVoterById(epicNo: string): Promise<Voter | null> {
       `/politician/voters/epic/api/politician/voters?${encodeURIComponent(epicNo)}`,
     );
 
-    return normalizeVoter(response.data, 0);
+    const voter = normalizeVoter(response.data, 0);
+    return applyManagedVoterChanges([voter])[0] ?? null;
   } catch (error: any) {
     console.error("fetchVoterById failed:", error?.message ?? error);
     return null;

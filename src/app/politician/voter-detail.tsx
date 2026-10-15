@@ -1,14 +1,41 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { ChevronLeft } from "lucide-react-native";
+import * as ImagePicker from "expo-image-picker";
+import { ChevronLeft, ImagePlus, Pencil, Trash2 } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { VoterEditModal } from "@/features/voters/components/VoterEditModal";
 import {
+  deleteLocalVoter,
+  updateLocalVoter,
+} from "@/services/local-voters";
+import { getCurrentUser } from "@/services/authentication";
+import {
+  deleteManagedVoter,
+  deleteVoterDetails,
   fetchVoterById,
   getSelectedVoter,
+  saveManagedVoter,
+  updateVoterDetails,
   type Voter,
 } from "@/services/voters";
+
+import { getDefaultVoterAvatar } from "@/utils/voterAvatar";
+
+
+function isUsableImageUri(uri?: string) {
+  const value = String(uri ?? "").trim().toLowerCase();
+  return Boolean(value && value !== "undefined" && value !== "null");
+}
 
 function getRelationLabel(relation?: string): string {
   if (!relation) return "Guardian";
@@ -21,7 +48,9 @@ function getRelationLabel(relation?: string): string {
 }
 
 export default function VoterDetailScreen() {
-const params = useLocalSearchParams<{ id?: string }>();  const [voter, setVoter] = useState<Voter | null>(getSelectedVoter());
+  const params = useLocalSearchParams<{ id?: string }>();
+  const [voter, setVoter] = useState<Voter | null>(getSelectedVoter());
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     if (voter) return;
@@ -46,21 +75,109 @@ const params = useLocalSearchParams<{ id?: string }>();  const [voter, setVoter]
     );
   }
 
+  const currentVoter = voter;
+
   const address = [
-    voter.houseNo && voter.houseNo !== "N/A"
-      ? `House No. ${voter.houseNo}`
+    currentVoter.houseNo && currentVoter.houseNo !== "N/A"
+      ? `House No. ${currentVoter.houseNo}`
       : "",
-    voter.ward ? `Ward ${voter.ward}` : "",
-    voter.district,
-    voter.state,
+    currentVoter.ward ? `Ward ${currentVoter.ward}` : "",
+    currentVoter.district,
+    currentVoter.state,
   ]
     .filter(Boolean)
     .join(", ");
 
-  const relationLabel = getRelationLabel((voter as any).relation);
+  const relationLabel = getRelationLabel((currentVoter as any).relation);
+
+  async function saveVoter(nextVoter: Voter) {
+    setVoter(nextVoter);
+    saveManagedVoter(nextVoter);
+
+    try {
+      await updateVoterDetails(nextVoter);
+      const politicianId = getCurrentUser()?.id;
+      if (politicianId) {
+        await updateLocalVoter(politicianId, nextVoter);
+      }
+      setEditing(false);
+    } catch (error: any) {
+      Alert.alert(
+        "Unable to save voter",
+        error?.response?.data?.message ||
+          error?.message ||
+          "Please check your connection and try again.",
+      );
+    }
+  }
+
+  async function pickVoterImage() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert(
+        "Photo access needed",
+        "Allow photo library access to add or edit this voter image.",
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      mediaTypes: ["images"],
+      quality: 0.85,
+    });
+
+    if (result.canceled || !result.assets[0]?.uri) {
+      return;
+    }
+
+    saveVoter({ ...currentVoter, photoUri: result.assets[0].uri });
+  }
+
+  function confirmDelete() {
+    Alert.alert(
+      "Delete voter?",
+      `${currentVoter.name} will be removed from this voter detail view.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              try {
+                await deleteVoterDetails(currentVoter);
+                deleteManagedVoter(currentVoter.id);
+                const politicianId = getCurrentUser()?.id;
+                if (politicianId) {
+                  await deleteLocalVoter(politicianId, currentVoter.id);
+                }
+                router.replace("/politician/voters");
+              } catch (error: any) {
+                Alert.alert(
+                  "Unable to delete voter",
+                  error?.response?.data?.message ||
+                    error?.message ||
+                    "Please check your connection and try again.",
+                );
+              }
+            })();
+          },
+        },
+      ],
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
+      <VoterEditModal
+        visible={editing}
+        voter={currentVoter}
+        onClose={() => setEditing(false)}
+        onSave={saveVoter}
+      />
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <ChevronLeft color="#0F766E" size={22} strokeWidth={3} />
@@ -70,27 +187,71 @@ const params = useLocalSearchParams<{ id?: string }>();  const [voter, setVoter]
 
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.card}>
-          <Text style={styles.name}>{voter.name}</Text>
-          {voter.hindiName ? (
-            <Text style={styles.hindiName}>{voter.hindiName}</Text>
+          <Pressable
+            accessibilityLabel="Add or edit voter image"
+            onPress={() => void pickVoterImage()}
+            style={styles.avatarButton}>
+            <VoterAvatar voter={currentVoter} />
+            <View style={styles.avatarEditBadge}>
+              <ImagePlus color="#FFFFFF" size={14} strokeWidth={3} />
+            </View>
+          </Pressable>
+          <Text style={styles.name}>{currentVoter.name}</Text>
+          {currentVoter.hindiName ? (
+            <Text style={styles.hindiName}>{currentVoter.hindiName}</Text>
           ) : null}
 
-          <Row label="Gender" value={voter.gender || "N/A"} />
-          <Row label="Age" value={String(voter.age || "N/A")} />
-          <Row label={relationLabel} value={voter.guardian || "N/A"} />
-          <Row label="EPIC No." value={voter.epicNo || "N/A"} />
-          <Row label="House No." value={voter.houseNo || "N/A"} />
-          <Row label="Booth" value={voter.booth || "N/A"} />
-          <Row label="Ward" value={voter.ward || "N/A"} />
-          <Row label="Serial No." value={voter.serialNo || voter.id || "N/A"} />
+          <View style={styles.actionRow}>
+            <Pressable
+              accessibilityLabel="Edit voter"
+              onPress={() => setEditing(true)}
+              style={styles.actionButton}>
+              <Pencil color="#087568" size={17} strokeWidth={2.6} />
+              <Text style={styles.actionText}>Edit</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Delete voter"
+              onPress={confirmDelete}
+              style={[styles.actionButton, styles.deleteButton]}>
+              <Trash2 color="#B91C1C" size={17} strokeWidth={2.6} />
+              <Text style={styles.deleteText}>Delete</Text>
+            </Pressable>
+          </View>
+
+          <Row label="Gender" value={currentVoter.gender || "N/A"} />
+          <Row label="Age" value={String(currentVoter.age || "N/A")} />
+          <Row label={relationLabel} value={currentVoter.guardian || "N/A"} />
+          <Row label="EPIC No." value={currentVoter.epicNo || "N/A"} />
+          <Row label="House No." value={currentVoter.houseNo || "N/A"} />
+          <Row label="Booth" value={currentVoter.booth || "N/A"} />
+          <Row label="Ward" value={currentVoter.ward || "N/A"} />
+          <Row
+            label="Serial No."
+            value={currentVoter.serialNo || currentVoter.id || "N/A"}
+          />
           <Block label="Address" value={address || "N/A"} />
           <Block
             label="Polling Station"
-            value={voter.pollingStation || "N/A"}
+            value={currentVoter.pollingStation || "N/A"}
           />
         </View>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function VoterAvatar({ voter }: { voter: Voter }) {
+  const defaultSource = getDefaultVoterAvatar(voter.gender, voter.age);
+  const source = isUsableImageUri(voter.photoUri)
+    ? { uri: voter.photoUri }
+    : defaultSource;
+
+  return (
+    <Image
+      source={source}
+      resizeMode="cover"
+      style={styles.avatarImage}
+    />
   );
 }
 
@@ -141,6 +302,33 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
+  avatarButton: {
+    alignSelf: "center",
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    backgroundColor: "#F0F8FC",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: 86,
+    height: 86,
+  },
+  avatarEditBadge: {
+    position: "absolute",
+    right: 3,
+    bottom: 3,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#087568",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   name: {
     color: "#070A1C",
     fontSize: 22,
@@ -154,6 +342,25 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: -6,
   },
+  actionRow: { flexDirection: "row", gap: 10 },
+  actionButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
+  },
+  deleteButton: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
+  },
+  actionText: { color: "#087568", fontSize: 13, fontWeight: "900" },
+  deleteText: { color: "#B91C1C", fontSize: 13, fontWeight: "900" },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",

@@ -44,6 +44,10 @@ async function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS voters (
       politician_id TEXT NOT NULL,
       voter_id TEXT NOT NULL,
+      voter_key TEXT NOT NULL DEFAULT '',
+      voter_source TEXT NOT NULL DEFAULT '',
+      voter_collection TEXT NOT NULL DEFAULT '',
+      voter_document_id TEXT NOT NULL DEFAULT '',
       name TEXT NOT NULL,
       hindi_name TEXT NOT NULL DEFAULT '',
       gender TEXT NOT NULL DEFAULT '',
@@ -57,6 +61,7 @@ async function initializeDatabase() {
       state TEXT NOT NULL DEFAULT '',
       serial_no TEXT NOT NULL DEFAULT '',
       polling_station TEXT NOT NULL DEFAULT '',
+      photo_uri TEXT NOT NULL DEFAULT '',
       PRIMARY KEY (politician_id, voter_id)
     );
 
@@ -113,6 +118,22 @@ async function initializeDatabase() {
       tokenize = 'unicode61'
     );
   `);
+
+  await database.execAsync(
+    "ALTER TABLE voters ADD COLUMN photo_uri TEXT NOT NULL DEFAULT '';",
+  ).catch(() => {});
+  await database.execAsync(
+    "ALTER TABLE voters ADD COLUMN voter_key TEXT NOT NULL DEFAULT '';",
+  ).catch(() => {});
+  await database.execAsync(
+    "ALTER TABLE voters ADD COLUMN voter_source TEXT NOT NULL DEFAULT '';",
+  ).catch(() => {});
+  await database.execAsync(
+    "ALTER TABLE voters ADD COLUMN voter_collection TEXT NOT NULL DEFAULT '';",
+  ).catch(() => {});
+  await database.execAsync(
+    "ALTER TABLE voters ADD COLUMN voter_document_id TEXT NOT NULL DEFAULT '';",
+  ).catch(() => {});
 
   return database;
 }
