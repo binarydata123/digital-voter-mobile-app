@@ -654,29 +654,24 @@ export default function SurveyScreen() {
                   styles.section,
                   missingField === "wardNo" && styles.missingSection,
                 ]}>
-                <Text style={styles.sectionTitle}>Ward No. *</Text>
                 {loadingScope || loadingWards ? (
-                  <OptionSkeleton label="Loading wards" />
-                ) : null}
-                {!loadingScope &&
-                !loadingWards &&
-                scopeOptions.wardNo.length ? (
-                  <View style={styles.optionGrid}>
-                    {scopeOptions.wardNo.map((ward) => (
-                      <OptionButton
-                        key={ward}
-                        label={
-                          ward.toLowerCase().startsWith("ward")
-                            ? ward
-                            : `Ward ${ward}`
-                        }
-                        selected={scope.wardNo === ward}
-                        onPress={() => updateScope("wardNo", ward)}
-                        columns={2}
-                      />
-                    ))}
+                  <View accessible accessibilityLabel="Loading wards" accessibilityState={{ busy: true }} style={[styles.fieldWrap, styles.fullFieldWrap]}>
+                    <Text style={styles.fieldLabel}>Ward No. *</Text>
+                    <Shimmer style={styles.dropdownField}>
+                      <View style={{ width: 90, height: 12, borderRadius: 4, backgroundColor: "#DCEBE6" }} />
+                      <View style={{ width: 14, height: 10, borderRadius: 3, backgroundColor: "#DCEBE6" }} />
+                    </Shimmer>
                   </View>
-                ) : null}
+                ) : (
+                  <DropdownField
+                    fullWidth
+                    label="Ward No. *"
+                    value={scope.wardNo
+                      ? scope.wardNo.toLowerCase().startsWith("ward") ? scope.wardNo : `Ward ${scope.wardNo}`
+                      : "Select ward"}
+                    onPress={() => setActiveDropdown("wardNo")}
+                  />
+                )}
                 {!loadingScope &&
                 !loadingWards &&
                 !scopeOptions.wardNo.length ? (
