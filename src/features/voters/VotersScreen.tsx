@@ -1309,30 +1309,32 @@ export default function VotersScreen({
       <Modal
         transparent
         visible={Boolean(printTypeRequest)}
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setPrintTypeRequest(null)}
       >
         {printTypeRequest ? (
           <Pressable
-            style={styles.printChoiceBackdrop}
+            style={styles.modalBackdrop}
             onPress={() => setPrintTypeRequest(null)}
           >
-            <Pressable style={styles.printChoicePanel}>
+            <Pressable style={styles.modalSheet} onPress={(event) => event.stopPropagation()}>
+              <View style={styles.handle} />
               <View style={styles.printChoiceHeader}>
                 <Text style={styles.printChoiceTitle}>
                   {printTypeRequest.scope === "family"
-                    ? "Select Family Print Type"
-                    : "Select Voter Slip Print Type"}
+                    ? "Print family slips"
+                    : "Print voter slip"}
                 </Text>
                 <Pressable
                   accessibilityLabel="Close print type"
                   onPress={() => setPrintTypeRequest(null)}
                   style={styles.printChoiceClose}
                 >
-                  <Text style={styles.printChoiceCloseText}>x</Text>
+                  <Text style={styles.printChoiceCloseText}>×</Text>
                 </Pressable>
               </View>
 
+              <View style={styles.printOptions}>
               {canUseTemplates ? (
                 <PrintChoiceRow
                   icon={
@@ -1342,8 +1344,8 @@ export default function VotersScreen({
                   }
                   title={
                     printTypeRequest.scope === "family"
-                      ? "Print Family Members with Banner"
-                      : "Print Voter Slip with Banner"
+                      ? "Family slips with banner"
+                      : "With banner"
                   }
                   subtitle={
                     printTypeRequest.scope === "family"
@@ -1357,8 +1359,8 @@ export default function VotersScreen({
                 icon={printTypeRequest.scope === "family" ? "family" : "print"}
                 title={
                   printTypeRequest.scope === "family"
-                    ? "Print Family Members without Banner"
-                    : "Print Voter Slip without Banner"
+                    ? "Family slips without banner"
+                    : "Without banner"
                 }
                 subtitle={
                   printTypeRequest.scope === "family"
@@ -1367,6 +1369,7 @@ export default function VotersScreen({
                 }
                 onPress={() => openSlipPreview(false)}
               />
+              </View>
             </Pressable>
           </Pressable>
         ) : null}
@@ -1991,21 +1994,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 18,
   },
-  printChoicePanel: {
-    width: "100%",
-    maxWidth: 362,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 6,
-    padding: 16,
-    gap: 12,
-  },
   printChoiceHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 10,
   },
-  printChoiceTitle: { color: "#0F172A", fontSize: 14, fontWeight: "900" },
+  printChoiceTitle: { color: "#0F172A", fontSize: 18, fontWeight: "900", flex: 1 },
+  printOptions: { gap: 12 },
   printChoiceClose: {
     width: 34,
     height: 34,
@@ -2014,10 +2010,10 @@ const styles = StyleSheet.create({
   },
   printChoiceCloseText: { color: "#64748B", fontSize: 24, lineHeight: 24 },
   printChoiceRow: {
-    minHeight: 62,
+    minHeight: 70,
     borderWidth: 1,
     borderColor: "#DDE8EF",
-    borderRadius: 6,
+    borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,

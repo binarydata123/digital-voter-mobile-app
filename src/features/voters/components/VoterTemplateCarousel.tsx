@@ -190,8 +190,8 @@ export function VoterTemplateCarousel({ voter, onClose }: { voter: Voter; onClos
             </View>)}
           </ScrollView> : null}
         </View> : <View style={[styles.preview, styles.page]}><FittedCard><View ref={cardRef} collapsable={false} style={{ backgroundColor: "white" }} onLayout={(event) => setCardSize({ width: event.nativeEvent.layout.width, height: event.nativeEvent.layout.height })}><SingleTemplate voter={voter} layout={TEMPLATE_LAYOUTS[index].key} banner={banner} onBannerLoad={() => setLoadedBanner(banner)} onBannerError={() => { setLoadedBanner(undefined); setError("Unable to load the banner. Choose the image again."); }} bannerControls={sharing ? undefined : <>
-          <Pressable accessibilityLabel={banner ? "Change banner" : "Add banner"} disabled={picking || saving || sharing} onPress={addBanner} style={styles.bannerTool}><ImagePlus size={18} color="#087568" />{["top", "bottom"].includes(TEMPLATE_LAYOUTS[index].key) ? <Text style={styles.toolText}>{picking ? "Opening…" : banner ? "Change" : "Add banner"}</Text> : null}</Pressable>
-          {banner && cropSource ? <Pressable accessibilityLabel="Adjust banner crop" disabled={picking || saving || sharing} onPress={() => setCropVisible(true)} style={styles.bannerTool}><Crop size={18} color="#087568" />{["top", "bottom"].includes(TEMPLATE_LAYOUTS[index].key) ? <Text style={styles.toolText}>Crop</Text> : null}</Pressable> : null}
+          <Pressable accessibilityLabel={banner ? "Change banner" : "Add banner"} disabled={picking || saving || sharing} onPress={addBanner} style={styles.bannerTool}><ImagePlus size={24} color="#087568" />{(["top", "bottom"].includes(TEMPLATE_LAYOUTS[index].key) || (!banner && TEMPLATE_LAYOUTS[index].key === "floating")) ? <Text style={styles.toolText}>{picking ? "Opening…" : banner ? "Change" : "Upload"}</Text> : null}</Pressable>
+          {banner && cropSource ? <Pressable accessibilityLabel="Adjust banner crop" disabled={picking || saving || sharing} onPress={() => setCropVisible(true)} style={styles.bannerTool}><Crop size={24} color="#087568" />{["top", "bottom"].includes(TEMPLATE_LAYOUTS[index].key) ? <Text style={styles.toolText}>Crop</Text> : null}</Pressable> : null}
         </>} /></View></FittedCard></View>}
         {!restoring && step === "template" ? <View style={styles.navigation}>
           <Pressable accessibilityLabel="Previous template" disabled={index === 0} onPress={() => navigate(index - 1)} style={[styles.iconButton, index === 0 && styles.disabled]}><ChevronLeft color="#087568" size={22} /></Pressable>
@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
   sideCard: { flexDirection: "row" }, reverseRow: { flexDirection: "row-reverse" }, reverseColumn: { flexDirection: "column-reverse" },
   banner: { backgroundColor: "#0C655F", overflow: "hidden" }, image: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0 },
   horizontalBanner: { width: "100%", aspectRatio: 3 }, sideBanner: { width: "27%", alignSelf: "stretch" },
-  dualBanner: { width: "18%" }, badge: { width: 80, height: 80, marginLeft: 12, marginTop: 12 },
+  dualBanner: { width: "18%" }, badge: { width: 112, height: 112, marginLeft: 12, marginTop: 12 },
   details: { flexGrow: 1, flexShrink: 1, padding: 12, gap: 9, minWidth: 0 },
   sideDetails: { padding: 11, gap: 8 },
   identityRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 },
@@ -249,8 +249,8 @@ const styles = StyleSheet.create({
   action: { marginHorizontal: 20, marginTop: 12, backgroundColor: "#087568", borderRadius: 12, minHeight: 48, justifyContent: "center", alignItems: "center" },
   actionText: { color: "white", fontSize: 14, fontWeight: "700" }, backButton: { minHeight: 44, justifyContent: "center", alignItems: "center" }, backText: { color: "#087568", fontWeight: "700" },
   shareAction: { flexDirection: "row", gap: 8 },
-  bannerTools: { position: "absolute", right: 4, bottom: 4, flexDirection: "row", gap: 4 },
-  verticalTools: { flexDirection: "column" }, bannerTool: { minHeight: 32, minWidth: 32, paddingHorizontal: 7, flexDirection: "row", gap: 4, alignItems: "center", justifyContent: "center", borderRadius: 7, backgroundColor: "#FFFFFFF2" },
+  bannerTools: { position: "absolute", right: 5, bottom: 5, flexDirection: "row", gap: 6 },
+  verticalTools: { flexDirection: "column" }, bannerTool: { minHeight: 44, minWidth: 44, paddingHorizontal: 8, flexDirection: "row", gap: 4, alignItems: "center", justifyContent: "center", borderRadius: 9, borderWidth: 1.5, borderColor: "#087568", backgroundColor: "#FFFFFF" },
   toolText: { color: "#087568", fontSize: 11, fontWeight: "700" },
   error: { color: "#DC2626", marginHorizontal: 20, marginTop: 8, fontSize: 12 }, hintCentered: { color: "#64748B", textAlign: "center", marginTop: 12 },
   restorePlaceholder: { justifyContent: "center", alignItems: "center" },

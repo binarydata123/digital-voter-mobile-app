@@ -288,7 +288,10 @@ function VoterCardComponent({
               onPress={(event) => event.stopPropagation()}
             >
               <View style={styles.actionHandle} />
-              <View style={styles.actionHeader} />
+              <View style={styles.actionHeader}>
+                <Text style={styles.actionTitle}>Voter actions</Text>
+                <Text numberOfLines={1} style={styles.actionSubtitle}>{voter.name}</Text>
+              </View>
 
               {/* {onImagePress ? (
                 <ActionRow
@@ -425,10 +428,9 @@ const ActionRow = memo(function ActionRow({
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => [
+      style={[
         styles.actionRow,
         danger && styles.actionRowDanger,
-        pressed && styles.actionRowPressed,
       ]}
     >
       <View style={[styles.actionIcon, danger && styles.actionIconDanger]}>
@@ -730,6 +732,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   actionHeader: { marginBottom: 8 },
+  actionTitle: { color: "#0F172A", fontSize: 18, fontWeight: "800" },
   actionSubtitle: {
     color: "#64748B",
     fontSize: 12,
@@ -737,6 +740,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   actionRow: {
+    width: "100%",
     minHeight: 66,
     flexDirection: "row",
     alignItems: "center",
@@ -746,8 +750,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   actionRowDanger: { borderBottomWidth: 0, marginTop: 4 },
-  actionRowPressed: { backgroundColor: "#F8FAFC" },
-  actionCopy: { flex: 1, minWidth: 0 },
+  actionCopy: { flexGrow: 1, flexBasis: 0, minWidth: 0 },
   actionIcon: {
     width: 42,
     height: 42,
