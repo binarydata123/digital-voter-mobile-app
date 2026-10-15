@@ -9,12 +9,13 @@ import type { TemplateLayout } from "./TemplateThumbnail";
 export type BannerCropSource = { uri: string; width: number; height: number };
 export type BannerCropPreview = { source: BannerCropSource; width: number; height: number; x: number; y: number };
 
-export function BannerCropModal({ initialSource, layout, onApply, onClose, renderPreview }: { initialSource: BannerCropSource; layout: TemplateLayout; onApply: (uri: string) => void; onClose: () => void; renderPreview?: (crop: BannerCropPreview) => ReactNode }) {
+export function BannerCropModal({ initialSource, layout, onApply, onClose, renderPreview, embedded = false, onBusyChange }: { initialSource: BannerCropSource; layout: TemplateLayout; onApply: (uri: string) => void; onClose: () => void; renderPreview?: (crop: BannerCropPreview) => ReactNode; embedded?: boolean; onBusyChange?: (busy: boolean) => void }) {
   const [source, setSource] = useState(initialSource);
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0.5, y: 0.5 });
   const [width, setWidth] = useState(0);
   const [busy, setBusy] = useState(false);
+  useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
   const angle = useRef(0);
@@ -59,8 +60,7 @@ export function BannerCropModal({ initialSource, layout, onApply, onClose, rende
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to crop this banner. Please try again."); }
     finally { rendered?.release(); context.release(); lock.current = false; setBusy(false); }
   }
-  return <Modal visible animationType="slide" onRequestClose={() => { if (!busy) onClose(); }}>
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#F4FBF7" }}>
+  const content = <SafeAreaView style={{ flex: 1, backgroundColor: "#F4FBF7" }}>
       <View className="flex-row items-center justify-between px-5 py-3"><Text className="text-xl font-bold text-[#0F172A]">Crop banner image</Text><Pressable disabled={busy} accessibilityLabel="Cancel crop" onPress={onClose} className="p-3"><X color="#087568" size={22} /></Pressable></View>
       <ScrollView scrollEnabled={!dragging} contentContainerStyle={{ padding: 20 }}>
         <Text className="mb-4 text-sm text-[#64748B]">Drag the image inside the green frame. Zoom or rotate to adjust the crop.</Text>
@@ -87,6 +87,7 @@ export function BannerCropModal({ initialSource, layout, onApply, onClose, rende
         {error ? <Text accessibilityRole="alert" className="mt-4 text-red-600">{error}</Text> : null}
       </ScrollView>
       <Pressable disabled={busy} onPress={() => process(false)} className={`mx-5 mb-4 min-h-[48px] items-center justify-center rounded-xl bg-[#087568] ${busy ? "opacity-50" : ""}`}><Text className="font-bold text-white">{busy ? "Processing…" : "Apply crop"}</Text></Pressable>
-    </SafeAreaView>
-  </Modal>;
+    </SafeAreaView>;
+  // Reuse the host modal when this editor is opened from a modal on iOS.
+  return embedded ? content : <Modal visible animationType="slide" onRequestClose={() => { if (!busy) onClose(); }}>{content}</Modal>;
 }

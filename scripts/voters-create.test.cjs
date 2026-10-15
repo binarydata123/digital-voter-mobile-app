@@ -25,7 +25,7 @@ const form = { ...creation.newVoterForm(user), epicNo: 'rew0893909', nameEnglish
 const fullId = 'hoshiarpur_voters:6a3cc039647774362343eb87';
 function voters(api) {
   return load('src/services/voters.ts', {
-    './api': { api },
+    './api': { api: { get: async () => assert.fail('Creation must use backend validation without fetching voter lists'), ...api } },
     './authentication': {
       ensureAuthSession: async () => ({ user }), getCurrentUser: () => user,
       hasPoliticianPageAccess: () => true,
@@ -85,6 +85,32 @@ test('creates via the politician endpoint and maps the returned document', async
 test('invalid locations never POST; duplicate/server errors remain failures', async () => {
   await assert.rejects(voters({ post: async () => assert.fail('Invalid location must not POST') }).createVoter({ ...form, district: 'Elsewhere' }), /assigned area/);
   await assert.rejects(voters({ post: async () => ({ data: { success: false, message: 'EPIC already exists' } }) }).createVoter(form), /EPIC already exists/);
+});
+
+test('sends the complete location scope to backend validation', async () => {
+  let request;
+  await voters({ post: async (url, payload) => {
+    request = { url, payload };
+    return { data: { success: true, data: { voter: { id: fullId } } } };
+  } }).createVoter({ ...form, epicNo: ' rew 0893909 ' });
+  assert.equal(request.url, '/politician/dashboard/create-voter');
+  for (const field of ['state', 'district', 'city', 'village', 'boothNo', 'ward']) {
+    assert.equal(request.payload[field], form[field]);
+  }
+  assert.equal(request.payload.epicNo, 'REW0893909');
+});
+
+test('preserves backend HTTP errors so the form can display the server message', async () => {
+  for (const [status, message] of [
+    [400, 'State, district, city and booth number are required'],
+    [403, 'Politicians can only add voters within their assigned area'],
+    [409, 'EPIC already exists in this city, booth and ward'],
+    [500, 'Unable to add voter'],
+  ]) {
+    const failure = { response: { status, data: { success: false, message } } };
+    await assert.rejects(voters({ post: async () => { throw failure; } }).createVoter(form),
+      error => error === failure && error.response.data.message === message);
+  }
 });
 
 test('native creation adds a search record and increments cache count only once', async () => {

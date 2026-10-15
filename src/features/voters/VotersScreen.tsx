@@ -563,14 +563,24 @@ export default function VotersScreen({
     router.push({ pathname: "./voter-edit", params: { id: voter.id } });
   }, []);
 
-  useFocusEffect(useCallback(() => {
-    setVoters(current => applyManagedVoterChanges(current));
-    let active = true;
-    if (localPoliticianId) getLocalVoterOverview(localPoliticianId).then(overview => {
-      if (active) { setLocalAllVoterTotal(overview.total); setLocalBoothCounts(overview.boothCounts); }
-    }).catch(() => {});
-    return () => { active = false; };
-  }, [localPoliticianId]));
+  useFocusEffect(
+    useCallback(() => {
+      setVoters((current) => applyManagedVoterChanges(current));
+      let active = true;
+      if (localPoliticianId)
+        getLocalVoterOverview(localPoliticianId)
+          .then((overview) => {
+            if (active) {
+              setLocalAllVoterTotal(overview.total);
+              setLocalBoothCounts(overview.boothCounts);
+            }
+          })
+          .catch(() => {});
+      return () => {
+        active = false;
+      };
+    }, [localPoliticianId]),
+  );
 
   const deleteVoter = useCallback(
     async (voter: Voter) => {
@@ -816,7 +826,6 @@ export default function VotersScreen({
             source={require("../../../assets/images/vote.jpeg")}
             style={styles.headerImage}
             contentFit="cover"
-            contentPosition="right center"
             transition={120}
           />
           <View style={styles.headerOverlay} />
@@ -1611,6 +1620,7 @@ const styles = StyleSheet.create({
   /* ---------- Header ---------- */
   header: {
     minHeight: 190,
+    justifyContent: "space-between",
     backgroundColor: "#E6F4EA",
 
     paddingHorizontal: 18,
@@ -1623,7 +1633,7 @@ const styles = StyleSheet.create({
     top: 0,
     right: 0,
     bottom: 0,
-    left: 0,
+    width: "155%",
   },
   headerOverlay: {
     position: "absolute",
@@ -1653,17 +1663,20 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   menuButton: { backgroundColor: "#087568" },
-  headerCopy: { marginTop: 2 },
+  headerCopy: {
+    width: "48%",
+  },
   eyebrow: {
     color: "#55718A",
     fontSize: 12,
+    lineHeight: 16,
     fontWeight: "900",
     letterSpacing: 0.2,
   },
   title: {
     color: "#0F172A",
-    fontSize: 30,
-    lineHeight: 34,
+    fontSize: 26,
+    lineHeight: 30,
     fontWeight: "900",
     marginTop: 2,
   },
@@ -1673,7 +1686,13 @@ const styles = StyleSheet.create({
     gap: 5,
     marginTop: 3,
   },
-  location: { color: "#087568", fontSize: 13, fontWeight: "900" },
+  location: {
+    color: "#087568",
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: "900",
+    flexShrink: 1,
+  },
 
   /* ---------- Body ---------- */
   body: {

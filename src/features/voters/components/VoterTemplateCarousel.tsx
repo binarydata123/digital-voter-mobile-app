@@ -68,6 +68,7 @@ export function VoterTemplateCarousel({ voter, onClose }: { voter: Voter; onClos
   const [banner, setBanner] = useState<string>();
   const [cropSource, setCropSource] = useState<BannerCropSource | null>(null);
   const [cropVisible, setCropVisible] = useState(false);
+  const [cropBusy, setCropBusy] = useState(false);
   const [error, setError] = useState("");
   const [picking, setPicking] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -160,8 +161,8 @@ export function VoterTemplateCarousel({ voter, onClose }: { voter: Voter; onClos
           setCropVisible(true);
         } finally { rendered?.release(); context.release(); }
       }
-    } catch {
-      setError("Unable to open your gallery. Please try again.");
+    } catch (cause) {
+      setError(cause instanceof Error ? `Unable to prepare your banner: ${cause.message}` : "Unable to prepare your banner. Please choose another photo.");
     } finally {
       setPicking(false);
     }
@@ -171,8 +172,8 @@ export function VoterTemplateCarousel({ voter, onClose }: { voter: Voter; onClos
     setIndex(page);
     scroll.current?.scrollTo({ x: page * width, animated: true });
   }
-  return <><Modal transparent visible animationType="slide" onRequestClose={onClose}>
-    <View style={styles.backdrop}>
+  return <Modal transparent visible animationType="slide" onRequestClose={() => { if (cropVisible) { if (!cropBusy) setCropVisible(false); } else onClose(); }}>
+    {cropVisible && cropSource ? <BannerCropModal embedded initialSource={cropSource} layout={TEMPLATE_LAYOUTS[index].key} onApply={applyCrop} onClose={() => setCropVisible(false)} onBusyChange={setCropBusy} renderPreview={(crop) => <SingleTemplate voter={voter} layout={TEMPLATE_LAYOUTS[index].key} crop={crop} />} /> : <View style={styles.backdrop}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close template carousel" />
       <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <View style={styles.handle} />
@@ -198,17 +199,15 @@ export function VoterTemplateCarousel({ voter, onClose }: { voter: Voter; onClos
           <View style={styles.dots}>{TEMPLATE_LAYOUTS.map((template, page) => <Pressable key={template.key} accessibilityLabel={`Show ${template.label}`} accessibilityState={{ selected: page === index }} onPress={() => navigate(page)} style={styles.dotTarget}><View style={[styles.dot, page === index && styles.activeDot]} /></Pressable>)}</View>
           <Pressable accessibilityLabel="Next template" disabled={index === TEMPLATE_LAYOUTS.length - 1} onPress={() => navigate(index + 1)} style={[styles.iconButton, index === TEMPLATE_LAYOUTS.length - 1 && styles.disabled]}><ChevronRight color="#087568" size={22} /></Pressable>
         </View> : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
         {restoring ? null : step === "template" ? <Pressable disabled={saving} style={styles.action} onPress={selectTemplate}><Text style={styles.actionText}>Select this template</Text></Pressable> : <View>
           {banner || TEMPLATE_LAYOUTS[index].key === "none" ? <Pressable accessibilityLabel="Share voter card image" disabled={saving || sharing || picking || (TEMPLATE_LAYOUTS[index].key !== "none" && loadedBanner !== banner) || cardSize.width <= 0 || cardSize.height <= 0} onPress={shareCard} style={[styles.action, styles.shareAction, (saving || sharing || picking || (TEMPLATE_LAYOUTS[index].key !== "none" && loadedBanner !== banner)) && styles.disabled]}><Share2 color="white" size={18} /><Text style={styles.actionText}>{sharing ? "Sharing…" : "Share card"}</Text></Pressable> : null}
           {TEMPLATE_LAYOUTS[index].key === "none" ? <Text style={styles.hintCentered}>This template uses voter details only.</Text> : null}
           <Pressable disabled={saving || sharing || picking} style={styles.backButton} onPress={() => { setStep("template"); setBanner(undefined); }}><Text style={styles.backText}>Change template</Text></Pressable>
         </View>}
       </View>
-    </View>
-  </Modal>
-    {cropVisible && cropSource ? <BannerCropModal initialSource={cropSource} layout={TEMPLATE_LAYOUTS[index].key} onApply={applyCrop} onClose={() => setCropVisible(false)} renderPreview={(crop) => <SingleTemplate voter={voter} layout={TEMPLATE_LAYOUTS[index].key} crop={crop} />} /> : null}
-  </>;
+    </View>}
+  </Modal>;
 }
 
 const styles = StyleSheet.create({
