@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Search,
   SlidersHorizontal,
+  UserPlus,
   UsersRound,
 } from "lucide-react-native";
 import {
@@ -51,9 +52,7 @@ import { VoterEditModal } from "@/features/voters/components/VoterEditModal";
 import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleton";
 import { searchRank, searchTerms } from "@/utils/voterSearch";
 
-import {
-  VoterSlipPreview,
-} from "@/features/voters/components/VoterSlipPreview";
+import { VoterSlipPreview } from "@/features/voters/components/VoterSlipPreview";
 import {
   ensureAuthSession,
   getCurrentUser,
@@ -145,7 +144,10 @@ export default function VotersScreen({
     useState<ThermalPrintRequest | null>(null);
   const [printerSelectionVersion, setPrinterSelectionVersion] = useState(0);
   const [editingVoter, setEditingVoter] = useState<Voter | null>(null);
-  const [sharingSlip, setSharingSlip] = useState<{ voter: Voter; resolve: () => void } | null>(null);
+  const [sharingSlip, setSharingSlip] = useState<{
+    voter: Voter;
+    resolve: () => void;
+  } | null>(null);
   const sharingSlipLock = useRef(false);
   const finishSharingSlip = useCallback(() => {
     sharingSlip?.resolve();
@@ -538,7 +540,9 @@ export default function VotersScreen({
     async (nextVoter: Voter) => {
       const savedVoter = await updateVoterDetails(nextVoter);
       setVoters((current) =>
-        current.map((voter) => (voter.id === savedVoter.id ? savedVoter : voter)),
+        current.map((voter) =>
+          voter.id === savedVoter.id ? savedVoter : voter,
+        ),
       );
       saveManagedVoter(savedVoter);
 
@@ -687,20 +691,28 @@ export default function VotersScreen({
     [localPoliticianId],
   );
 
-  const handleVoterPrinted = useCallback(async (voter: Voter) => {
-    try {
-      const updated = await markPrintedVoterAsVoted(voter);
-      if (!updated) return;
-      saveManagedVoter(updated);
-      setVoters((current) => current.map((item) => item.id === updated.id ? updated : item));
-      if (localPoliticianId) await updateLocalVoter(localPoliticianId, updated);
-    } catch (error: any) {
-      Alert.alert(
-        "Slip printed; voted status could not be saved",
-        error?.response?.data?.message || error?.message || "Tap the voter name to try saving the status again.",
-      );
-    }
-  }, [localPoliticianId]);
+  const handleVoterPrinted = useCallback(
+    async (voter: Voter) => {
+      try {
+        const updated = await markPrintedVoterAsVoted(voter);
+        if (!updated) return;
+        saveManagedVoter(updated);
+        setVoters((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        if (localPoliticianId)
+          await updateLocalVoter(localPoliticianId, updated);
+      } catch (error: any) {
+        Alert.alert(
+          "Slip printed; voted status could not be saved",
+          error?.response?.data?.message ||
+            error?.message ||
+            "Tap the voter name to try saving the status again.",
+        );
+      }
+    },
+    [localPoliticianId],
+  );
 
   const handleSharePrintSlip = useCallback(async (voter: Voter) => {
     if (sharingSlipLock.current) return;
@@ -1321,7 +1333,18 @@ export default function VotersScreen({
       </Modal>
 
       {/* Print type modal */}
-      {sharingSlip ? <PrintSlipShareCapture voter={sharingSlip.voter} bannerImage={currentUser?.bannerImage && !/^(undefined|null)$/i.test(currentUser.bannerImage.trim()) ? currentUser.bannerImage : undefined} onComplete={finishSharingSlip} /> : null}
+      {sharingSlip ? (
+        <PrintSlipShareCapture
+          voter={sharingSlip.voter}
+          bannerImage={
+            currentUser?.bannerImage &&
+            !/^(undefined|null)$/i.test(currentUser.bannerImage.trim())
+              ? currentUser.bannerImage
+              : undefined
+          }
+          onComplete={finishSharingSlip}
+        />
+      ) : null}
       <Modal
         transparent
         visible={Boolean(printTypeRequest)}
@@ -1333,7 +1356,10 @@ export default function VotersScreen({
             style={styles.modalBackdrop}
             onPress={() => setPrintTypeRequest(null)}
           >
-            <Pressable style={styles.modalSheet} onPress={(event) => event.stopPropagation()}>
+            <Pressable
+              style={styles.modalSheet}
+              onPress={(event) => event.stopPropagation()}
+            >
               <View style={styles.handle} />
               <View style={styles.printChoiceHeader}>
                 <Text style={styles.printChoiceTitle}>
@@ -1351,40 +1377,42 @@ export default function VotersScreen({
               </View>
 
               <View style={styles.printOptions}>
-              {canUseTemplates ? (
+                {canUseTemplates ? (
+                  <PrintChoiceRow
+                    icon={
+                      printTypeRequest.scope === "family"
+                        ? "family-print"
+                        : "print"
+                    }
+                    title={
+                      printTypeRequest.scope === "family"
+                        ? "Family slips with banner"
+                        : "With banner"
+                    }
+                    subtitle={
+                      printTypeRequest.scope === "family"
+                        ? "Family member slips with banner."
+                        : "Voter slip with banner image."
+                    }
+                    onPress={() => openSlipPreview(true)}
+                  />
+                ) : null}
                 <PrintChoiceRow
                   icon={
-                    printTypeRequest.scope === "family"
-                      ? "family-print"
-                      : "print"
+                    printTypeRequest.scope === "family" ? "family" : "print"
                   }
                   title={
                     printTypeRequest.scope === "family"
-                      ? "Family slips with banner"
-                      : "With banner"
+                      ? "Family slips without banner"
+                      : "Without banner"
                   }
                   subtitle={
                     printTypeRequest.scope === "family"
-                      ? "Family member slips with banner."
-                      : "Voter slip with banner image."
+                      ? "Family member slips."
+                      : "Voter slip only."
                   }
-                  onPress={() => openSlipPreview(true)}
+                  onPress={() => openSlipPreview(false)}
                 />
-              ) : null}
-              <PrintChoiceRow
-                icon={printTypeRequest.scope === "family" ? "family" : "print"}
-                title={
-                  printTypeRequest.scope === "family"
-                    ? "Family slips without banner"
-                    : "Without banner"
-                }
-                subtitle={
-                  printTypeRequest.scope === "family"
-                    ? "Family member slips."
-                    : "Voter slip only."
-                }
-                onPress={() => openSlipPreview(false)}
-              />
               </View>
             </Pressable>
           </Pressable>
@@ -2016,7 +2044,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 10,
   },
-  printChoiceTitle: { color: "#0F172A", fontSize: 18, fontWeight: "900", flex: 1 },
+  printChoiceTitle: {
+    color: "#0F172A",
+    fontSize: 18,
+    fontWeight: "900",
+    flex: 1,
+  },
   printOptions: { gap: 12 },
   printChoiceClose: {
     width: 34,
