@@ -825,7 +825,6 @@ export default function VotersScreen({
             source={require("../../../assets/images/vote.jpeg")}
             style={styles.headerImage}
             contentFit="cover"
-            contentPosition="right center"
             transition={120}
           />
           <View style={styles.headerOverlay} />
@@ -1071,14 +1070,29 @@ export default function VotersScreen({
     const lookupId = ++familyLookupId.current;
     setLoadingFamily(true);
     try {
-      const members = request.scope === "family" ? await getLocalFamilyMembers(localPoliticianId ?? currentUser?.id ?? "", request.voter) : undefined;
+      const members =
+        request.scope === "family"
+          ? await getLocalFamilyMembers(
+              localPoliticianId ?? currentUser?.id ?? "",
+              request.voter,
+            )
+          : undefined;
       if (lookupId !== familyLookupId.current) return;
-      if (members && !members.length) throw new Error("No family members found locally. Refresh the voter list and try again.");
+      if (members && !members.length)
+        throw new Error(
+          "No family members found locally. Refresh the voter list and try again.",
+        );
       setSlipPreview({ ...request, withBanner, members });
       setPrintTypeRequest(null);
     } catch (error) {
-      if (lookupId === familyLookupId.current) Alert.alert("Unable to load family slips", error instanceof Error ? error.message : "Please try again.");
-    } finally { if (lookupId === familyLookupId.current) setLoadingFamily(false); }
+      if (lookupId === familyLookupId.current)
+        Alert.alert(
+          "Unable to load family slips",
+          error instanceof Error ? error.message : "Please try again.",
+        );
+    } finally {
+      if (lookupId === familyLookupId.current) setLoadingFamily(false);
+    }
   }
   function closePrintType() {
     ++familyLookupId.current;
@@ -1105,7 +1119,10 @@ export default function VotersScreen({
     let completed = 0;
     try {
       for (const member of members) {
-        await printThermalVoterSlip(member, savedPrinter, { ...request, showBanner: request.showBanner && completed === 0 });
+        await printThermalVoterSlip(member, savedPrinter, {
+          ...request,
+          showBanner: request.showBanner && completed === 0,
+        });
         completed += 1;
         await handleVoterPrinted(member);
       }
@@ -1114,7 +1131,13 @@ export default function VotersScreen({
       // The saved printer is no longer reachable. Let the user reconnect or
       // choose another device instead of leaving them at a failed print alert.
       const remaining = members.slice(completed);
-      if (remaining.length) setThermalPrintRequest({ ...request, voter: remaining[0], members: remaining, showBanner: request.showBanner && completed === 0 });
+      if (remaining.length)
+        setThermalPrintRequest({
+          ...request,
+          voter: remaining[0],
+          members: remaining,
+          showBanner: request.showBanner && completed === 0,
+        });
     }
   }, [slipPreview, handleVoterPrinted]);
 
@@ -1381,10 +1404,7 @@ export default function VotersScreen({
         onRequestClose={closePrintType}
       >
         {printTypeRequest ? (
-          <Pressable
-            style={styles.modalBackdrop}
-            onPress={closePrintType}
-          >
+          <Pressable style={styles.modalBackdrop} onPress={closePrintType}>
             <Pressable
               style={styles.modalSheet}
               onPress={(event) => event.stopPropagation()}
@@ -1405,7 +1425,10 @@ export default function VotersScreen({
                 </Pressable>
               </View>
 
-              <View style={styles.printOptions} pointerEvents={loadingFamily ? "none" : "auto"}>
+              <View
+                style={styles.printOptions}
+                pointerEvents={loadingFamily ? "none" : "auto"}
+              >
                 {canUseTemplates ? (
                   <PrintChoiceRow
                     icon={
@@ -1443,7 +1466,11 @@ export default function VotersScreen({
                   onPress={() => openSlipPreview(false)}
                 />
               </View>
-              {loadingFamily ? <Text style={styles.printChoiceSubtitle}>Loading family slips from this device…</Text> : null}
+              {loadingFamily ? (
+                <Text style={styles.printChoiceSubtitle}>
+                  Loading family slips from this device…
+                </Text>
+              ) : null}
             </Pressable>
           </Pressable>
         ) : null}
@@ -1630,6 +1657,7 @@ const styles = StyleSheet.create({
   /* ---------- Header ---------- */
   header: {
     minHeight: 190,
+    justifyContent: "space-between",
     backgroundColor: "#E6F4EA",
 
     paddingHorizontal: 18,
@@ -1642,7 +1670,7 @@ const styles = StyleSheet.create({
     top: 0,
     right: 0,
     bottom: 0,
-    left: 0,
+    width: "155%",
   },
   headerOverlay: {
     position: "absolute",
@@ -1672,17 +1700,20 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   menuButton: { backgroundColor: "#087568" },
-  headerCopy: { marginTop: 2 },
+  headerCopy: {
+    width: "48%",
+  },
   eyebrow: {
     color: "#55718A",
     fontSize: 12,
+    lineHeight: 16,
     fontWeight: "900",
     letterSpacing: 0.2,
   },
   title: {
     color: "#0F172A",
-    fontSize: 30,
-    lineHeight: 34,
+    fontSize: 26,
+    lineHeight: 30,
     fontWeight: "900",
     marginTop: 2,
   },
@@ -1692,7 +1723,7 @@ const styles = StyleSheet.create({
     gap: 5,
     marginTop: 3,
   },
-  location: { color: "#087568", fontSize: 13, fontWeight: "900" },
+  location: { color: "#087568", fontSize: 11, lineHeight: 16, fontWeight: "900", flexShrink: 1 },
 
   /* ---------- Body ---------- */
   body: {
