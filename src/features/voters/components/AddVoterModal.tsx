@@ -17,7 +17,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { AuthUser } from "@/services/authentication";
 import { createVoter, type Voter } from "@/services/voters";
 import {
-  getAgeFromVoterDob,
   getAssignedVoterLocations,
   newVoterForm,
   validateNewVoter,
@@ -45,10 +44,6 @@ export function AddVoterModal({
   function update(key: keyof CreateVoterInput, value: string) {
     setForm((previous) => {
       const next = { ...previous, [key]: value };
-      if (key === "dob") {
-        const age = getAgeFromVoterDob(value);
-        if (age !== null) next.age = String(age);
-      }
       if (key === "relation" && !value) next.relationName = "";
       return next;
     });
@@ -58,18 +53,6 @@ export function AddVoterModal({
   function updateNumeric(key: "age" | "phone", value: string) {
     const digits = value.replace(/[^0-9]/g, "");
     update(key, digits);
-  }
-
-  function updateDob(value: string) {
-    const digits = value.replace(/[^0-9]/g, "").slice(0, 8);
-    let formatted = digits;
-    if (digits.length > 4) {
-      formatted = `${digits.slice(0, 4)}-${digits.slice(4)}`;
-    }
-    if (digits.length > 6) {
-      formatted = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
-    }
-    update("dob", formatted);
   }
 
   async function submit() {
@@ -134,17 +117,6 @@ export function AddVoterModal({
     />
   );
 
-  const dobField = (
-    <FormInput
-      label="Date of birth"
-      value={form.dob}
-      onChange={updateDob}
-      keyboardType="number-pad"
-      placeholder="YYYY-MM-DD"
-      maxLength={10}
-    />
-  );
-
   const area = (
     key: keyof typeof areas,
     label: string,
@@ -165,14 +137,8 @@ export function AddVoterModal({
       field(key, label, undefined, placeholder)
     );
 
-  // Any dropdown in this section open? Then raise the section's z-index.
-  const isVoterDetailsRaised =
-    openSelect === "gender" ||
-    (openSelect?.startsWith("area-") &&
-      ["state", "district", "city", "village", "boothNo", "ward"].some(
-        (k) => openSelect === `area-${k}`,
-      ));
-  const isFamilyRaised = openSelect === "relation";
+  const isVoterDetailsRaised = openSelect === "gender" || openSelect === "relation";
+  const isLocationRaised = openSelect?.startsWith("area-") ?? false;
 
   return (
     <Modal transparent visible animationType="slide" onRequestClose={close}>
@@ -267,17 +233,45 @@ export function AddVoterModal({
                     openSelect={openSelect}
                     setOpenSelect={setOpenSelect}
                   />
-                  {dobField}
+                  {field("houseNo", "House No.", undefined, "House / door no.")}
                 </View>
-                {field("houseNo", "House No.", undefined, "House / door no.")}
+                <View
+                  style={[
+                    styles.row,
+                    openSelect === "relation" && styles.rowRaised,
+                  ]}
+                >
+                  <FormSelect
+                    id="relation"
+                    label="Relation"
+                    value={form.relation}
+                    options={[
+                      "", "Father", "Mother", "Husband", "Wife", "Guardian",
+                    ]}
+                    onChange={(value) => update("relation", value)}
+                    openSelect={openSelect}
+                    setOpenSelect={setOpenSelect}
+                  />
+                  <FormInput
+                    label={
+                      form.relation ? `${form.relation} name *` : "Relation name"
+                    }
+                    value={form.relationName}
+                    onChange={(value) => update("relationName", value)}
+                    editable={Boolean(form.relation)}
+                    placeholder={
+                      form.relation
+                        ? `Enter ${form.relation.toLowerCase()}'s name`
+                        : "Select relation first"
+                    }
+                  />
+                </View>
               </View>
 
               <View
                 style={[
                   styles.section,
-                  isVoterDetailsRaised &&
-                    openSelect !== "gender" &&
-                    styles.sectionRaised,
+                  isLocationRaised && styles.sectionRaised,
                 ]}
               >
                 <Text style={styles.sectionTitle}>Location</Text>
@@ -324,36 +318,6 @@ export function AddVoterModal({
                   undefined,
                   "Polling station address",
                 )}
-              </View>
-
-              <View
-                style={[styles.section, isFamilyRaised && styles.sectionRaised]}
-              >
-                <Text style={styles.sectionTitle}>Family details</Text>
-                <FormSelect
-                  id="relation"
-                  label="Relation"
-                  value={form.relation}
-                  options={[
-                    "",
-                    "Father",
-                    "Mother",
-                    "Husband",
-                    "Wife",
-                    "Guardian",
-                  ]}
-                  onChange={(value) => update("relation", value)}
-                  openSelect={openSelect}
-                  setOpenSelect={setOpenSelect}
-                />
-                {form.relation
-                  ? field(
-                      "relationName",
-                      `${form.relation} name *`,
-                      undefined,
-                      `Enter ${form.relation.toLowerCase()}'s name`,
-                    )
-                  : null}
               </View>
             </View>
           </ScrollView>
@@ -405,6 +369,7 @@ function FormInput({
   keyboardType,
   placeholder,
   maxLength,
+  editable = true,
 }: {
   label: string;
   value: string;
@@ -412,6 +377,7 @@ function FormInput({
   keyboardType?: "number-pad" | "phone-pad";
   placeholder?: string;
   maxLength?: number;
+  editable?: boolean;
 }) {
   return (
     <View style={styles.field}>
@@ -425,6 +391,7 @@ function FormInput({
         placeholderTextColor="#94A3B8"
         style={styles.input}
         maxLength={maxLength}
+        editable={editable}
       />
     </View>
   );
