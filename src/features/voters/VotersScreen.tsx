@@ -1,6 +1,7 @@
 import { BannerStudioMenuItem } from "@/features/banner-generation/BannerStudioMenuItem";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import {
   ArrowLeft,
@@ -24,6 +25,7 @@ import {
 } from "react";
 import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 import {
+  Alert,
   Animated,
   FlatList,
   Modal,
@@ -40,9 +42,11 @@ import {
 } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/common/EmptyState";
+import { AddVoterModal } from "@/features/voters/components/AddVoterModal";
 import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 import { VoterCard } from "@/features/voters/components/VoterCard";
 import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
+import { VoterEditModal } from "@/features/voters/components/VoterEditModal";
 import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleton";
 import { searchRank, searchTerms } from "@/utils/voterSearch";
 
@@ -57,10 +61,13 @@ import {
   logoutPolitician,
 } from "@/services/authentication";
 import {
+  addLocalVoter,
+  deleteLocalVoter,
   getLocalVoterOverview,
   getLocalVoterPage,
   hasLocalVoters,
   replaceLocalVotersFromPages,
+  updateLocalVoter,
 } from "@/services/local-voters";
 import {
   getSavedThermalPrinter,
@@ -68,9 +75,16 @@ import {
 } from "@/services/thermal-printer";
 import { isLocalVoterDatabaseAvailable } from "@/services/voter-database";
 import {
+  applyManagedVoterChanges,
   buildVoterStats,
+  deleteManagedVoter,
+  deleteVoterDetails,
   fetchVoters,
   forEachVoterPage,
+  markVoterAsVoted,
+  markPrintedVoterAsVoted,
+  saveManagedVoter,
+  updateVoterDetails,
   type Voter,
 } from "@/services/voters";
 
@@ -129,6 +143,12 @@ export default function VotersScreen({
   const [thermalPrintRequest, setThermalPrintRequest] =
     useState<ThermalPrintRequest | null>(null);
   const [printerSelectionVersion, setPrinterSelectionVersion] = useState(0);
+  const [editingVoter, setEditingVoter] = useState<Voter | null>(null);
+  const [addingVoter, setAddingVoter] = useState(false);
+  const [deleteVoterRequest, setDeleteVoterRequest] = useState<Voter | null>(
+    null,
+  );
+  const [deletingVoter, setDeletingVoter] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const boothSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -168,7 +188,7 @@ export default function VotersScreen({
         getLocalVoterOverview(politicianId),
       ]);
       lastLocalQueryKey.current = `${politicianId}|All|`;
-      setVoters(page.voters);
+      setVoters(applyManagedVoterChanges(page.voters));
       setLocalTotal(page.total);
       setLocalAllVoterTotal(overview.total);
       setLocalBoothCounts(overview.boothCounts);
@@ -315,7 +335,7 @@ export default function VotersScreen({
       .then((page) => {
         if (cancelled || requestId !== localRequestId.current) return;
         lastLocalQueryKey.current = queryKey;
-        setVoters(page.voters);
+        setVoters(applyManagedVoterChanges(page.voters));
         setLocalTotal(page.total);
       })
       .catch((pageError: any) => {
@@ -356,7 +376,10 @@ export default function VotersScreen({
         voters.length,
       );
       if (requestId !== localRequestId.current) return;
-      setVoters((current) => [...current, ...page.voters]);
+      setVoters((current) => [
+        ...current,
+        ...applyManagedVoterChanges(page.voters),
+      ]);
       setLocalTotal(page.total);
     } catch (pageError: any) {
       if (requestId === localRequestId.current) {
@@ -496,15 +519,202 @@ export default function VotersScreen({
     setPrintTypeRequest({ voter, scope: "family" });
   }, []);
 
+  const refreshLocalOverview = useCallback(async () => {
+    if (!localPoliticianId) return;
+    const overview = await getLocalVoterOverview(localPoliticianId);
+    setLocalAllVoterTotal(overview.total);
+    setLocalBoothCounts(overview.boothCounts);
+  }, [localPoliticianId]);
+
+  const replaceVoter = useCallback(
+    async (nextVoter: Voter) => {
+      setVoters((current) =>
+        current.map((voter) => (voter.id === nextVoter.id ? nextVoter : voter)),
+      );
+      saveManagedVoter(nextVoter);
+
+      await updateVoterDetails(nextVoter);
+
+      if (localPoliticianId) {
+        await updateLocalVoter(localPoliticianId, nextVoter);
+        await refreshLocalOverview();
+      }
+    },
+    [localPoliticianId, refreshLocalOverview],
+  );
+
+  const handleSaveVoter = useCallback(
+    async (nextVoter: Voter) => {
+      try {
+        await replaceVoter(nextVoter);
+        setEditingVoter(null);
+      } catch (error: any) {
+        Alert.alert(
+          "Unable to save voter",
+          error?.response?.data?.message ||
+            error?.message ||
+            "Please check your connection and try again.",
+        );
+      }
+    },
+    [replaceVoter],
+  );
+
+  const handleEditVoter = useCallback((voter: Voter) => {
+    setEditingVoter(voter);
+  }, []);
+
+  const deleteVoter = useCallback(
+    async (voter: Voter) => {
+      await deleteVoterDetails(voter);
+      setVoters((current) => current.filter((item) => item.id !== voter.id));
+      if (localMode) {
+        setLocalTotal((total) => Math.max(0, total - 1));
+        setLocalAllVoterTotal((total) => Math.max(0, total - 1));
+        setLocalBoothCounts((counts) => ({
+          ...counts,
+          [voter.booth]: Math.max(0, (counts[voter.booth] ?? 0) - 1),
+        }));
+      }
+      deleteManagedVoter(voter.id);
+      if (localPoliticianId) {
+        await deleteLocalVoter(localPoliticianId, voter.id);
+        await refreshLocalOverview();
+      }
+    },
+    [localMode, localPoliticianId, refreshLocalOverview],
+  );
+
+  const handleDeleteVoter = useCallback((voter: Voter) => {
+    setDeleteVoterRequest(voter);
+  }, []);
+
+  const confirmDeleteVoter = useCallback(async () => {
+    if (!deleteVoterRequest || deletingVoter) return;
+
+    setDeletingVoter(true);
+    try {
+      // ✅ 10 second ka race condition
+      await Promise.race([
+        deleteVoter(deleteVoterRequest),
+        new Promise((_, reject) =>
+          setTimeout(
+            () =>
+              reject(new Error("Delete request timed out. Please try again.")),
+            10000,
+          ),
+        ),
+      ]);
+      setDeleteVoterRequest(null);
+    } catch (error: any) {
+      Alert.alert(
+        "Unable to delete voter",
+        error?.response?.data?.message ||
+          error?.message ||
+          "Please check your connection and try again.",
+      );
+    } finally {
+      setDeletingVoter(false);
+    }
+  }, [deleteVoter, deleteVoterRequest, deletingVoter]);
+
+  const handleVoterImagePress = useCallback(
+    async (voter: Voter) => {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert(
+          "Photo access needed",
+          "Allow photo library access to add or edit this voter image.",
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        mediaTypes: ["images"],
+        quality: 0.85,
+      });
+
+      if (result.canceled || !result.assets[0]?.uri) {
+        return;
+      }
+
+      try {
+        await replaceVoter({ ...voter, photoUri: result.assets[0].uri });
+      } catch (error: any) {
+        Alert.alert(
+          "Unable to save voter image",
+          error?.response?.data?.message ||
+            error?.message ||
+            "Please check your connection and try again.",
+        );
+      }
+    },
+    [replaceVoter],
+  );
+
+  const handleMarkVoted = useCallback(
+    async (voter: Voter) => {
+      if (voter.voted) return;
+      try {
+        const updated = await markVoterAsVoted(voter);
+        saveManagedVoter(updated);
+        setVoters((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        if (localPoliticianId) {
+          await updateLocalVoter(localPoliticianId, updated);
+        }
+      } catch (error: any) {
+        Alert.alert(
+          "Unable to mark voter as voted",
+          error?.response?.data?.message ||
+            error?.message ||
+            "Please try again.",
+        );
+      }
+    },
+    [localPoliticianId],
+  );
+
+  const handleVoterPrinted = useCallback(async (voter: Voter) => {
+    try {
+      const updated = await markPrintedVoterAsVoted(voter);
+      if (!updated) return;
+      saveManagedVoter(updated);
+      setVoters((current) => current.map((item) => item.id === updated.id ? updated : item));
+      if (localPoliticianId) await updateLocalVoter(localPoliticianId, updated);
+    } catch (error: any) {
+      Alert.alert(
+        "Slip printed; voted status could not be saved",
+        error?.response?.data?.message || error?.message || "Tap the voter name to try saving the status again.",
+      );
+    }
+  }, [localPoliticianId]);
+
   const renderVoter = useCallback(
     (voter: Voter) => (
       <VoterCard
         voter={voter}
         onPrint={handlePrint}
         onFamily={handleFamily}
+        onEdit={handleEditVoter}
+        onDelete={handleDeleteVoter}
+        onImagePress={handleVoterImagePress}
+        onMarkVoted={handleMarkVoted}
       />
     ),
-    [handleFamily, handlePrint],
+    [
+      handleDeleteVoter,
+      handleFamily,
+      handleEditVoter,
+      handlePrint,
+      handleVoterImagePress,
+      handleMarkVoted,
+    ],
   );
 
   const voterKeyExtractor = useCallback(
@@ -544,6 +754,36 @@ export default function VotersScreen({
     });
   }, []);
 
+  const handleVoterCreated = useCallback(
+    async (created: Voter) => {
+      ++localRequestId.current;
+      setQuery("");
+      setActiveBooth("All");
+      setPendingBooth(null);
+      if (localPoliticianId) {
+        try {
+          await addLocalVoter(localPoliticianId, created);
+          await loadInitialLocalPage(localPoliticianId);
+          setError("");
+        } catch {
+          setVoters((current) => [
+            created,
+            ...current.filter((voter) => voter.id !== created.id),
+          ]);
+          setError(
+            "Voter added successfully. Refresh voter data to update offline storage.",
+          );
+        }
+      } else {
+        setVoters((current) => [
+          created,
+          ...current.filter((voter) => voter.id !== created.id),
+        ]);
+      }
+    },
+    [localPoliticianId, loadInitialLocalPage],
+  );
+
   const renderScreenHeader = useCallback(
     () => (
       <>
@@ -560,17 +800,27 @@ export default function VotersScreen({
           <View style={styles.headerTop}>
             <View />
             <View style={styles.headerActions}>
+              {/* <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Add voter"
+                onPress={() => setAddingVoter(true)}
+                style={styles.headerIconButton}
+              >
+                <UserPlus color="#0F766E" size={19} strokeWidth={2.6} />
+              </Pressable> */}
               <Pressable
                 accessibilityLabel="Refresh offline voter data"
                 onPress={refreshAllVoterData}
                 disabled={refreshing}
-                style={styles.headerIconButton}>
+                style={styles.headerIconButton}
+              >
                 <RefreshCw color="#0F766E" size={18} strokeWidth={2.8} />
               </Pressable>
               <Pressable
                 accessibilityLabel="Open voter menu"
                 onPress={() => setMenuVisible(true)}
-                style={[styles.headerIconButton, styles.menuButton]}>
+                style={[styles.headerIconButton, styles.menuButton]}
+              >
                 <Menu color="#FFFFFF" size={21} strokeWidth={2.8} />
               </Pressable>
             </View>
@@ -607,7 +857,8 @@ export default function VotersScreen({
       <View
         style={
           section === "controls" ? styles.stickyControls : styles.boothControls
-        }>
+        }
+      >
         {section === "controls" ? (
           <View style={styles.searchRow}>
             {searchMode ? (
@@ -643,18 +894,21 @@ export default function VotersScreen({
                     pathname: "./voter-search",
                     params: { booth: activeBooth },
                   })
-                }>
+                }
+              >
                 <Search color="#94A3B8" size={18} strokeWidth={2.6} />
                 <Text
                   style={[styles.searchInput, { color: "#94A3B8" }]}
-                  numberOfLines={1}>
+                  numberOfLines={1}
+                >
                   Search name, EPIC No. or Serial No.
                 </Text>
               </Pressable>
             )}
             <Pressable
               style={styles.filterButton}
-              onPress={() => setModalVisible(true)}>
+              onPress={() => setModalVisible(true)}
+            >
               <SlidersHorizontal color="#FFFFFF" size={15} strokeWidth={2.8} />
               <Text style={styles.filterButtonText}>Filter</Text>
             </Pressable>
@@ -675,7 +929,8 @@ export default function VotersScreen({
               return (
                 <Pressable
                   onPress={() => selectBooth(item)}
-                  style={[styles.boothTab, isActive && styles.boothTabActive]}>
+                  style={[styles.boothTab, isActive && styles.boothTabActive]}
+                >
                   {item === "All" ? (
                     <UsersRound
                       color={isActive ? "#FFFFFF" : "#087568"}
@@ -687,19 +942,22 @@ export default function VotersScreen({
                     style={[
                       styles.boothTabText,
                       isActive && styles.boothTabTextActive,
-                    ]}>
+                    ]}
+                  >
                     {label}
                   </Text>
                   <View
                     style={[
                       styles.countBadge,
                       isActive && styles.countBadgeActive,
-                    ]}>
+                    ]}
+                  >
                     <Text
                       style={[
                         styles.countBadgeText,
                         isActive && styles.countBadgeTextActive,
-                      ]}>
+                      ]}
+                    >
                       {count}
                     </Text>
                   </View>
@@ -797,12 +1055,13 @@ export default function VotersScreen({
     try {
       await printThermalVoterSlip(request.voter, savedPrinter, request);
       setSlipPreview(null);
+      await handleVoterPrinted(request.voter);
     } catch {
       // The saved printer is no longer reachable. Let the user reconnect or
       // choose another device instead of leaving them at a failed print alert.
       setThermalPrintRequest(request);
     }
-  }, [slipPreview]);
+  }, [slipPreview, handleVoterPrinted]);
 
   const handleChangeThermalPrinter = useCallback(async () => {
     if (!slipPreview) return;
@@ -820,6 +1079,19 @@ export default function VotersScreen({
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" />
+      {addingVoter && currentUser ? (
+        <AddVoterModal
+          user={currentUser}
+          onClose={() => setAddingVoter(false)}
+          onCreated={handleVoterCreated}
+        />
+      ) : null}
+      <VoterEditModal
+        visible={Boolean(editingVoter)}
+        voter={editingVoter}
+        onClose={() => setEditingVoter(null)}
+        onSave={handleSaveVoter}
+      />
       <View
         pointerEvents="none"
         style={{
@@ -842,7 +1114,8 @@ export default function VotersScreen({
                   ? router.back()
                   : router.replace("/politician/voters")
               }
-              style={styles.searchPageBack}>
+              style={styles.searchPageBack}
+            >
               <ArrowLeft size={22} color="#087568" />
             </Pressable>
             <View style={{ flex: 1 }}>
@@ -903,13 +1176,16 @@ export default function VotersScreen({
         transparent
         visible={menuVisible}
         animationType="slide"
-        onRequestClose={() => setMenuVisible(false)}>
+        onRequestClose={() => setMenuVisible(false)}
+      >
         <Pressable
           style={styles.menuBackdrop}
-          onPress={() => setMenuVisible(false)}>
+          onPress={() => setMenuVisible(false)}
+        >
           <Pressable
             style={styles.menuDrawer}
-            onPress={(event) => event.stopPropagation()}>
+            onPress={(event) => event.stopPropagation()}
+          >
             <View style={styles.menuHandle} />
             <View style={styles.menuHeader}></View>
             {canOpenSurvey ? (
@@ -918,7 +1194,8 @@ export default function VotersScreen({
                   setMenuVisible(false);
                   openSurveyPage();
                 }}
-                style={styles.menuRow}>
+                style={styles.menuRow}
+              >
                 <View style={styles.menuIconWrap}>
                   <UsersRound color="#087568" size={20} strokeWidth={2.6} />
                 </View>
@@ -937,7 +1214,8 @@ export default function VotersScreen({
                   setMenuVisible(false);
                   router.push("/politician/templates");
                 }}
-                style={styles.menuRow}>
+                style={styles.menuRow}
+              >
                 <View style={styles.menuIconWrap}>
                   <Printer color="#087568" size={20} strokeWidth={2.6} />
                 </View>
@@ -961,7 +1239,8 @@ export default function VotersScreen({
                 setMenuVisible(false);
                 void confirmLogout();
               }}
-              style={[styles.menuRow, styles.logoutMenuRow]}>
+              style={[styles.menuRow, styles.logoutMenuRow]}
+            >
               <View style={[styles.menuIconWrap, styles.logoutMenuIconWrap]}>
                 <LogOut color="#B91C1C" size={20} strokeWidth={2.6} />
               </View>
@@ -976,16 +1255,68 @@ export default function VotersScreen({
         </Pressable>
       </Modal>
 
+      {/* Delete voter confirmation */}
+      <Modal
+        transparent
+        visible={Boolean(deleteVoterRequest)}
+        animationType="fade"
+        onRequestClose={() => {
+          if (!deletingVoter) setDeleteVoterRequest(null);
+        }}
+      >
+        {deleteVoterRequest ? (
+          <Pressable
+            style={styles.printChoiceBackdrop}
+            onPress={() => {
+              if (!deletingVoter) setDeleteVoterRequest(null);
+            }}
+          >
+            <Pressable style={styles.deleteConfirmPanel}>
+              <Text style={styles.deleteConfirmTitle}>Delete voter?</Text>
+              <Text style={styles.deleteConfirmMessage}>
+                {deleteVoterRequest.name} will be removed from this voter list.
+              </Text>
+              <View style={styles.deleteConfirmActions}>
+                <Pressable
+                  disabled={deletingVoter}
+                  onPress={() => setDeleteVoterRequest(null)}
+                  style={[
+                    styles.deleteCancelButton,
+                    deletingVoter && styles.disabledButton,
+                  ]}
+                >
+                  <Text style={styles.deleteCancelText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  disabled={deletingVoter}
+                  onPress={() => void confirmDeleteVoter()}
+                  style={[
+                    styles.deleteConfirmButton,
+                    deletingVoter && styles.disabledButton,
+                  ]}
+                >
+                  <Text style={styles.deleteConfirmText}>
+                    {deletingVoter ? "Deleting..." : "Delete"}
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        ) : null}
+      </Modal>
+
       {/* Print type modal */}
       <Modal
         transparent
         visible={Boolean(printTypeRequest)}
         animationType="fade"
-        onRequestClose={() => setPrintTypeRequest(null)}>
+        onRequestClose={() => setPrintTypeRequest(null)}
+      >
         {printTypeRequest ? (
           <Pressable
             style={styles.printChoiceBackdrop}
-            onPress={() => setPrintTypeRequest(null)}>
+            onPress={() => setPrintTypeRequest(null)}
+          >
             <Pressable style={styles.printChoicePanel}>
               <View style={styles.printChoiceHeader}>
                 <Text style={styles.printChoiceTitle}>
@@ -996,7 +1327,8 @@ export default function VotersScreen({
                 <Pressable
                   accessibilityLabel="Close print type"
                   onPress={() => setPrintTypeRequest(null)}
-                  style={styles.printChoiceClose}>
+                  style={styles.printChoiceClose}
+                >
                   <Text style={styles.printChoiceCloseText}>x</Text>
                 </Pressable>
               </View>
@@ -1045,7 +1377,8 @@ export default function VotersScreen({
         transparent
         visible={Boolean(slipPreview)}
         animationType="fade"
-        onRequestClose={() => setSlipPreview(null)}>
+        onRequestClose={() => setSlipPreview(null)}
+      >
         {slipPreview ? (
           <VoterSlipPreview
             voter={slipPreview.voter}
@@ -1070,8 +1403,10 @@ export default function VotersScreen({
             setPrinterSelectionVersion((version) => version + 1)
           }
           onPrinted={() => {
+            const printedVoter = thermalPrintRequest.voter;
             setThermalPrintRequest(null);
             setSlipPreview(null);
+            void handleVoterPrinted(printedVoter);
           }}
         />
       ) : null}
@@ -1081,10 +1416,12 @@ export default function VotersScreen({
         transparent
         visible={modalVisible}
         animationType="slide"
-        onRequestClose={() => setModalVisible(false)}>
+        onRequestClose={() => setModalVisible(false)}
+      >
         <Pressable
           style={styles.modalBackdrop}
-          onPress={() => setModalVisible(false)}>
+          onPress={() => setModalVisible(false)}
+        >
           <View style={styles.modalSheet}>
             <View style={styles.handle} />
             <Text style={styles.modalTitle}>Booth Wise Voters</Text>
@@ -1096,7 +1433,8 @@ export default function VotersScreen({
                     selectBooth(booth);
                     setModalVisible(false);
                   }}
-                  style={styles.modalCard}>
+                  style={styles.modalCard}
+                >
                   <Text style={styles.modalCardLabel}>{booth}</Text>
                   <Text style={styles.modalCardValue}>{count}</Text>
                 </Pressable>
@@ -1109,7 +1447,8 @@ export default function VotersScreen({
       {/* Scroll-to-top floating button */}
       <Animated.View
         pointerEvents={showScrollTop ? "auto" : "none"}
-        style={[styles.scrollTopWrap, { opacity: scrollTopOpacity }]}>
+        style={[styles.scrollTopWrap, { opacity: scrollTopOpacity }]}
+      >
         <Pressable
           // Preserve the native Pressable style callback on Android.
           cssInterop={false}
@@ -1118,7 +1457,8 @@ export default function VotersScreen({
           style={({ pressed }) => [
             styles.scrollTopButton,
             pressed && { transform: [{ scale: 0.92 }] },
-          ]}>
+          ]}
+        >
           <ArrowUp color="#FFFFFF" size={20} strokeWidth={3} />
         </Pressable>
       </Animated.View>
@@ -1698,6 +2038,60 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     marginTop: 3,
+  },
+  deleteConfirmPanel: {
+    width: "100%",
+    maxWidth: 340,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 8,
+    padding: 18,
+    gap: 12,
+  },
+  deleteConfirmTitle: {
+    color: "#0F172A",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  deleteConfirmMessage: {
+    color: "#64748B",
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 19,
+  },
+  deleteConfirmActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 4,
+  },
+  deleteCancelButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteCancelText: {
+    color: "#334155",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  deleteConfirmButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 8,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteConfirmText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  disabledButton: {
+    opacity: 0.65,
   },
 
   /* Booth wise modal */

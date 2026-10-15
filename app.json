@@ -76,7 +76,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Politic Ease to select a banner photo.",
+          "photosPermission": "Allow Politic Ease to select banner and voter photos.",
           "cameraPermission": false,
           "microphonePermission": false
         }

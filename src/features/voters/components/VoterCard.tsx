@@ -1,27 +1,41 @@
 import {
   BadgeCheck,
+  ImagePlus,
+  MoreVertical,
+  Pencil,
   Printer,
   QrCode,
   Share2,
+  Trash2,
   UsersRound,
 } from "lucide-react-native";
-import { memo, useCallback, useState } from "react";
-import { Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { memo, useCallback, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Image,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import QRCode from "react-native-qrcode-svg";
 
 import type { Voter } from "@/services/voters";
 import { VoterTemplateCarousel } from "./VoterTemplateCarousel";
 
-const boyImage = require("@/assets/icons/boy.png");
-const girlImage = require("@/assets/icons/girl.png");
-const manImage = require("@/assets/icons/man.png");
-const womenImage = require("@/assets/icons/women.png");
-const oldMenImage = require("@/assets/icons/old-man.png");
-const oldWomenImage = require("@/assets/icons/old-women.png");
+import { getDefaultVoterAvatar } from "@/utils/voterAvatar";
 
 function buildVoterQrValue(voter: Voter): string {
   const epicNo = voter.epicNo ?? voter.id ?? voter.serialNo ?? "";
   return `https://votersakha.tech/voter-slip.html?epicNo=${encodeURIComponent(epicNo)}`;
+}
+
+function isUsableImageUri(uri?: string) {
+  const value = String(uri ?? "")
+    .trim()
+    .toLowerCase();
+  return Boolean(value && value !== "undefined" && value !== "null");
 }
 
 type VoterCardProps = {
@@ -29,16 +43,47 @@ type VoterCardProps = {
   onScan?: (voter: Voter) => void;
   onPrint?: (voter: Voter) => void;
   onFamily?: (voter: Voter) => void;
+  onEdit?: (voter: Voter) => void;
+  onDelete?: (voter: Voter) => void;
+  onImagePress?: (voter: Voter) => void;
+  onMarkVoted?: (voter: Voter) => Promise<void>;
 };
+
+function formatEpicNo(epicNo?: string | null): string {
+  const value = epicNo?.replace(/\s/g, "") ?? "";
+  if (!value) return "N/A";
+  return value.length === 10
+    ? `${value.slice(0, 3)} ${value.slice(3, 6)} ${value.slice(6)}`
+    : epicNo?.trim() || "N/A";
+}
 
 function VoterCardComponent({
   voter,
   onScan,
   onPrint,
   onFamily,
+  onEdit,
+  onDelete,
+  onImagePress,
+  onMarkVoted,
 }: VoterCardProps) {
   const [qrVisible, setQrVisible] = useState(false);
+  const [actionsVisible, setActionsVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
+  const [markingVoted, setMarkingVoted] = useState(false);
+  const markingVotedRef = useRef(false);
+
+  const handleNamePress = useCallback(async () => {
+    if (!onMarkVoted || voter.voted || markingVotedRef.current) return;
+    markingVotedRef.current = true;
+    setMarkingVoted(true);
+    try {
+      await onMarkVoted(voter);
+    } finally {
+      markingVotedRef.current = false;
+      setMarkingVoted(false);
+    }
+  }, [onMarkVoted, voter]);
 
   const handleQrPress = useCallback(() => {
     setQrVisible(true);
@@ -53,25 +98,65 @@ function VoterCardComponent({
     () => onFamily?.(voter),
     [onFamily, voter],
   );
+  const handleImagePress = useCallback(
+    () => onImagePress?.(voter),
+    [onImagePress, voter],
+  );
+  const handleEditPress = useCallback(() => {
+    setActionsVisible(false);
+    onEdit?.(voter);
+  }, [onEdit, voter]);
+  const handleDeletePress = useCallback(() => {
+    setActionsVisible(false);
+    onDelete?.(voter);
+  }, [onDelete, voter]);
 
   return (
     <View style={styles.voterCard}>
       <View style={styles.voterTop}>
-        <Avatar gender={voter.gender} age={voter.age} />
+        <Avatar
+          voter={voter}
+          onPress={onImagePress ? handleImagePress : undefined}
+        />
 
         <View style={styles.voterContent}>
           <View style={styles.voterHeaderRow}>
             <View style={styles.voterInfo}>
-              <Text numberOfLines={1} style={styles.voterName}>
-                {voter.name}
-                <Text style={styles.voterMeta}> {"  " + voter.age} Yrs</Text>
-              </Text>
-              <Text
-                numberOfLines={1}
-                ellipsizeMode="tail"
-                style={styles.guardian}>
-                {voter.guardian}
-              </Text>
+              <View style={styles.nameAndAgeRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    voter.voted
+                      ? `${voter.name}, voted`
+                      : `Mark ${voter.name} as voted`
+                  }
+                  accessibilityState={{
+                    disabled:
+                      !onMarkVoted || Boolean(voter.voted) || markingVoted,
+                    busy: markingVoted,
+                  }}
+                  disabled={!onMarkVoted || voter.voted || markingVoted}
+                  onPress={handleNamePress}
+                  style={styles.voterNameRow}
+                >
+                  {markingVoted ? (
+                    <ActivityIndicator size="small" color="#15803d" />
+                  ) : voter.voted ? (
+                    <View style={styles.votedBadge}>
+                      <BadgeCheck size={15} color="#15803d" />
+                    </View>
+                  ) : null}
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.voterName, styles.voterNameText]}
+                  >
+                    {voter.name}
+                  </Text>
+                </Pressable>
+                <Text style={styles.voterAge}>
+                  {voter.age > 0 ? `${voter.age} Yrs` : "Age N/A"}
+                </Text>
+              </View>
             </View>
 
             <View style={styles.cardRightRail}>
@@ -80,7 +165,8 @@ function VoterCardComponent({
                   <Pressable
                     accessibilityLabel="Show voter QR code"
                     onPress={handleQrPress}
-                    style={styles.scanButton}>
+                    style={styles.scanButton}
+                  >
                     <QrCode color="#087568" size={15} strokeWidth={2.8} />
                   </Pressable>
 
@@ -90,14 +176,31 @@ function VoterCardComponent({
                     style={styles.scanButton}>
                     <Share2 color="#087568" size={16} strokeWidth={2.7} />
                   </Pressable>
+
+                  <Pressable
+                    accessibilityLabel="Open voter actions"
+                    onPress={() => setActionsVisible(true)}
+                    style={styles.scanButton}
+                  >
+                    <MoreVertical color="#087568" size={17} strokeWidth={2.8} />
+                  </Pressable>
                 </View>
               </View>
             </View>
           </View>
 
           <View style={styles.guardianRow}>
-            <Text style={styles.voterMeta}> {"House No." + voter.houseNo}</Text>
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={styles.guardian}
+            >
+              {voter.guardian}
+            </Text>
           </View>
+          <Text numberOfLines={1} style={styles.houseNumber}>
+            House No. {voter.houseNo || "N/A"}
+          </Text>
         </View>
       </View>
 
@@ -105,15 +208,16 @@ function VoterCardComponent({
         <InfoTile
           icon={BadgeCheck}
           label="EPIC No."
-          value={voter.epicNo}
+          value={formatEpicNo(voter.epicNo)}
           priority
         />
 
         <InfoTile
           icon={BadgeCheck}
           label="Serial No."
-          value={voter.serialNo ?? voter.id ?? "N/A"}
+          value={voter.serialNo || "N/A"}
         />
+
         <Pressable onPress={handlePrintPress} style={styles.printButton}>
           <Printer color="#087568" size={17} strokeWidth={2.5} />
           <Text style={styles.printText}>Print</Text>
@@ -137,10 +241,12 @@ function VoterCardComponent({
           transparent
           visible
           animationType="fade"
-          onRequestClose={() => setQrVisible(false)}>
+          onRequestClose={() => setQrVisible(false)}
+        >
           <Pressable
             style={styles.qrBackdrop}
-            onPress={() => setQrVisible(false)}>
+            onPress={() => setQrVisible(false)}
+          >
             <Pressable style={styles.qrPanel}>
               <Text style={styles.qrTitle}>{voter.name}</Text>
               <Text style={styles.qrSubtitle}>
@@ -157,9 +263,63 @@ function VoterCardComponent({
 
               <Pressable
                 onPress={() => setQrVisible(false)}
-                style={styles.qrCloseButton}>
+                style={styles.qrCloseButton}
+              >
                 <Text style={styles.qrCloseText}>Close</Text>
               </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
+
+      {actionsVisible ? (
+        <Modal
+          transparent
+          visible
+          animationType="slide"
+          onRequestClose={() => setActionsVisible(false)}
+        >
+          <Pressable
+            style={styles.actionBackdrop}
+            onPress={() => setActionsVisible(false)}
+          >
+            <Pressable
+              style={styles.actionPanel}
+              onPress={(event) => event.stopPropagation()}
+            >
+              <View style={styles.actionHandle} />
+              <View style={styles.actionHeader} />
+
+              {/* {onImagePress ? (
+                <ActionRow
+                  icon={ImagePlus}
+                  title={
+                    voter.photoUri ? "Edit voter image" : "Add voter image"
+                  }
+                  subtitle="Update voter profile photo"
+                  onPress={() => {
+                    setActionsVisible(false);
+                    onImagePress(voter);
+                  }}
+                />
+              ) : null} */}
+              {onEdit ? (
+                <ActionRow
+                  icon={Pencil}
+                  title="Edit voter"
+                  subtitle="Update voter details"
+                  onPress={handleEditPress}
+                />
+              ) : null}
+              {onDelete ? (
+                <ActionRow
+                  danger
+                  icon={Trash2}
+                  title="Delete voter"
+                  subtitle="Remove this voter from the list"
+                  onPress={handleDeletePress}
+                />
+              ) : null}
             </Pressable>
           </Pressable>
         </Modal>
@@ -184,15 +344,23 @@ function areVoterCardPropsEqual(
     previous.onScan === next.onScan &&
     previous.onPrint === next.onPrint &&
     previous.onFamily === next.onFamily &&
+    previous.onEdit === next.onEdit &&
+    previous.onDelete === next.onDelete &&
+    previous.onImagePress === next.onImagePress &&
+    previous.onMarkVoted === next.onMarkVoted &&
+    before.voted === after.voted &&
     before.id === after.id &&
     before.name === after.name &&
     before.gender === after.gender &&
+    before.education === after.education &&
+    before.working === after.working &&
     before.age === after.age &&
     before.guardian === after.guardian &&
     before.epicNo === after.epicNo &&
     before.houseNo === after.houseNo &&
     before.booth === after.booth &&
-    before.serialNo === after.serialNo
+    before.serialNo === after.serialNo &&
+    before.photoUri === after.photoUri
   );
 }
 
@@ -202,45 +370,81 @@ export const VoterCard = memo(VoterCardComponent, areVoterCardPropsEqual);
    AVATAR
    ------------------------------------------------------------- */
 
-const AGE_IMAGES = {
-  maleYoung: boyImage,
-  femaleYoung: girlImage,
-  maleAdult: manImage,
-  femaleAdult: womenImage,
-  maleOld: oldMenImage,
-  femaleOld: oldWomenImage,
-};
-
 const Avatar = memo(function Avatar({
-  gender,
-  age,
+  voter,
+  onPress,
 }: {
-  gender: string;
-  age: number;
+  voter: Voter;
+  onPress?: () => void;
 }) {
-  const isFemale = gender.toLowerCase().startsWith("f");
+  const defaultSource = getDefaultVoterAvatar(voter.gender, voter.age);
+  const source = isUsableImageUri(voter.photoUri)
+    ? { uri: voter.photoUri }
+    : defaultSource;
 
-  const imageSource =
-    age < 35
-      ? isFemale
-        ? AGE_IMAGES.femaleYoung
-        : AGE_IMAGES.maleYoung
-      : age <= 70
-        ? isFemale
-          ? AGE_IMAGES.femaleAdult
-          : AGE_IMAGES.maleAdult
-        : isFemale
-          ? AGE_IMAGES.femaleOld
-          : AGE_IMAGES.maleOld;
+  const avatar = (
+    <View style={styles.avatar}>
+      <Image source={source} style={styles.avatarImage} resizeMode="contain" />
+      {onPress ? (
+        <View style={styles.avatarEditBadge}>
+          <ImagePlus color="#FFFFFF" size={12} strokeWidth={3} />
+        </View>
+      ) : null}
+    </View>
+  );
+
+  if (!onPress) {
+    return avatar;
+  }
 
   return (
-    <View style={styles.avatar}>
-      <Image
-        source={imageSource}
-        style={styles.avatarImage}
-        resizeMode="contain"
-      />
-    </View>
+    <Pressable accessibilityLabel="Add or edit voter image" onPress={onPress}>
+      {avatar}
+    </Pressable>
+  );
+});
+
+const ActionRow = memo(function ActionRow({
+  danger = false,
+  icon: Icon,
+  title,
+  subtitle,
+  onPress,
+}: {
+  danger?: boolean;
+  icon: React.ComponentType<{
+    color?: string;
+    size?: number;
+    strokeWidth?: number;
+  }>;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.actionRow,
+        danger && styles.actionRowDanger,
+        pressed && styles.actionRowPressed,
+      ]}
+    >
+      <View style={[styles.actionIcon, danger && styles.actionIconDanger]}>
+        <Icon
+          color={danger ? "#B91C1C" : "#087568"}
+          size={20}
+          strokeWidth={2.6}
+        />
+      </View>
+      <View style={styles.actionCopy}>
+        <Text style={[styles.actionText, danger && styles.actionTextDanger]}>
+          {title}
+        </Text>
+        <Text style={styles.actionSubtitle}>{subtitle}</Text>
+      </View>
+    </Pressable>
   );
 });
 
@@ -272,7 +476,13 @@ const InfoTile = memo(function InfoTile({
       <View style={styles.tileTextWrap}>
         <Text style={styles.infoLabel}>{label}</Text>
 
-        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.infoValue}>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+          ellipsizeMode="tail"
+          style={styles.infoValue}
+        >
           {value}
         </Text>
       </View>
@@ -310,6 +520,19 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
   },
+  avatarEditBadge: {
+    position: "absolute",
+    right: 0,
+    bottom: 0,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#087568",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   voterContent: { flex: 1, minWidth: 0, paddingTop: 3 },
   voterHeaderRow: {
     flexDirection: "row",
@@ -317,18 +540,34 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   voterInfo: { flex: 1, minWidth: 0 },
-  voterName: { color: "#06082A", fontWeight: "900", fontSize: 16 },
-  voterMeta: {
+  voterName: { color: "#06082A", fontWeight: "900", fontSize: 14 },
+  nameAndAgeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  voterNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    minHeight: 22,
+    flexShrink: 1,
+  },
+  voterNameText: { flexShrink: 1 },
+  votedBadge: { flexDirection: "row", alignItems: "center", gap: 2 },
+  voterAge: {
     color: "#747999",
     fontWeight: "800",
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: 10,
+    flexShrink: 0,
+  },
+  houseNumber: {
+    color: "#747999",
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 8,
   },
   guardian: {
     color: "#047857",
     flex: 1,
     fontWeight: "900",
-    fontSize: 12,
+    fontSize: 11,
   },
   guardianRow: {
     alignItems: "center",
@@ -339,16 +578,6 @@ const styles = StyleSheet.create({
   cardRightRail: { alignItems: "flex-end", gap: 7 },
   boothActions: { flexDirection: "row", alignItems: "center", gap: 6 },
   quickActions: { flexDirection: "row", alignItems: "center", gap: 5 },
-  boothBadge: {
-    overflow: "hidden",
-    backgroundColor: "#DCFCE7",
-    color: "#166534",
-    fontSize: 12,
-    fontWeight: "900",
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 9,
-  },
   scanButton: {
     width: 26,
     height: 25,
@@ -367,9 +596,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   infoTile: {
-    flex: 1.4,
-    minWidth: 58,
-    height: 50,
+    flex: 1,
+    minWidth: 0,
+    minHeight: 52,
     backgroundColor: "#F6FBFF",
     borderRadius: 12,
     flexDirection: "row",
@@ -378,8 +607,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   priorityInfoTile: {
-    flex: 0.8,
-    minWidth: 88,
+    flex: 1.15,
   },
   tileIcon: {
     width: 26,
@@ -393,7 +621,7 @@ const styles = StyleSheet.create({
   infoLabel: { color: "#747999", fontSize: 12, fontWeight: "800" },
   infoValue: {
     color: "#06082A",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "900",
     marginTop: 2,
   },
@@ -478,4 +706,61 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 13,
   },
+
+  /* ---------- Action modal ---------- */
+  actionBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.5)",
+    justifyContent: "flex-end",
+  },
+  actionPanel: {
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 18,
+    paddingBottom: 32,
+  },
+  actionHandle: {
+    alignSelf: "center",
+    width: 44,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#CBD5E1",
+    marginBottom: 14,
+  },
+  actionHeader: { marginBottom: 8 },
+  actionSubtitle: {
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  actionRow: {
+    minHeight: 66,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderBottomColor: "#EEF2F7",
+    borderBottomWidth: 1,
+    paddingVertical: 10,
+  },
+  actionRowDanger: { borderBottomWidth: 0, marginTop: 4 },
+  actionRowPressed: { backgroundColor: "#F8FAFC" },
+  actionCopy: { flex: 1, minWidth: 0 },
+  actionIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: "#ECFDF5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionIconDanger: { backgroundColor: "#FEF2F2" },
+  actionText: {
+    color: "#0F172A",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  actionTextDanger: { color: "#B91C1C" },
 });

@@ -8,7 +8,7 @@ import {
   getAssignedSurveyScope,
   type SurveyLocationPoint,
 } from "@/services/survey";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -16,8 +16,25 @@ import {
   Text,
   View,
 } from "react-native";
-import MapView, { Marker } from "react-native-maps";
-import { WebView } from "react-native-webview";
+
+declare const require: <T = unknown>(moduleName: string) => T;
+
+type NativeMapsModule = {
+  default: ComponentType<any>;
+  Marker: ComponentType<any>;
+};
+
+type NativeWebViewModule = {
+  WebView: ComponentType<any>;
+};
+
+function getNativeMaps() {
+  return require<NativeMapsModule>("react-native-maps");
+}
+
+function getNativeWebView() {
+  return require<NativeWebViewModule>("react-native-webview");
+}
 
 function formatLocationTime(capturedAt?: string) {
   if (!capturedAt) return "";
@@ -27,7 +44,7 @@ function formatLocationTime(capturedAt?: string) {
 }
 
 export default function LocationMapScreen() {
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [locations, setLocations] = useState<SurveyLocationPoint[]>([]);
@@ -142,6 +159,8 @@ export default function LocationMapScreen() {
   }
 
   if (Platform.OS === "ios") {
+    const { default: MapView, Marker } = getNativeMaps();
+
     return (
       <View style={styles.container}>
         <MapView
@@ -185,6 +204,8 @@ export default function LocationMapScreen() {
       </View>
     );
   }
+
+  const { WebView } = getNativeWebView();
 
   return (
     <View style={styles.container}>
