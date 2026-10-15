@@ -14,6 +14,8 @@ import { DraggableSupporter, DEFAULT_SUPPORTER_PLACEMENT } from './DraggableSupp
 import { PoliticianListSkeleton } from './PoliticianListSkeleton';
 import { removePhotoBackground, deleteCutout } from '@/services/background-removal';
 import { loadBannerSupporter, saveBannerSupporter } from '@/services/banner-supporter';
+import { getCurrentUser } from '@/services/authentication';
+import { loadStudioImage, saveStudioImage } from '@/services/banner-studio-images';
 
 type BannerLayer = 'photo' | 'name' | 'phone';
 const titles = ['Select Your Party', 'Choose a Politician', 'Choose a Banner', 'Edit Your Banner'];
@@ -21,6 +23,9 @@ const subtitles = ['Your party. Your leader. Your banner.', 'Choose who you want
 
 
 export default function BannerGenerationFlow() {
+  const [imageOwner] = useState(() => getCurrentUser()?.id ?? 'guest');
+  const pickedPhoto = useRef(false);
+  const pickedBanner = useRef(false);
   const bannerRef = useRef<View>(null);
   const exportBusy = useRef(false);
   const [exporting, setExporting] = useState<'save' | 'share' | null>(null);
@@ -71,6 +76,21 @@ export default function BannerGenerationFlow() {
   const [photo, setPhoto] = useState<string | null>(null);
   const [photoEditorOpen, setPhotoEditorOpen] = useState(false);
   const [originalPhoto, setOriginalPhoto] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    loadStudioImage(`${imageOwner}:photo`).then((uri) => {
+      if (active && !pickedPhoto.current && uri) { setPhoto(uri); setOriginalPhoto(uri); }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [imageOwner]);
+  useEffect(() => {
+    if (!selectedPolitician) return;
+    let active = true;
+    loadStudioImage(`${imageOwner}:banner:${selectedPolitician.id}`).then((uri) => {
+      if (active && !pickedBanner.current && uri) setCustomBanner(uri);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [imageOwner, selectedPolitician]);
   const [cutout, setCutout] = useState<string | null>(null);
   const [removingBackground, setRemovingBackground] = useState(false);
   const removalRequest = useRef<AbortController | null>(null);
@@ -171,19 +191,26 @@ export default function BannerGenerationFlow() {
       const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.9 });
       if (result.canceled) return;
       const image = result.assets[0];
-      const existing = banners.findIndex(item => item.uri === image.uri);
+      if (!selectedPolitician) return;
+      pickedBanner.current = true;
+      const uri = await saveStudioImage(`${imageOwner}:banner:${selectedPolitician.id}`, image.uri);
+      const existing = banners.findIndex(item => item.uri === uri);
       const nextIndex = existing >= 0 ? existing : banners.filter(item => item.title !== 'Your uploaded banner').length;
-      setCustomBanner(image.uri);
-      if (image.width > 0 && image.height > 0) setImageRatios(previous => ({ ...previous, [image.uri]: image.width / image.height }));
+      setCustomBanner(uri);
+      if (image.width > 0 && image.height > 0) setImageRatios(previous => ({ ...previous, [uri]: image.width / image.height }));
       setTemplate(nextIndex); setPlacement(DEFAULT_SUPPORTER_PLACEMENT); setStep(3);
-    } catch { setBannerError('Could not open your banner image. Please try again.'); }
+    } catch { setBannerError('Could not open or save your banner image. Please try again.'); }
     finally { setPickingBanner(false); }
   }
   async function pickPhoto() {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.8 });
-      if (!result.canceled) { setCutout(null); setOriginalPhoto(result.assets[0].uri); setPhoto(result.assets[0].uri); setPlacement(DEFAULT_SUPPORTER_PLACEMENT); setError(''); }
-    } catch { setError('Could not open your photos. Please try again.'); }
+      if (!result.canceled) {
+        pickedPhoto.current = true;
+        const uri = await saveStudioImage(`${imageOwner}:photo`, result.assets[0].uri);
+        setCutout(null); setOriginalPhoto(uri); setPhoto(uri); setPlacement(DEFAULT_SUPPORTER_PLACEMENT); setError('');
+      }
+    } catch { setError('Could not open or save your photo. Please try again.'); }
   }
   function banner(index: number, preview = false, readOnly = false) {
     const size = readOnly ? livePreviewSize : canvasSize;
@@ -223,12 +250,12 @@ export default function BannerGenerationFlow() {
     {step === 0 ? <FlatList data={filtered} numColumns={2} keyExtractor={p => p.id} contentContainerStyle={s.grid} columnWrapperStyle={{ gap: 12 }} keyboardShouldPersistTaps="handled" initialNumToRender={12} windowSize={5}
       ListHeaderComponent={<Text style={s.sectionLabel}>{filtered.length} PARTIES · NATIONAL & REGIONAL</Text>}
       ListEmptyComponent={<View style={s.empty}><Search color="#82948F" /><Text style={s.cardTitle}>No parties found</Text><Text style={s.subtitle}>Try a different party name.</Text></View>}
-      renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={`Select ${item.name}`} onPress={() => { setParty(item); setRetry(value => value + 1); setSelectedPolitician(null); setCustomBanner(null); setBannerError(''); setPoliticians([]); setPage(1); setTemplate(0); setDirectoryError(''); setLoadingPoliticians(true); setPhoto(null); setOriginalPhoto(null); setCutout(null); setPlacement(DEFAULT_SUPPORTER_PLACEMENT); setQuery(''); setStep(1); }} style={s.partyCard}>
+      renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={`Select ${item.name}`} onPress={() => { pickedBanner.current = false; setParty(item); setRetry(value => value + 1); setSelectedPolitician(null); setCustomBanner(null); setBannerError(''); setPoliticians([]); setPage(1); setTemplate(0); setDirectoryError(''); setLoadingPoliticians(true); setPlacement(DEFAULT_SUPPORTER_PLACEMENT); setQuery(''); setStep(1); }} style={s.partyCard}>
         <View style={[s.partyMark, { backgroundColor: `${item.color}12` }]}><Text style={[s.partyAbbreviation, { color: item.color }]} numberOfLines={1} adjustsFontSizeToFit>{item.short}</Text></View>
         <Text style={s.partyName} numberOfLines={3}>{item.name}</Text><View style={s.choose}><Text style={s.chooseText}>Choose party</Text><ChevronRight size={14} color="#0F4C4E" /></View>
       </Pressable>} /> : <ScrollView scrollEnabled={!draggingPhoto} contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
       {step === 1 && <>
-        {politicians.filter(p => p.name.toLowerCase().includes(query.toLowerCase().trim())).map(p => <Pressable key={p.id} style={s.leaderCard} accessibilityRole="button" onPress={() => { setSelectedPolitician(p); setCustomBanner(null); setBannerError(''); setTemplate(0); setQuery(''); setStep(2); }}>
+        {politicians.filter(p => p.name.toLowerCase().includes(query.toLowerCase().trim())).map(p => <Pressable key={p.id} style={s.leaderCard} accessibilityRole="button" onPress={() => { pickedBanner.current = false; setSelectedPolitician(p); setCustomBanner(null); setBannerError(''); setTemplate(0); setQuery(''); setStep(2); }}>
           <View style={[s.avatar, { backgroundColor: `${party?.color}15`, overflow: 'hidden' }]}>{p.profileImage ? <Image source={{ uri: p.profileImage }} style={{ width: 54, height: 54 }} /> : <UserRound size={28} color={party?.color} />}</View>
           <View style={{ flex: 1 }}><Text style={s.cardTitle}>{p.name}</Text><Text style={s.subtitle}>{p.party}</Text></View><ChevronRight color="#0F4C4E" size={20} />
         </Pressable>)}

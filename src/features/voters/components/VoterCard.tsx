@@ -5,6 +5,7 @@ import {
   Pencil,
   Printer,
   QrCode,
+  PanelsTopLeft,
   Share2,
   Trash2,
   UsersRound,
@@ -43,6 +44,7 @@ type VoterCardProps = {
   onScan?: (voter: Voter) => void;
   onPrint?: (voter: Voter) => void;
   onFamily?: (voter: Voter) => void;
+  onShare?: (voter: Voter) => Promise<void>;
   onEdit?: (voter: Voter) => void;
   onDelete?: (voter: Voter) => void;
   onImagePress?: (voter: Voter) => void;
@@ -62,6 +64,7 @@ function VoterCardComponent({
   onScan,
   onPrint,
   onFamily,
+  onShare,
   onEdit,
   onDelete,
   onImagePress,
@@ -70,6 +73,15 @@ function VoterCardComponent({
   const [qrVisible, setQrVisible] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const shareLock = useRef(false);
+  const handleSharePress = useCallback(async () => {
+    if (!onShare || shareLock.current) return;
+    shareLock.current = true;
+    setSharing(true);
+    try { await onShare(voter); }
+    finally { shareLock.current = false; setSharing(false); }
+  }, [onShare, voter]);
   const [markingVoted, setMarkingVoted] = useState(false);
   const markingVotedRef = useRef(false);
 
@@ -171,12 +183,15 @@ function VoterCardComponent({
                   </Pressable>
 
                   <Pressable
-                    accessibilityLabel="Share voter slip"
+                    accessibilityLabel="Open voter card templates"
                     onPress={() => setFilterVisible(true)}
                     style={styles.scanButton}>
-                    <Share2 color="#087568" size={16} strokeWidth={2.7} />
+                    <PanelsTopLeft color="#087568" size={16} strokeWidth={2.7} />
                   </Pressable>
 
+                  {onShare ? <Pressable accessibilityLabel="Share print slip" accessibilityState={{ busy: sharing }} disabled={sharing} onPress={handleSharePress} style={styles.scanButton}>
+                    {sharing ? <ActivityIndicator color="#087568" size="small" /> : <Share2 color="#087568" size={16} strokeWidth={2.7} />}
+                  </Pressable> : null}
                   <Pressable
                     accessibilityLabel="Open voter actions"
                     onPress={() => setActionsVisible(true)}
@@ -348,6 +363,7 @@ function areVoterCardPropsEqual(
     previous.onScan === next.onScan &&
     previous.onPrint === next.onPrint &&
     previous.onFamily === next.onFamily &&
+    previous.onShare === next.onShare &&
     previous.onEdit === next.onEdit &&
     previous.onDelete === next.onDelete &&
     previous.onImagePress === next.onImagePress &&
