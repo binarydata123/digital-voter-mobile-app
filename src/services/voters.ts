@@ -3,8 +3,11 @@ import {
   ensureAuthSession,
   getCurrentUser,
   hasPoliticianPageAccess,
+  refreshCurrentUser,
 } from "./authentication";
 import { imageUpload } from "./background-removal-file";
+import { validateNewVoter, type CreateVoterInput } from "@/utils/voterCreation";
+import { getElectionVotingError } from "@/utils/electionVoting";
 
 export type Voter = {
   id: string;
@@ -29,6 +32,8 @@ export type Voter = {
   whatsappNumber?: string;
   mobileNumber?: string;
   photoUri?: string;
+  education?: string;
+  working?: string;
   voted?: boolean;
 };
 
@@ -376,9 +381,12 @@ function normalizeVoter(raw: any, index: number): Voter {
     voterCollection: parsedVoterKey.voterCollection,
     voterDocumentId: parsedVoterKey.voterDocumentId,
     voted: [true, 1, "true", "1"].includes(data?.voted ?? raw?.voted),
+    education: cleanOptionalText(firstValue(data?.education, data?.Education, raw?.education)),
+    working: cleanOptionalText(firstValue(data?.working, data?.Working, data?.occupation, raw?.working, raw?.occupation)),
     name: cleanOptionalText(
       firstValue(
         data?.["Voter Name English"],
+        data?.voter_name_english,
         data?.voterNameEnglish,
         raw?.name,
         raw?.voterName,
@@ -492,6 +500,7 @@ function normalizeVoter(raw: any, index: number): Voter {
         data?.["Polling Station No. & Address"],
         data?.pollingStation,
         data?.pollingStationAddress,
+        data?.pollingStationNumberAndAddress,
         raw?.pollingStation,
         "",
       ),
@@ -903,6 +912,8 @@ export async function updateVoterDetails(voter: Voter) {
     ward: cleanOptionalText(voter.ward),
     serialNo: cleanOptionalText(voter.serialNo),
     pollingStation: cleanOptionalText(voter.pollingStation),
+    education: voter.education === undefined ? undefined : cleanOptionalText(voter.education),
+    working: voter.working === undefined ? undefined : cleanOptionalText(voter.working),
     "Voter Name English": cleanOptionalText(voter.name),
     "Voter Name Hindi": cleanOptionalText(voter.hindiName),
     Gender: cleanOptionalText(voter.gender),
@@ -970,7 +981,22 @@ export async function deleteVoterDetails(voter: Voter) {
 }
 
 export async function markVoterAsVoted(voter: Voter): Promise<Voter> {
-  await ensureAuthSession();
+  const user = await refreshCurrentUser();
+  return saveVoterAsVoted(voter, user.electionDate);
+}
+
+export async function markPrintedVoterAsVoted(voter: Voter): Promise<Voter | null> {
+  if (voter.voted) return null;
+  const printedAt = new Date();
+  const user = await refreshCurrentUser();
+  // Printing remains available on every date; only election-day prints mark voted.
+  if (getElectionVotingError(user.electionDate, printedAt)) return null;
+  return saveVoterAsVoted(voter, user.electionDate);
+}
+
+async function saveVoterAsVoted(voter: Voter, electionDate?: string | null): Promise<Voter> {
+  const votingError = getElectionVotingError(electionDate);
+  if (votingError) throw new Error(votingError);
   let voterKey = getVoterApiKey(voter);
   if (!isManagedVoterKey(voterKey)) {
     voterKey = (await resolveVoterIdentityFromBackend(voter))?.voterKey ?? "";
@@ -981,6 +1007,9 @@ export async function markVoterAsVoted(voter: Voter): Promise<Voter> {
 
   const identity = parseVoterKey(voterKey);
   const existingStar = await fetchVoterStar(voterKey);
+  // Check again in case the date changed while resolving the voter.
+  const latestVotingError = getElectionVotingError(electionDate);
+  if (latestVotingError) throw new Error(latestVotingError);
   const response = await api.put(`/voter-stars/${encodeURIComponent(voterKey)}`, {
     ...identity,
     voterName: cleanOptionalText(voter.name),
@@ -999,6 +1028,26 @@ export async function markVoterAsVoted(voter: Voter): Promise<Voter> {
     throw new Error(response.data.message || "Unable to mark voter as voted");
   }
   return { ...voter, ...identity, voted: true };
+}
+
+export async function createVoter(input: CreateVoterInput): Promise<Voter> {
+  const { user } = await ensureAuthSession();
+  if (!user || !hasPoliticianPageAccess("voters", user)) {
+    throw new Error("Voter data is disabled for this account.");
+  }
+  const validation = validateNewVoter(input, user);
+  if (validation) throw new Error(validation);
+  const payload = Object.fromEntries(Object.entries(input).map(([key, value]) => [key, value.trim()]));
+  payload.epicNo = payload.epicNo.toUpperCase();
+  const response = await api.post("/politician/dashboard/create-voter", payload);
+  if (response.data?.success === false) {
+    throw new Error(response.data.message || "Unable to add voter");
+  }
+  const raw = response.data?.data?.voter;
+  if (!raw?.id || !isManagedVoterKey(raw.id)) {
+    throw new Error("Voter was submitted but its full identifier was not returned. Refresh voter data before trying again.");
+  }
+  return normalizeVoter(raw, 0);
 }
 
 export async function fetchVoterById(epicNo: string): Promise<Voter | null> {

@@ -63,6 +63,8 @@ async function initializeDatabase() {
       polling_station TEXT NOT NULL DEFAULT '',
       photo_uri TEXT NOT NULL DEFAULT '',
       voted INTEGER NOT NULL DEFAULT 0,
+      education TEXT NOT NULL DEFAULT '',
+      working TEXT NOT NULL DEFAULT '',
       PRIMARY KEY (politician_id, voter_id)
     );
 
@@ -139,6 +141,11 @@ async function initializeDatabase() {
   const columns = await database.getAllAsync<{ name: string }>("PRAGMA table_info(voters)");
   if (!columns.some((column) => column.name === "voted")) {
     await database.execAsync("ALTER TABLE voters ADD COLUMN voted INTEGER NOT NULL DEFAULT 0;");
+  }
+  for (const column of ["education", "working"]) {
+    if (!columns.some((existing) => existing.name === column)) {
+      await database.execAsync(`ALTER TABLE voters ADD COLUMN ${column} TEXT NOT NULL DEFAULT '';`);
+    }
   }
 
   return database;

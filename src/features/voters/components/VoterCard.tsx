@@ -1,6 +1,5 @@
 import {
   BadgeCheck,
-  House,
   ImagePlus,
   MoreVertical,
   Pencil,
@@ -127,39 +126,41 @@ function VoterCardComponent({
         <View style={styles.voterContent}>
           <View style={styles.voterHeaderRow}>
             <View style={styles.voterInfo}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={
-                  voter.voted
-                    ? `${voter.name}, voted`
-                    : `Mark ${voter.name} as voted`
-                }
-                accessibilityState={{
-                  disabled:
-                    !onMarkVoted || Boolean(voter.voted) || markingVoted,
-                  busy: markingVoted,
-                }}
-                disabled={!onMarkVoted || voter.voted || markingVoted}
-                onPress={handleNamePress}
-                style={styles.voterNameRow}
-              >
-                <Text
-                  numberOfLines={1}
-                  style={[styles.voterName, styles.voterNameText]}
+              <View style={styles.nameAndAgeRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    voter.voted
+                      ? `${voter.name}, voted`
+                      : `Mark ${voter.name} as voted`
+                  }
+                  accessibilityState={{
+                    disabled:
+                      !onMarkVoted || Boolean(voter.voted) || markingVoted,
+                    busy: markingVoted,
+                  }}
+                  disabled={!onMarkVoted || voter.voted || markingVoted}
+                  onPress={handleNamePress}
+                  style={styles.voterNameRow}
                 >
-                  {voter.name}
+                  {markingVoted ? (
+                    <ActivityIndicator size="small" color="#15803d" />
+                  ) : voter.voted ? (
+                    <View style={styles.votedBadge}>
+                      <BadgeCheck size={15} color="#15803d" />
+                    </View>
+                  ) : null}
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.voterName, styles.voterNameText]}
+                  >
+                    {voter.name}
+                  </Text>
+                </Pressable>
+                <Text style={styles.voterAge}>
+                  {voter.age > 0 ? `${voter.age} Yrs` : "Age N/A"}
                 </Text>
-                {markingVoted ? (
-                  <ActivityIndicator size="small" color="#15803d" />
-                ) : voter.voted ? (
-                  <View style={styles.votedBadge}>
-                    <BadgeCheck size={15} color="#087568" />
-                  </View>
-                ) : null}
-              </Pressable>
-              <Text style={styles.voterMeta}>
-                {voter.gender} - {voter.age} Years
-              </Text>
+              </View>
             </View>
 
             <View style={styles.cardRightRail}>
@@ -209,10 +210,10 @@ function VoterCardComponent({
             >
               {voter.guardian}
             </Text>
-            <Text style={styles.boothBadge}>
-              S.No. {voter.serialNo ?? voter.id ?? "N/A"}
-            </Text>
           </View>
+          <Text numberOfLines={1} style={styles.houseNumber}>
+            House No. {voter.houseNo || "N/A"}
+          </Text>
         </View>
       </View>
 
@@ -220,11 +221,15 @@ function VoterCardComponent({
         <InfoTile
           icon={BadgeCheck}
           label="EPIC No."
-          value={voter.epicNo}
+          value={voter.epicNo.trim().replace(/^([a-z]{3})\s*(\d{3})\s*(\d{4})$/i, "$1 $2 $3")}
           priority
         />
 
-        <InfoTile icon={House} label="House No." value={voter.houseNo} />
+        <InfoTile
+          icon={BadgeCheck}
+          label="Serial No."
+          value={voter.serialNo || "N/A"}
+        />
 
         <Pressable onPress={handlePrintPress} style={styles.printButton}>
           <Printer color="#087568" size={17} strokeWidth={2.5} />
@@ -277,36 +282,38 @@ function VoterCardComponent({
         <Modal
           transparent
           visible
-          animationType="fade"
+          animationType="slide"
           onRequestClose={() => setActionsVisible(false)}
         >
           <Pressable
             style={styles.actionBackdrop}
             onPress={() => setActionsVisible(false)}
           >
-            <Pressable style={styles.actionPanel}>
+            <Pressable
+              style={styles.actionPanel}
+              onPress={(event) => event.stopPropagation()}
+            >
               <View style={styles.actionHandle} />
-              <Text style={styles.actionTitle}>{voter.name}</Text>
-              <Text style={styles.actionSubtitle}>
-                S.No. {voter.serialNo ?? voter.id ?? "N/A"}
-              </Text>
+              <View style={styles.actionHeader} />
 
-              {onImagePress ? (
+              {/* {onImagePress ? (
                 <ActionRow
                   icon={ImagePlus}
                   title={
                     voter.photoUri ? "Edit voter image" : "Add voter image"
                   }
+                  subtitle="Update voter profile photo"
                   onPress={() => {
                     setActionsVisible(false);
                     onImagePress(voter);
                   }}
                 />
-              ) : null}
+              ) : null} */}
               {onEdit ? (
                 <ActionRow
                   icon={Pencil}
                   title="Edit voter"
+                  subtitle="Update voter details"
                   onPress={handleEditPress}
                 />
               ) : null}
@@ -315,6 +322,7 @@ function VoterCardComponent({
                   danger
                   icon={Trash2}
                   title="Delete voter"
+                  subtitle="Remove this voter from the list"
                   onPress={handleDeletePress}
                 />
               ) : null}
@@ -351,6 +359,8 @@ function areVoterCardPropsEqual(
     before.id === after.id &&
     before.name === after.name &&
     before.gender === after.gender &&
+    before.education === after.education &&
+    before.working === after.working &&
     before.age === after.age &&
     before.guardian === after.guardian &&
     before.epicNo === after.epicNo &&
@@ -405,6 +415,7 @@ const ActionRow = memo(function ActionRow({
   danger = false,
   icon: Icon,
   title,
+  subtitle,
   onPress,
 }: {
   danger?: boolean;
@@ -414,20 +425,32 @@ const ActionRow = memo(function ActionRow({
     strokeWidth?: number;
   }>;
   title: string;
+  subtitle: string;
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} style={styles.actionRow}>
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.actionRow,
+        danger && styles.actionRowDanger,
+        pressed && styles.actionRowPressed,
+      ]}
+    >
       <View style={[styles.actionIcon, danger && styles.actionIconDanger]}>
         <Icon
           color={danger ? "#B91C1C" : "#087568"}
-          size={18}
+          size={20}
           strokeWidth={2.6}
         />
       </View>
-      <Text style={[styles.actionText, danger && styles.actionTextDanger]}>
-        {title}
-      </Text>
+      <View style={styles.actionCopy}>
+        <Text style={[styles.actionText, danger && styles.actionTextDanger]}>
+          {title}
+        </Text>
+        <Text style={styles.actionSubtitle}>{subtitle}</Text>
+      </View>
     </Pressable>
   );
 });
@@ -460,7 +483,13 @@ const InfoTile = memo(function InfoTile({
       <View style={styles.tileTextWrap}>
         <Text style={styles.infoLabel}>{label}</Text>
 
-        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.infoValue}>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+          ellipsizeMode="tail"
+          style={styles.infoValue}
+        >
           {value}
         </Text>
       </View>
@@ -518,27 +547,34 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   voterInfo: { flex: 1, minWidth: 0 },
-  voterName: { color: "#06082A", fontWeight: "900", fontSize: 16 },
+  voterName: { color: "#06082A", fontWeight: "900", fontSize: 14 },
+  nameAndAgeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   voterNameRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    minHeight: 32,
+    minHeight: 22,
+    flexShrink: 1,
   },
   voterNameText: { flexShrink: 1 },
   votedBadge: { flexDirection: "row", alignItems: "center", gap: 2 },
-  votedText: { color: "#15803d", fontSize: 10, fontWeight: "700" },
-  voterMeta: {
+  voterAge: {
     color: "#747999",
     fontWeight: "800",
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: 10,
+    flexShrink: 0,
+  },
+  houseNumber: {
+    color: "#747999",
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 8,
   },
   guardian: {
     color: "#047857",
     flex: 1,
     fontWeight: "900",
-    fontSize: 12,
+    fontSize: 11,
   },
   guardianRow: {
     alignItems: "center",
@@ -549,16 +585,6 @@ const styles = StyleSheet.create({
   cardRightRail: { alignItems: "flex-end", gap: 7 },
   boothActions: { flexDirection: "row", alignItems: "center", gap: 6 },
   quickActions: { flexDirection: "row", alignItems: "center", gap: 5 },
-  boothBadge: {
-    overflow: "hidden",
-    backgroundColor: "#DCFCE7",
-    color: "#166534",
-    fontSize: 10,
-    fontWeight: "900",
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 9,
-  },
   scanButton: {
     width: 26,
     height: 25,
@@ -577,9 +603,9 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   infoTile: {
-    flex: 1.4,
-    minWidth: 58,
-    height: 50,
+    flex: 1,
+    minWidth: 0,
+    minHeight: 52,
     backgroundColor: "#F6FBFF",
     borderRadius: 12,
     flexDirection: "row",
@@ -588,8 +614,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   priorityInfoTile: {
-    flex: 0.8,
-    minWidth: 88,
+    flex: 1.15,
   },
   tileIcon: {
     width: 26,
@@ -603,7 +628,7 @@ const styles = StyleSheet.create({
   infoLabel: { color: "#747999", fontSize: 9, fontWeight: "800" },
   infoValue: {
     color: "#06082A",
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "900",
     marginTop: 2,
   },
@@ -692,50 +717,48 @@ const styles = StyleSheet.create({
   /* ---------- Action modal ---------- */
   actionBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(15,23,42,0.42)",
+    backgroundColor: "rgba(15, 23, 42, 0.5)",
     justifyContent: "flex-end",
   },
   actionPanel: {
     width: "100%",
     backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     padding: 18,
-    paddingBottom: 30,
-    gap: 8,
+    paddingBottom: 32,
   },
   actionHandle: {
     alignSelf: "center",
-    width: 42,
+    width: 44,
     height: 4,
     borderRadius: 2,
     backgroundColor: "#CBD5E1",
-    marginBottom: 8,
+    marginBottom: 14,
   },
-  actionTitle: {
-    color: "#0F172A",
-    fontSize: 16,
-    fontWeight: "900",
-  },
+  actionHeader: { marginBottom: 8 },
   actionSubtitle: {
     color: "#64748B",
     fontSize: 12,
-    fontWeight: "800",
-    marginBottom: 6,
+    fontWeight: "700",
+    marginTop: 2,
   },
   actionRow: {
-    minHeight: 52,
+    minHeight: 66,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    backgroundColor: "#F8FAFC",
+    borderBottomColor: "#EEF2F7",
+    borderBottomWidth: 1,
+    paddingVertical: 10,
   },
+  actionRowDanger: { borderBottomWidth: 0, marginTop: 4 },
+  actionRowPressed: { backgroundColor: "#F8FAFC" },
+  actionCopy: { flex: 1, minWidth: 0 },
   actionIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     backgroundColor: "#ECFDF5",
     alignItems: "center",
     justifyContent: "center",

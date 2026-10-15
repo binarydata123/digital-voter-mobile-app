@@ -1,5 +1,5 @@
-import { X } from "lucide-react-native";
-import { useState } from "react";
+import { Check, ChevronDown, X } from "lucide-react-native";
+import { useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -10,6 +10,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 
 import type { Voter } from "@/services/voters";
@@ -28,6 +29,8 @@ type EditableVoterFields = Pick<
   | "serialNo"
   | "mobileNumber"
   | "whatsappNumber"
+  | "education"
+  | "working"
 >;
 
 type VoterEditModalProps = {
@@ -54,6 +57,8 @@ const emptyForm: EditableVoterFields = {
   serialNo: "",
   mobileNumber: "",
   whatsappNumber: "",
+  education: "",
+  working: "",
 };
 
 function cleanFormText(value: unknown) {
@@ -79,6 +84,8 @@ function toForm(voter: Voter): EditableVoterFields {
     serialNo: cleanFormText(voter.serialNo),
     mobileNumber: cleanFormText(voter.mobileNumber),
     whatsappNumber: cleanFormText(voter.whatsappNumber),
+    education: cleanFormText(voter.education),
+    working: cleanFormText(voter.working),
   };
 }
 
@@ -92,6 +99,7 @@ export function VoterEditModal({
 
   return (
     <VoterEditSheet
+      key={voter.id}
       visible={visible}
       voter={voter}
       onClose={onClose}
@@ -138,6 +146,8 @@ function VoterEditSheet({
       epicNo: form.epicNo.trim() || "N/A",
       houseNo: form.houseNo.trim() || "N/A",
       booth: form.booth.trim() || voter.booth,
+      education: form.education?.trim() ?? "",
+      working: form.working?.trim() ?? "",
     });
   }
 
@@ -183,10 +193,9 @@ function VoterEditSheet({
             />
 
             <View style={styles.twoColumn}>
-              <Field
-                label="Gender"
+              <GenderDropdown
                 value={form.gender}
-                onChangeText={(value) => updateField("gender", value)}
+                onChange={(value) => updateField("gender", value)}
               />
               <Field
                 keyboardType="number-pad"
@@ -197,6 +206,16 @@ function VoterEditSheet({
                 }
               />
             </View>
+            <Field
+              label="Education"
+              value={form.education ?? ""}
+              onChangeText={(value) => updateField("education", value)}
+            />
+            <Field
+              label="Working / occupation"
+              value={form.working ?? ""}
+              onChangeText={(value) => updateField("working", value)}
+            />
 
             <View style={styles.twoColumn}>
               <Field
@@ -257,6 +276,75 @@ function VoterEditSheet({
   );
 }
 
+function GenderDropdown({ value, onChange }: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const triggerRef = useRef<View>(null);
+  const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const window = useWindowDimensions();
+  const standardOptions = ["Male", "Female", "Transgender", "Other"];
+  // Keep imported Hindi/Punjabi labels available until explicitly changed.
+  const options = value && !standardOptions.includes(value)
+    ? [value, ...standardOptions]
+    : standardOptions;
+  const menuHeight = Math.min(options.length * 44 + 2, window.height - 16);
+  const menuWidth = Math.min(anchor?.width ?? 0, window.width - 16);
+  const below = anchor ? anchor.y + anchor.height + 4 : 0;
+  const menuTop = anchor
+    ? Math.max(8, Math.min(below + menuHeight <= window.height - 8 ? below : anchor.y - menuHeight - 4, window.height - menuHeight - 8))
+    : 0;
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>Gender</Text>
+      <Pressable
+        ref={triggerRef}
+        accessibilityRole="button"
+        accessibilityLabel={`Gender: ${value || "Select gender"}`}
+        accessibilityState={{ expanded: Boolean(anchor) }}
+        onPress={() => triggerRef.current?.measureInWindow((x, y, width, height) => {
+          setAnchor({ x, y, width, height });
+        })}
+        style={[styles.input, styles.dropdownButton]}>
+        <Text style={styles.dropdownText}>{value || "Select gender"}</Text>
+        <ChevronDown size={18} color="#64748B" />
+      </Pressable>
+      {anchor ? (
+        <Modal transparent visible animationType="none" onRequestClose={() => setAnchor(null)}>
+          <View style={styles.dropdownOverlay} accessibilityViewIsModal>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close gender options"
+              style={StyleSheet.absoluteFill}
+              onPress={() => setAnchor(null)}
+            />
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              style={[styles.dropdownOptions, {
+                top: menuTop,
+                left: Math.max(8, Math.min(anchor.x, window.width - menuWidth - 8)),
+                width: menuWidth,
+                maxHeight: menuHeight,
+              }]}>
+              {options.map((option) => (
+                <Pressable
+                  key={option}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: value === option }}
+                  onPress={() => { onChange(option); setAnchor(null); }}
+                  style={[styles.dropdownOption, value === option && styles.dropdownSelected]}>
+                  <Text style={styles.dropdownText}>{option}</Text>
+                  {value === option ? <Check size={16} color="#087568" /> : null}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </Modal>
+      ) : null}
+    </View>
+  );
+}
+
 function Field({
   label,
   value,
@@ -272,6 +360,7 @@ function Field({
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        accessibilityLabel={label}
         value={value}
         onChangeText={onChangeText}
         keyboardType={keyboardType}
@@ -340,6 +429,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   actions: { flexDirection: "row", gap: 10, paddingTop: 12 },
+  dropdownButton: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  dropdownText: { color: "#0F172A", fontSize: 14, fontWeight: "700", flexShrink: 1 },
+  dropdownOverlay: { flex: 1 },
+  dropdownOptions: { position: "absolute", backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#DDE8EF", borderRadius: 12, overflow: "hidden", elevation: 8, shadowColor: "#0F172A", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.14, shadowRadius: 12 },
+  dropdownOption: { minHeight: 44, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 },
+  dropdownSelected: { backgroundColor: "#ECFDF5" },
   secondaryButton: {
     flex: 1,
     height: 46,

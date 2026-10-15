@@ -57,6 +57,10 @@ export async function updateLocalVoter(
   // Voter data is never cached locally by the web build.
 }
 
+export async function addLocalVoter(_politicianId: string, _voter: Voter) {
+  // Web keeps the voter list in memory.
+}
+
 export async function deleteLocalVoter(
   _politicianId: string,
   _voterId: string,

@@ -42,6 +42,7 @@ import {
 } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/common/EmptyState";
+import { AddVoterModal } from "@/features/voters/components/AddVoterModal";
 import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 import { VoterCard } from "@/features/voters/components/VoterCard";
 import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
@@ -62,6 +63,7 @@ import {
   logoutPolitician,
 } from "@/services/authentication";
 import {
+  addLocalVoter,
   deleteLocalVoter,
   getLocalVoterOverview,
   getLocalVoterPage,
@@ -81,8 +83,9 @@ import {
   deleteVoterDetails,
   fetchVoters,
   forEachVoterPage,
-  saveManagedVoter,
   markVoterAsVoted,
+  markPrintedVoterAsVoted,
+  saveManagedVoter,
   updateVoterDetails,
   type Voter,
 } from "@/services/voters";
@@ -146,6 +149,7 @@ export default function VotersScreen({
   const [shareImageRequest, setShareImageRequest] =
     useState<ShareImageRequest | null>(null);
   const [editingVoter, setEditingVoter] = useState<Voter | null>(null);
+  const [addingVoter, setAddingVoter] = useState(false);
   const [deleteVoterRequest, setDeleteVoterRequest] = useState<Voter | null>(
     null,
   );
@@ -693,17 +697,42 @@ export default function VotersScreen({
     [replaceVoter],
   );
 
-  const handleMarkVoted = useCallback(async (voter: Voter) => {
-    if (voter.voted) return;
+  const handleMarkVoted = useCallback(
+    async (voter: Voter) => {
+      if (voter.voted) return;
+      try {
+        const updated = await markVoterAsVoted(voter);
+        saveManagedVoter(updated);
+        setVoters((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        if (localPoliticianId) {
+          await updateLocalVoter(localPoliticianId, updated);
+        }
+      } catch (error: any) {
+        Alert.alert(
+          "Unable to mark voter as voted",
+          error?.response?.data?.message ||
+            error?.message ||
+            "Please try again.",
+        );
+      }
+    },
+    [localPoliticianId],
+  );
+
+  const handleVoterPrinted = useCallback(async (voter: Voter) => {
     try {
-      const updated = await markVoterAsVoted(voter);
+      const updated = await markPrintedVoterAsVoted(voter);
+      if (!updated) return;
       saveManagedVoter(updated);
       setVoters((current) => current.map((item) => item.id === updated.id ? updated : item));
-      if (localPoliticianId) {
-        await updateLocalVoter(localPoliticianId, updated);
-      }
+      if (localPoliticianId) await updateLocalVoter(localPoliticianId, updated);
     } catch (error: any) {
-      Alert.alert("Unable to mark voter as voted", error?.response?.data?.message || error?.message || "Please try again.");
+      Alert.alert(
+        "Slip printed; voted status could not be saved",
+        error?.response?.data?.message || error?.message || "Tap the voter name to try saving the status again.",
+      );
     }
   }, [localPoliticianId]);
 
@@ -768,6 +797,36 @@ export default function VotersScreen({
     });
   }, []);
 
+  const handleVoterCreated = useCallback(
+    async (created: Voter) => {
+      ++localRequestId.current;
+      setQuery("");
+      setActiveBooth("All");
+      setPendingBooth(null);
+      if (localPoliticianId) {
+        try {
+          await addLocalVoter(localPoliticianId, created);
+          await loadInitialLocalPage(localPoliticianId);
+          setError("");
+        } catch {
+          setVoters((current) => [
+            created,
+            ...current.filter((voter) => voter.id !== created.id),
+          ]);
+          setError(
+            "Voter added successfully. Refresh voter data to update offline storage.",
+          );
+        }
+      } else {
+        setVoters((current) => [
+          created,
+          ...current.filter((voter) => voter.id !== created.id),
+        ]);
+      }
+    },
+    [localPoliticianId, loadInitialLocalPage],
+  );
+
   const renderScreenHeader = useCallback(
     () => (
       <>
@@ -784,6 +843,14 @@ export default function VotersScreen({
           <View style={styles.headerTop}>
             <View />
             <View style={styles.headerActions}>
+              {/* <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Add voter"
+                onPress={() => setAddingVoter(true)}
+                style={styles.headerIconButton}
+              >
+                <UserPlus color="#0F766E" size={19} strokeWidth={2.6} />
+              </Pressable> */}
               <Pressable
                 accessibilityLabel="Refresh offline voter data"
                 onPress={refreshAllVoterData}
@@ -1031,12 +1098,13 @@ export default function VotersScreen({
     try {
       await printThermalVoterSlip(request.voter, savedPrinter, request);
       setSlipPreview(null);
+      await handleVoterPrinted(request.voter);
     } catch {
       // The saved printer is no longer reachable. Let the user reconnect or
       // choose another device instead of leaving them at a failed print alert.
       setThermalPrintRequest(request);
     }
-  }, [slipPreview]);
+  }, [slipPreview, handleVoterPrinted]);
 
   const handleChangeThermalPrinter = useCallback(async () => {
     if (!slipPreview) return;
@@ -1054,6 +1122,13 @@ export default function VotersScreen({
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" />
+      {addingVoter && currentUser ? (
+        <AddVoterModal
+          user={currentUser}
+          onClose={() => setAddingVoter(false)}
+          onCreated={handleVoterCreated}
+        />
+      ) : null}
       <VoterEditModal
         visible={Boolean(editingVoter)}
         voter={editingVoter}
@@ -1371,8 +1446,10 @@ export default function VotersScreen({
             setPrinterSelectionVersion((version) => version + 1)
           }
           onPrinted={() => {
+            const printedVoter = thermalPrintRequest.voter;
             setThermalPrintRequest(null);
             setSlipPreview(null);
+            void handleVoterPrinted(printedVoter);
           }}
         />
       ) : null}

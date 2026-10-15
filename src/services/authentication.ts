@@ -22,6 +22,7 @@ export type AuthUser = {
   state?: string;
   electionType?: string;
   electionYear?: string | number;
+  electionDate?: string | null;
   imageUrl?: string;
   bannerImage?: string;
   templateBannerImage?: string;
@@ -149,6 +150,7 @@ function normalizeUser(raw: any): AuthUser {
     state: source?.state ?? profile?.state ?? states?.[0],
     electionType: source?.electionType ?? profile?.electionType,
     electionYear: source?.electionYear ?? profile?.electionYear,
+    electionDate: source?.electionDate ?? profile?.electionDate ?? null,
     imageUrl: source?.imageUrl ?? source?.profileImage ?? source?.photo ?? profile?.profileImage,
     bannerImage:
       source?.bannerImage ??

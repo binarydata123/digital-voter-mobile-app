@@ -47,6 +47,8 @@ type VoterRow = {
   polling_station: string;
   photo_uri: string;
   voted: number;
+  education: string;
+  working: string;
 };
 
 const VOTER_INSERT_BATCH_SIZE = 50;
@@ -100,6 +102,8 @@ function toVoter(row: VoterRow): Voter {
     pollingStation: row.polling_station,
     photoUri: row.photo_uri,
     voted: row.voted === 1,
+    education: row.education ?? "",
+    working: row.working ?? "",
   };
 }
 
@@ -201,7 +205,7 @@ export async function getLocalVoterPage(
     database.getAllAsync<VoterRow>(
       `SELECT voter_id, voter_key, voter_source, voter_collection, voter_document_id,
         name, hindi_name, gender, age, guardian, epic_no, house_no,
-        booth, ward, district, state, serial_no, polling_station, photo_uri, voted
+        booth, ward, district, state, serial_no, polling_station, photo_uri, education, working, voted
        FROM voters
        WHERE ${where}
        ORDER BY ${ranking}name COLLATE NOCASE, voter_id
@@ -254,8 +258,8 @@ async function insertLocalVoterPage(
         `INSERT OR REPLACE INTO voters (
           politician_id, voter_id, voter_key, voter_source, voter_collection,
           voter_document_id, name, hindi_name, gender, age, guardian, epic_no,
-          house_no, booth, ward, district, state, serial_no, polling_station, photo_uri, voted
-        ) VALUES ${placeholders(batch.length, 21)}`,
+          house_no, booth, ward, district, state, serial_no, polling_station, photo_uri, education, working, voted
+        ) VALUES ${placeholders(batch.length, 23)}`,
         batch.flatMap((voter) => [
           politicianId,
           voter.id,
@@ -277,6 +281,8 @@ async function insertLocalVoterPage(
           voter.serialNo ?? "",
           voter.pollingStation ?? "",
           voter.photoUri ?? "",
+          voter.education ?? "",
+          voter.working ?? "",
           voter.voted ? 1 : 0,
         ]),
       );
@@ -361,6 +367,8 @@ export async function updateLocalVoter(politicianId: string, voter: Voter) {
         serial_no = ?,
         polling_station = ?,
         photo_uri = ?,
+        education = ?,
+        working = ?,
         voted = ?
        WHERE politician_id = ? AND voter_id = ?`,
       voter.voterKey ?? "",
@@ -381,6 +389,8 @@ export async function updateLocalVoter(politicianId: string, voter: Voter) {
       voter.serialNo ?? "",
       voter.pollingStation ?? "",
       voter.photoUri ?? "",
+      voter.education ?? "",
+      voter.working ?? "",
       voter.voted ? 1 : 0,
       politicianId,
       voter.id,
@@ -402,6 +412,29 @@ export async function updateLocalVoter(politicianId: string, voter: Voter) {
       voter.epicNo,
       voter.serialNo ?? "",
     );
+  });
+}
+
+export async function addLocalVoter(politicianId: string, voter: Voter) {
+  const database = await getVoterDatabase();
+  await database.withTransactionAsync(async () => {
+    const existing = await database.getFirstAsync<{ voter_id: string }>(
+      "SELECT voter_id FROM voters WHERE politician_id = ? AND voter_id = ?",
+      politicianId,
+      voter.id,
+    );
+    await database.runAsync(
+      "DELETE FROM voter_search WHERE politician_id = ? AND voter_id = ?",
+      politicianId,
+      voter.id,
+    );
+    await insertLocalVoterPage(database, politicianId, [voter]);
+    if (!existing) {
+      await database.runAsync(
+        "UPDATE sync_state SET voter_count = voter_count + 1 WHERE politician_id = ?",
+        politicianId,
+      );
+    }
   });
 }
 
