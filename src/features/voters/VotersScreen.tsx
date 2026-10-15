@@ -45,6 +45,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { AddVoterModal } from "@/features/voters/components/AddVoterModal";
 import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 import { VoterCard } from "@/features/voters/components/VoterCard";
+import { getLocalFamilyMembers } from "@/services/voter-family";
 import { PrintSlipShareCapture } from "@/features/voters/components/PrintSlipShareCapture";
 import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
 import { VoterEditModal } from "@/features/voters/components/VoterEditModal";
@@ -100,12 +101,14 @@ const getVoterListItemType = (item: VoterListItem) => item.type;
 
 type PrintScope = "single" | "family";
 type SlipPreviewRequest = {
+  members?: Voter[];
   voter: Voter;
   scope: PrintScope;
   withBanner: boolean;
 };
 type PrintTypeRequest = { voter: Voter; scope: PrintScope };
 type ThermalPrintRequest = {
+  members?: Voter[];
   bannerImage?: string;
   showBanner: boolean;
   voter: Voter;
@@ -145,6 +148,8 @@ export default function VotersScreen({
     useState<ThermalPrintRequest | null>(null);
   const [printerSelectionVersion, setPrinterSelectionVersion] = useState(0);
   const [editingVoter, setEditingVoter] = useState<Voter | null>(null);
+  const [loadingFamily, setLoadingFamily] = useState(false);
+  const familyLookupId = useRef(0);
   const [sharingSlip, setSharingSlip] = useState<{ voter: Voter; resolve: () => void } | null>(null);
   const sharingSlipLock = useRef(false);
   const finishSharingSlip = useCallback(() => {
@@ -1048,9 +1053,27 @@ export default function VotersScreen({
   );
   const listHeader = useMemo(() => renderScreenHeader(), [renderScreenHeader]);
 
-  function openSlipPreview(withBanner: boolean) {
-    if (!printTypeRequest) return;
-    setSlipPreview({ ...printTypeRequest, withBanner });
+  async function openSlipPreview(withBanner: boolean) {
+    if (!printTypeRequest || loadingFamily) return;
+    const lookupId = ++familyLookupId.current;
+    const request = printTypeRequest;
+    setLoadingFamily(true);
+    try {
+      const members = request.scope === "family"
+        ? await getLocalFamilyMembers(localPoliticianId ?? currentUser?.id ?? "", request.voter)
+        : undefined;
+      if (lookupId !== familyLookupId.current) return;
+      if (members && !members.length) throw new Error("No matching family members are stored locally. Refresh the voter list and try again.");
+      setSlipPreview({ ...request, members, withBanner });
+      setPrintTypeRequest(null);
+    } catch (error) {
+      if (lookupId === familyLookupId.current) Alert.alert("Unable to load family slips", error instanceof Error ? error.message : "Please try again.");
+    } finally { if (lookupId === familyLookupId.current) setLoadingFamily(false); }
+  }
+
+  function closePrintType() {
+    ++familyLookupId.current;
+    setLoadingFamily(false);
     setPrintTypeRequest(null);
   }
 
@@ -1060,6 +1083,7 @@ export default function VotersScreen({
       bannerImage: getCurrentUser()?.bannerImage,
       showBanner: slipPreview.withBanner,
       voter: slipPreview.voter,
+      members: slipPreview.members,
     };
 
     const savedPrinter = await getSavedThermalPrinter();
@@ -1068,14 +1092,20 @@ export default function VotersScreen({
       return;
     }
 
+    const members = request.members ?? [request.voter];
+    let completed = 0;
     try {
-      await printThermalVoterSlip(request.voter, savedPrinter, request);
+      for (const member of members) {
+        await printThermalVoterSlip(member, savedPrinter, { ...request, showBanner: request.showBanner && completed === 0 });
+        completed += 1;
+        await handleVoterPrinted(member);
+      }
       setSlipPreview(null);
-      await handleVoterPrinted(request.voter);
     } catch {
       // The saved printer is no longer reachable. Let the user reconnect or
       // choose another device instead of leaving them at a failed print alert.
-      setThermalPrintRequest(request);
+      const remaining = members.slice(completed);
+      setThermalPrintRequest({ ...request, voter: remaining[0], members: remaining, showBanner: request.showBanner && completed === 0 });
     }
   }, [slipPreview, handleVoterPrinted]);
 
@@ -1085,6 +1115,7 @@ export default function VotersScreen({
       bannerImage: getCurrentUser()?.bannerImage,
       showBanner: slipPreview.withBanner,
       voter: slipPreview.voter,
+      members: slipPreview.members,
     });
   }, [slipPreview]);
 
@@ -1327,12 +1358,12 @@ export default function VotersScreen({
         transparent
         visible={Boolean(printTypeRequest)}
         animationType="slide"
-        onRequestClose={() => setPrintTypeRequest(null)}
+        onRequestClose={closePrintType}
       >
         {printTypeRequest ? (
           <Pressable
             style={styles.modalBackdrop}
-            onPress={() => setPrintTypeRequest(null)}
+            onPress={closePrintType}
           >
             <Pressable style={styles.modalSheet} onPress={(event) => event.stopPropagation()}>
               <View style={styles.handle} />
@@ -1344,14 +1375,14 @@ export default function VotersScreen({
                 </Text>
                 <Pressable
                   accessibilityLabel="Close print type"
-                  onPress={() => setPrintTypeRequest(null)}
+                  onPress={closePrintType}
                   style={styles.printChoiceClose}
                 >
                   <Text style={styles.printChoiceCloseText}>×</Text>
                 </Pressable>
               </View>
 
-              <View style={styles.printOptions}>
+              <View style={styles.printOptions} pointerEvents={loadingFamily ? "none" : "auto"}>
               {canUseTemplates ? (
                 <PrintChoiceRow
                   icon={
@@ -1387,6 +1418,7 @@ export default function VotersScreen({
                 onPress={() => openSlipPreview(false)}
               />
               </View>
+              {loadingFamily ? <Text style={styles.printChoiceSubtitle}>Loading family slips from this device…</Text> : null}
             </Pressable>
           </Pressable>
         ) : null}
@@ -1402,6 +1434,7 @@ export default function VotersScreen({
         {slipPreview ? (
           <VoterSlipPreview
             voter={slipPreview.voter}
+            members={slipPreview.members}
             onClose={() => setSlipPreview(null)}
             showBanner={slipPreview.withBanner}
             bannerImage={getCurrentUser()?.bannerImage}
@@ -1416,6 +1449,8 @@ export default function VotersScreen({
         <ThermalPrinterDialog
           visible
           voter={thermalPrintRequest.voter}
+          members={thermalPrintRequest.members}
+          onVoterPrinted={handleVoterPrinted}
           bannerImage={thermalPrintRequest.bannerImage}
           showBanner={thermalPrintRequest.showBanner}
           onClose={() => setThermalPrintRequest(null)}
@@ -1423,10 +1458,8 @@ export default function VotersScreen({
             setPrinterSelectionVersion((version) => version + 1)
           }
           onPrinted={() => {
-            const printedVoter = thermalPrintRequest.voter;
             setThermalPrintRequest(null);
             setSlipPreview(null);
-            void handleVoterPrinted(printedVoter);
           }}
         />
       ) : null}

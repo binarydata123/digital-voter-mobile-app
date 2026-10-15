@@ -27,6 +27,7 @@ import type { Voter } from "@/services/voters";
 
 export type VoterSlipPreviewProps = {
   voter: Voter;
+  members?: Voter[];
   onClose: () => void;
   showBanner?: boolean;
   bannerImage?: string;
@@ -460,6 +461,7 @@ export async function printSlip(
 
 export function VoterSlipPreview({
   voter,
+  members,
   onClose,
   showBanner = false,
   bannerImage,
@@ -506,11 +508,12 @@ export function VoterSlipPreview({
   }
 
   const slipContent = (
-    <VoterSlipPaper
-      voter={voter}
-      showBanner={showBanner}
+    <View style={{ gap: 16 }}>{(members ?? [voter]).map((member, index) => <VoterSlipPaper
+      key={member.id}
+      voter={member}
+      showBanner={showBanner && index === 0}
       bannerImage={bannerImage}
-    />
+    />)}</View>
   );
 
   if (variant === "page") {
@@ -527,7 +530,7 @@ export function VoterSlipPreview({
     <SafeAreaView style={styles.backdrop}>
       <View style={styles.previewPanel}>
         <View style={styles.previewHeader}>
-          <Text style={styles.previewTitle}>Voter Slip Preview</Text>
+          <Text style={styles.previewTitle}>{members ? `Family slips (${members.length})` : "Voter Slip Preview"}</Text>
           <Pressable
             accessibilityLabel="Close voter slip preview"
             onPress={onClose}
@@ -564,19 +567,19 @@ export function VoterSlipPreview({
             </View>
           ) : null}
           <View style={styles.primaryFooterActions}>
-            <Pressable
+            {!members ? <Pressable
               accessibilityLabel="Download voter slip"
               onPress={handleDownload}
               style={[styles.footerButton, styles.downloadButton]}>
               <Download color="#334155" size={17} strokeWidth={2.5} />
               <Text style={styles.downloadText}>Download</Text>
-            </Pressable>
+            </Pressable> : null}
             <Pressable
               accessibilityLabel="Print voter slip"
               onPress={handlePrint}
               style={[styles.footerButton, styles.printButton]}>
               <Printer color="#FFFFFF" size={17} strokeWidth={2.5} />
-              <Text style={styles.printText}>Print</Text>
+              <Text style={styles.printText}>{members ? `Print all (${members.length})` : "Print"}</Text>
             </Pressable>
           </View>
         </View>
