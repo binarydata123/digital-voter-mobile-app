@@ -44,9 +44,9 @@ import {
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { AddVoterModal } from "@/features/voters/components/AddVoterModal";
+import { PrintSlipShareCapture } from "@/features/voters/components/PrintSlipShareCapture";
 import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 import { VoterCard } from "@/features/voters/components/VoterCard";
-import { PrintSlipShareCapture } from "@/features/voters/components/PrintSlipShareCapture";
 import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
 import { VoterEditModal } from "@/features/voters/components/VoterEditModal";
 import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleton";
@@ -81,8 +81,8 @@ import {
   deleteVoterDetails,
   fetchVoters,
   forEachVoterPage,
-  markVoterAsVoted,
   markPrintedVoterAsVoted,
+  markVoterAsVoted,
   saveManagedVoter,
   updateVoterDetails,
   type Voter,
