@@ -1,13 +1,14 @@
 import {
   BadgeCheck,
   ImagePlus,
+  MessageSquareWarning,
   MoreVertical,
   PanelsTopLeft,
   Pencil,
   Printer,
   Share2,
   Trash2,
-  UsersRound
+  UsersRound,
 } from "lucide-react-native";
 import { memo, useCallback, useRef, useState } from "react";
 import {
@@ -99,11 +100,6 @@ function VoterCardComponent({
       setMarkingVoted(false);
     }
   }, [onMarkVoted, voter]);
-
-  // const handleQrPress = useCallback(() => {
-  //   setQrVisible(true);
-  //   onScan?.(voter);
-  // }, [onScan, voter]);
 
   const handlePrintPress = useCallback(
     () => onPrint?.(voter),
@@ -341,6 +337,14 @@ function VoterCardComponent({
                   icon={Pencil}
                   title="Edit voter"
                   subtitle="Update voter details"
+                  onPress={handleEditPress}
+                />
+              ) : null}
+              {onEdit ? (
+                <ActionRow
+                  icon={MessageSquareWarning}
+                  title="Requirements & Complaints"
+                  subtitle="Manage voter requirements and complaints"
                   onPress={handleEditPress}
                 />
               ) : null}
