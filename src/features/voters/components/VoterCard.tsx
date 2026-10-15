@@ -2,13 +2,12 @@ import {
   BadgeCheck,
   ImagePlus,
   MoreVertical,
+  PanelsTopLeft,
   Pencil,
   Printer,
-  QrCode,
-  PanelsTopLeft,
   Share2,
   Trash2,
-  UsersRound,
+  UsersRound
 } from "lucide-react-native";
 import { memo, useCallback, useRef, useState } from "react";
 import {
@@ -79,8 +78,12 @@ function VoterCardComponent({
     if (!onShare || shareLock.current) return;
     shareLock.current = true;
     setSharing(true);
-    try { await onShare(voter); }
-    finally { shareLock.current = false; setSharing(false); }
+    try {
+      await onShare(voter);
+    } finally {
+      shareLock.current = false;
+      setSharing(false);
+    }
   }, [onShare, voter]);
   const [markingVoted, setMarkingVoted] = useState(false);
   const markingVotedRef = useRef(false);
@@ -97,10 +100,10 @@ function VoterCardComponent({
     }
   }, [onMarkVoted, voter]);
 
-  const handleQrPress = useCallback(() => {
-    setQrVisible(true);
-    onScan?.(voter);
-  }, [onScan, voter]);
+  // const handleQrPress = useCallback(() => {
+  //   setQrVisible(true);
+  //   onScan?.(voter);
+  // }, [onScan, voter]);
 
   const handlePrintPress = useCallback(
     () => onPrint?.(voter),
@@ -149,8 +152,7 @@ function VoterCardComponent({
                   }}
                   disabled={!onMarkVoted || voter.voted || markingVoted}
                   onPress={handleNamePress}
-                  style={styles.voterNameRow}
-                >
+                  style={styles.voterNameRow}>
                   {markingVoted ? (
                     <ActivityIndicator size="small" color="#15803d" />
                   ) : voter.voted ? (
@@ -160,8 +162,7 @@ function VoterCardComponent({
                   ) : null}
                   <Text
                     numberOfLines={1}
-                    style={[styles.voterName, styles.voterNameText]}
-                  >
+                    style={[styles.voterName, styles.voterNameText]}>
                     {voter.name}
                   </Text>
                 </Pressable>
@@ -174,29 +175,43 @@ function VoterCardComponent({
             <View style={styles.cardRightRail}>
               <View style={styles.boothActions}>
                 <View style={styles.quickActions}>
-                  <Pressable
+                  {/* <Pressable
                     accessibilityLabel="Show voter QR code"
                     onPress={handleQrPress}
                     style={styles.scanButton}
                   >
                     <QrCode color="#087568" size={15} strokeWidth={2.8} />
-                  </Pressable>
+                  </Pressable> */}
 
                   <Pressable
                     accessibilityLabel="Open voter card templates"
                     onPress={() => setFilterVisible(true)}
                     style={styles.scanButton}>
-                    <PanelsTopLeft color="#087568" size={16} strokeWidth={2.7} />
+                    <PanelsTopLeft
+                      color="#087568"
+                      size={16}
+                      strokeWidth={2.7}
+                    />
                   </Pressable>
 
-                  {onShare ? <Pressable accessibilityLabel="Share print slip" accessibilityState={{ busy: sharing }} disabled={sharing} onPress={handleSharePress} style={styles.scanButton}>
-                    {sharing ? <ActivityIndicator color="#087568" size="small" /> : <Share2 color="#087568" size={16} strokeWidth={2.7} />}
-                  </Pressable> : null}
+                  {onShare ? (
+                    <Pressable
+                      accessibilityLabel="Share print slip"
+                      accessibilityState={{ busy: sharing }}
+                      disabled={sharing}
+                      onPress={handleSharePress}
+                      style={styles.scanButton}>
+                      {sharing ? (
+                        <ActivityIndicator color="#087568" size="small" />
+                      ) : (
+                        <Share2 color="#087568" size={16} strokeWidth={2.7} />
+                      )}
+                    </Pressable>
+                  ) : null}
                   <Pressable
                     accessibilityLabel="Open voter actions"
                     onPress={() => setActionsVisible(true)}
-                    style={styles.scanButton}
-                  >
+                    style={styles.scanButton}>
                     <MoreVertical color="#087568" size={17} strokeWidth={2.8} />
                   </Pressable>
                 </View>
@@ -208,8 +223,7 @@ function VoterCardComponent({
             <Text
               numberOfLines={1}
               ellipsizeMode="tail"
-              style={styles.guardian}
-            >
+              style={styles.guardian}>
               {voter.guardian}
             </Text>
           </View>
@@ -236,12 +250,16 @@ function VoterCardComponent({
 
         <Pressable onPress={handlePrintPress} style={styles.printButton}>
           <Printer color="#087568" size={17} strokeWidth={2.5} />
-          <Text numberOfLines={1} style={styles.printText}>Print</Text>
+          <Text numberOfLines={1} style={styles.printText}>
+            Print
+          </Text>
         </Pressable>
 
         <Pressable onPress={handleFamilyPress} style={styles.familyButton}>
           <UsersRound color="#087568" size={17} strokeWidth={2.5} />
-          <Text numberOfLines={1} style={styles.printText}>Family</Text>
+          <Text numberOfLines={1} style={styles.printText}>
+            Family
+          </Text>
         </Pressable>
       </View>
 
@@ -257,12 +275,10 @@ function VoterCardComponent({
           transparent
           visible
           animationType="fade"
-          onRequestClose={() => setQrVisible(false)}
-        >
+          onRequestClose={() => setQrVisible(false)}>
           <Pressable
             style={styles.qrBackdrop}
-            onPress={() => setQrVisible(false)}
-          >
+            onPress={() => setQrVisible(false)}>
             <Pressable style={styles.qrPanel}>
               <Text style={styles.qrTitle}>{voter.name}</Text>
               <Text style={styles.qrSubtitle}>
@@ -279,8 +295,7 @@ function VoterCardComponent({
 
               <Pressable
                 onPress={() => setQrVisible(false)}
-                style={styles.qrCloseButton}
-              >
+                style={styles.qrCloseButton}>
                 <Text style={styles.qrCloseText}>Close</Text>
               </Pressable>
             </Pressable>
@@ -293,20 +308,19 @@ function VoterCardComponent({
           transparent
           visible
           animationType="slide"
-          onRequestClose={() => setActionsVisible(false)}
-        >
+          onRequestClose={() => setActionsVisible(false)}>
           <Pressable
             style={styles.actionBackdrop}
-            onPress={() => setActionsVisible(false)}
-          >
+            onPress={() => setActionsVisible(false)}>
             <Pressable
               style={styles.actionPanel}
-              onPress={(event) => event.stopPropagation()}
-            >
+              onPress={(event) => event.stopPropagation()}>
               <View style={styles.actionHandle} />
               <View style={styles.actionHeader}>
                 <Text style={styles.actionTitle}>Voter actions</Text>
-                <Text numberOfLines={1} style={styles.actionSubtitle}>{voter.name}</Text>
+                <Text numberOfLines={1} style={styles.actionSubtitle}>
+                  {voter.name}
+                </Text>
               </View>
 
               {/* {onImagePress ? (
@@ -445,11 +459,7 @@ const ActionRow = memo(function ActionRow({
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={[
-        styles.actionRow,
-        danger && styles.actionRowDanger,
-      ]}
-    >
+      style={[styles.actionRow, danger && styles.actionRowDanger]}>
       <View style={[styles.actionIcon, danger && styles.actionIconDanger]}>
         <Icon
           color={danger ? "#B91C1C" : "#087568"}
@@ -489,21 +499,27 @@ const InfoTile = memo(function InfoTile({
   compact?: boolean;
 }) {
   return (
-    <View style={[styles.infoTile, priority && styles.priorityInfoTile, compact && styles.compactInfoTile]}>
+    <View
+      style={[
+        styles.infoTile,
+        priority && styles.priorityInfoTile,
+        compact && styles.compactInfoTile,
+      ]}>
       <View style={styles.tileIcon}>
         <Icon color="#087568" size={17} strokeWidth={2.5} />
       </View>
 
       <View style={styles.tileTextWrap}>
-        <Text numberOfLines={1} style={styles.infoLabel}>{label}</Text>
+        <Text numberOfLines={1} style={styles.infoLabel}>
+          {label}
+        </Text>
 
         <Text
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.8}
           ellipsizeMode="tail"
-          style={styles.infoValue}
-        >
+          style={styles.infoValue}>
           {value}
         </Text>
       </View>
