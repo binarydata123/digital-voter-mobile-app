@@ -29,6 +29,7 @@ export type Voter = {
   whatsappNumber?: string;
   mobileNumber?: string;
   photoUri?: string;
+  voted?: boolean;
 };
 
 export type VoterStats = {
@@ -71,6 +72,7 @@ type VoterStarStanceKey =
   | "unassigned";
 
 type VoterStarRating = {
+  voterPhone?: string;
   voterKey?: string;
   voterSource?: "district_collection" | "user";
   voterCollection?: string;
@@ -373,6 +375,7 @@ function normalizeVoter(raw: any, index: number): Voter {
     voterSource: parsedVoterKey.voterSource,
     voterCollection: parsedVoterKey.voterCollection,
     voterDocumentId: parsedVoterKey.voterDocumentId,
+    voted: [true, 1, "true", "1"].includes(data?.voted ?? raw?.voted),
     name: cleanOptionalText(
       firstValue(
         data?.["Voter Name English"],
@@ -964,6 +967,38 @@ export async function deleteVoterDetails(voter: Voter) {
   if (response.data?.success === false) {
     throw new Error(response.data.message || "Unable to delete voter");
   }
+}
+
+export async function markVoterAsVoted(voter: Voter): Promise<Voter> {
+  await ensureAuthSession();
+  let voterKey = getVoterApiKey(voter);
+  if (!isManagedVoterKey(voterKey)) {
+    voterKey = (await resolveVoterIdentityFromBackend(voter))?.voterKey ?? "";
+  }
+  if (!isManagedVoterKey(voterKey)) {
+    throw new Error("Full voter identifier is missing. Please refresh voter data and try again.");
+  }
+
+  const identity = parseVoterKey(voterKey);
+  const existingStar = await fetchVoterStar(voterKey);
+  const response = await api.put(`/voter-stars/${encodeURIComponent(voterKey)}`, {
+    ...identity,
+    voterName: cleanOptionalText(voter.name),
+    voterPhone: cleanEditableDetailText(voter.mobileNumber) || cleanEditableDetailText(voter.whatsappNumber) || existingStar?.voterPhone || "",
+    stanceKey: existingStar?.stanceKey ?? "unassigned",
+    duplicateVote: existingStar?.duplicateVote ?? false,
+    dead: existingStar?.dead ?? false,
+    notes: existingStar?.notes ?? "",
+    photoUri: existingStar?.photoUri ?? voter.photoUri ?? "",
+    mobileNumber: existingStar?.mobileNumber ?? cleanEditableDetailText(voter.mobileNumber),
+    whatsappNumber: existingStar?.whatsappNumber ?? cleanEditableDetailText(voter.whatsappNumber),
+    voted: true,
+    source: "voter_detail",
+  });
+  if (response.data?.success === false) {
+    throw new Error(response.data.message || "Unable to mark voter as voted");
+  }
+  return { ...voter, ...identity, voted: true };
 }
 
 export async function fetchVoterById(epicNo: string): Promise<Voter | null> {

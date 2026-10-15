@@ -146,10 +146,12 @@ function VoterEditSheet({
       transparent
       visible={visible}
       animationType="slide"
-      onRequestClose={onClose}>
+      onRequestClose={onClose}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.backdrop}>
+        style={styles.backdrop}
+      >
         <Pressable style={styles.dismissArea} onPress={onClose} />
         <View style={styles.sheet}>
           <View style={styles.handle} />
@@ -163,7 +165,8 @@ function VoterEditSheet({
             <Pressable
               accessibilityLabel="Close edit voter"
               onPress={onClose}
-              style={styles.closeButton}>
+              style={styles.closeButton}
+            >
               <X color="#64748B" size={20} strokeWidth={2.8} />
             </Pressable>
           </View>
@@ -171,17 +174,14 @@ function VoterEditSheet({
           <ScrollView
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.form}>
+            contentContainerStyle={styles.form}
+          >
             <Field
               label="Name"
               value={form.name}
               onChangeText={(value) => updateField("name", value)}
             />
-            <Field
-              label="Hindi / local name"
-              value={form.hindiName ?? ""}
-              onChangeText={(value) => updateField("hindiName", value)}
-            />
+
             <View style={styles.twoColumn}>
               <Field
                 label="Gender"
@@ -197,11 +197,7 @@ function VoterEditSheet({
                 }
               />
             </View>
-            <Field
-              label="Guardian"
-              value={form.guardian}
-              onChangeText={(value) => updateField("guardian", value)}
-            />
+
             <View style={styles.twoColumn}>
               <Field
                 label="EPIC No."
@@ -214,7 +210,7 @@ function VoterEditSheet({
                 onChangeText={(value) => updateField("serialNo", value)}
               />
             </View>
-            <View style={styles.twoColumn}>
+            {/* <View style={styles.twoColumn}>
               <Field
                 label="House No."
                 value={form.houseNo}
@@ -225,12 +221,12 @@ function VoterEditSheet({
                 value={form.booth}
                 onChangeText={(value) => updateField("booth", value)}
               />
-            </View>
-            <Field
+            </View> */}
+            {/* <Field
               label="Ward"
               value={form.ward ?? ""}
               onChangeText={(value) => updateField("ward", value)}
-            />
+            /> */}
             <View style={styles.twoColumn}>
               <Field
                 keyboardType="phone-pad"

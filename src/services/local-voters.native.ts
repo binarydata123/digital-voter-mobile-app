@@ -46,6 +46,7 @@ type VoterRow = {
   serial_no: string;
   polling_station: string;
   photo_uri: string;
+  voted: number;
 };
 
 const VOTER_INSERT_BATCH_SIZE = 50;
@@ -98,6 +99,7 @@ function toVoter(row: VoterRow): Voter {
     serialNo: row.serial_no,
     pollingStation: row.polling_station,
     photoUri: row.photo_uri,
+    voted: row.voted === 1,
   };
 }
 
@@ -199,7 +201,7 @@ export async function getLocalVoterPage(
     database.getAllAsync<VoterRow>(
       `SELECT voter_id, voter_key, voter_source, voter_collection, voter_document_id,
         name, hindi_name, gender, age, guardian, epic_no, house_no,
-        booth, ward, district, state, serial_no, polling_station, photo_uri
+        booth, ward, district, state, serial_no, polling_station, photo_uri, voted
        FROM voters
        WHERE ${where}
        ORDER BY ${ranking}name COLLATE NOCASE, voter_id
@@ -252,8 +254,8 @@ async function insertLocalVoterPage(
         `INSERT OR REPLACE INTO voters (
           politician_id, voter_id, voter_key, voter_source, voter_collection,
           voter_document_id, name, hindi_name, gender, age, guardian, epic_no,
-          house_no, booth, ward, district, state, serial_no, polling_station, photo_uri
-        ) VALUES ${placeholders(batch.length, 20)}`,
+          house_no, booth, ward, district, state, serial_no, polling_station, photo_uri, voted
+        ) VALUES ${placeholders(batch.length, 21)}`,
         batch.flatMap((voter) => [
           politicianId,
           voter.id,
@@ -275,6 +277,7 @@ async function insertLocalVoterPage(
           voter.serialNo ?? "",
           voter.pollingStation ?? "",
           voter.photoUri ?? "",
+          voter.voted ? 1 : 0,
         ]),
       );
   }
@@ -357,7 +360,8 @@ export async function updateLocalVoter(politicianId: string, voter: Voter) {
         state = ?,
         serial_no = ?,
         polling_station = ?,
-        photo_uri = ?
+        photo_uri = ?,
+        voted = ?
        WHERE politician_id = ? AND voter_id = ?`,
       voter.voterKey ?? "",
       voter.voterSource ?? "",
@@ -377,6 +381,7 @@ export async function updateLocalVoter(politicianId: string, voter: Voter) {
       voter.serialNo ?? "",
       voter.pollingStation ?? "",
       voter.photoUri ?? "",
+      voter.voted ? 1 : 0,
       politicianId,
       voter.id,
     );

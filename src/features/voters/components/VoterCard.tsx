@@ -10,7 +10,7 @@ import {
   Trash2,
   UsersRound,
 } from "lucide-react-native";
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -26,14 +26,15 @@ import type { Voter } from "@/services/voters";
 
 import { getDefaultVoterAvatar } from "@/utils/voterAvatar";
 
-
 function buildVoterQrValue(voter: Voter): string {
   const epicNo = voter.epicNo ?? voter.id ?? voter.serialNo ?? "";
   return `https://votersakha.tech/voter-slip.html?epicNo=${encodeURIComponent(epicNo)}`;
 }
 
 function isUsableImageUri(uri?: string) {
-  const value = String(uri ?? "").trim().toLowerCase();
+  const value = String(uri ?? "")
+    .trim()
+    .toLowerCase();
   return Boolean(value && value !== "undefined" && value !== "null");
 }
 
@@ -46,6 +47,7 @@ type VoterCardProps = {
   onEdit?: (voter: Voter) => void;
   onDelete?: (voter: Voter) => void;
   onImagePress?: (voter: Voter) => void;
+  onMarkVoted?: (voter: Voter) => Promise<void>;
 };
 
 function VoterCardComponent({
@@ -57,10 +59,25 @@ function VoterCardComponent({
   onEdit,
   onDelete,
   onImagePress,
+  onMarkVoted,
 }: VoterCardProps) {
   const [qrVisible, setQrVisible] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [markingVoted, setMarkingVoted] = useState(false);
+  const markingVotedRef = useRef(false);
+
+  const handleNamePress = useCallback(async () => {
+    if (!onMarkVoted || voter.voted || markingVotedRef.current) return;
+    markingVotedRef.current = true;
+    setMarkingVoted(true);
+    try {
+      await onMarkVoted(voter);
+    } finally {
+      markingVotedRef.current = false;
+      setMarkingVoted(false);
+    }
+  }, [onMarkVoted, voter]);
 
   const handleQrPress = useCallback(() => {
     setQrVisible(true);
@@ -110,9 +127,36 @@ function VoterCardComponent({
         <View style={styles.voterContent}>
           <View style={styles.voterHeaderRow}>
             <View style={styles.voterInfo}>
-              <Text numberOfLines={1} style={styles.voterName}>
-                {voter.name}
-              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  voter.voted
+                    ? `${voter.name}, voted`
+                    : `Mark ${voter.name} as voted`
+                }
+                accessibilityState={{
+                  disabled:
+                    !onMarkVoted || Boolean(voter.voted) || markingVoted,
+                  busy: markingVoted,
+                }}
+                disabled={!onMarkVoted || voter.voted || markingVoted}
+                onPress={handleNamePress}
+                style={styles.voterNameRow}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={[styles.voterName, styles.voterNameText]}
+                >
+                  {voter.name}
+                </Text>
+                {markingVoted ? (
+                  <ActivityIndicator size="small" color="#15803d" />
+                ) : voter.voted ? (
+                  <View style={styles.votedBadge}>
+                    <BadgeCheck size={15} color="#087568" />
+                  </View>
+                ) : null}
+              </Pressable>
               <Text style={styles.voterMeta}>
                 {voter.gender} - {voter.age} Years
               </Text>
@@ -124,7 +168,8 @@ function VoterCardComponent({
                   <Pressable
                     accessibilityLabel="Show voter QR code"
                     onPress={handleQrPress}
-                    style={styles.scanButton}>
+                    style={styles.scanButton}
+                  >
                     <QrCode color="#087568" size={15} strokeWidth={2.8} />
                   </Pressable>
 
@@ -135,7 +180,8 @@ function VoterCardComponent({
                     style={[
                       styles.scanButton,
                       sharing && styles.scanButtonDisabled,
-                    ]}>
+                    ]}
+                  >
                     {sharing ? (
                       <ActivityIndicator color="#087568" size="small" />
                     ) : (
@@ -146,7 +192,8 @@ function VoterCardComponent({
                   <Pressable
                     accessibilityLabel="Open voter actions"
                     onPress={() => setActionsVisible(true)}
-                    style={styles.scanButton}>
+                    style={styles.scanButton}
+                  >
                     <MoreVertical color="#087568" size={17} strokeWidth={2.8} />
                   </Pressable>
                 </View>
@@ -158,7 +205,8 @@ function VoterCardComponent({
             <Text
               numberOfLines={1}
               ellipsizeMode="tail"
-              style={styles.guardian}>
+              style={styles.guardian}
+            >
               {voter.guardian}
             </Text>
             <Text style={styles.boothBadge}>
@@ -194,10 +242,12 @@ function VoterCardComponent({
           transparent
           visible
           animationType="fade"
-          onRequestClose={() => setQrVisible(false)}>
+          onRequestClose={() => setQrVisible(false)}
+        >
           <Pressable
             style={styles.qrBackdrop}
-            onPress={() => setQrVisible(false)}>
+            onPress={() => setQrVisible(false)}
+          >
             <Pressable style={styles.qrPanel}>
               <Text style={styles.qrTitle}>{voter.name}</Text>
               <Text style={styles.qrSubtitle}>
@@ -214,7 +264,8 @@ function VoterCardComponent({
 
               <Pressable
                 onPress={() => setQrVisible(false)}
-                style={styles.qrCloseButton}>
+                style={styles.qrCloseButton}
+              >
                 <Text style={styles.qrCloseText}>Close</Text>
               </Pressable>
             </Pressable>
@@ -227,10 +278,12 @@ function VoterCardComponent({
           transparent
           visible
           animationType="fade"
-          onRequestClose={() => setActionsVisible(false)}>
+          onRequestClose={() => setActionsVisible(false)}
+        >
           <Pressable
             style={styles.actionBackdrop}
-            onPress={() => setActionsVisible(false)}>
+            onPress={() => setActionsVisible(false)}
+          >
             <Pressable style={styles.actionPanel}>
               <View style={styles.actionHandle} />
               <Text style={styles.actionTitle}>{voter.name}</Text>
@@ -241,7 +294,9 @@ function VoterCardComponent({
               {onImagePress ? (
                 <ActionRow
                   icon={ImagePlus}
-                  title={voter.photoUri ? "Edit voter image" : "Add voter image"}
+                  title={
+                    voter.photoUri ? "Edit voter image" : "Add voter image"
+                  }
                   onPress={() => {
                     setActionsVisible(false);
                     onImagePress(voter);
@@ -291,6 +346,8 @@ function areVoterCardPropsEqual(
     previous.onEdit === next.onEdit &&
     previous.onDelete === next.onDelete &&
     previous.onImagePress === next.onImagePress &&
+    previous.onMarkVoted === next.onMarkVoted &&
+    before.voted === after.voted &&
     before.id === after.id &&
     before.name === after.name &&
     before.gender === after.gender &&
@@ -462,6 +519,15 @@ const styles = StyleSheet.create({
   },
   voterInfo: { flex: 1, minWidth: 0 },
   voterName: { color: "#06082A", fontWeight: "900", fontSize: 16 },
+  voterNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    minHeight: 32,
+  },
+  voterNameText: { flexShrink: 1 },
+  votedBadge: { flexDirection: "row", alignItems: "center", gap: 2 },
+  votedText: { color: "#15803d", fontSize: 10, fontWeight: "700" },
   voterMeta: {
     color: "#747999",
     fontWeight: "800",

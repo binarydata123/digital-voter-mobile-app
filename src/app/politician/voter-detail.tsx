@@ -1,9 +1,10 @@
 import { router, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
-import { ChevronLeft, ImagePlus, Pencil, Trash2 } from "lucide-react-native";
-import { useEffect, useState } from "react";
+import { BadgeCheck, ChevronLeft, ImagePlus, Pencil, Trash2 } from "lucide-react-native";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  ActivityIndicator,
   Image,
   Pressable,
   ScrollView,
@@ -25,6 +26,7 @@ import {
   fetchVoterById,
   getSelectedVoter,
   saveManagedVoter,
+  markVoterAsVoted,
   updateVoterDetails,
   type Voter,
 } from "@/services/voters";
@@ -51,6 +53,8 @@ export default function VoterDetailScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
   const [voter, setVoter] = useState<Voter | null>(getSelectedVoter());
   const [editing, setEditing] = useState(false);
+  const [markingVoted, setMarkingVoted] = useState(false);
+  const markingVotedRef = useRef(false);
 
   useEffect(() => {
     if (voter) return;
@@ -76,6 +80,24 @@ export default function VoterDetailScreen() {
   }
 
   const currentVoter = voter;
+
+  async function markVoted() {
+    if (currentVoter.voted || markingVotedRef.current) return;
+    markingVotedRef.current = true;
+    setMarkingVoted(true);
+    try {
+      const updated = await markVoterAsVoted(currentVoter);
+      setVoter(updated);
+      saveManagedVoter(updated);
+      const politicianId = getCurrentUser()?.id;
+      if (politicianId) await updateLocalVoter(politicianId, updated);
+    } catch (error: any) {
+      Alert.alert("Unable to mark voter as voted", error?.response?.data?.message || error?.message || "Please try again.");
+    } finally {
+      markingVotedRef.current = false;
+      setMarkingVoted(false);
+    }
+  }
 
   const address = [
     currentVoter.houseNo && currentVoter.houseNo !== "N/A"
@@ -196,7 +218,20 @@ export default function VoterDetailScreen() {
               <ImagePlus color="#FFFFFF" size={14} strokeWidth={3} />
             </View>
           </Pressable>
-          <Text style={styles.name}>{currentVoter.name}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={currentVoter.voted ? `${currentVoter.name}, voted` : `Mark ${currentVoter.name} as voted`}
+            accessibilityState={{ disabled: Boolean(currentVoter.voted) || markingVoted, busy: markingVoted }}
+            disabled={currentVoter.voted || markingVoted}
+            onPress={markVoted}>
+            <Text style={styles.name}>{currentVoter.name}</Text>
+            {markingVoted ? <ActivityIndicator size="small" color="#15803d" /> : currentVoter.voted ? (
+              <View style={styles.votedBadge}>
+                <BadgeCheck size={18} color="#15803d" />
+                <Text style={styles.votedText}>Voted</Text>
+              </View>
+            ) : null}
+          </Pressable>
           {currentVoter.hindiName ? (
             <Text style={styles.hindiName}>{currentVoter.hindiName}</Text>
           ) : null}
@@ -274,6 +309,8 @@ function Block({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  votedBadge: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 },
+  votedText: { color: "#15803d", fontWeight: "700", fontSize: 12 },
   safe: { flex: 1, backgroundColor: "#F4FBF7" },
   header: {
     flexDirection: "row",

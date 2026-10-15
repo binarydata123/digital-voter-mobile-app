@@ -82,6 +82,7 @@ import {
   fetchVoters,
   forEachVoterPage,
   saveManagedVoter,
+  markVoterAsVoted,
   updateVoterDetails,
   type Voter,
 } from "@/services/voters";
@@ -692,6 +693,20 @@ export default function VotersScreen({
     [replaceVoter],
   );
 
+  const handleMarkVoted = useCallback(async (voter: Voter) => {
+    if (voter.voted) return;
+    try {
+      const updated = await markVoterAsVoted(voter);
+      saveManagedVoter(updated);
+      setVoters((current) => current.map((item) => item.id === updated.id ? updated : item));
+      if (localPoliticianId) {
+        await updateLocalVoter(localPoliticianId, updated);
+      }
+    } catch (error: any) {
+      Alert.alert("Unable to mark voter as voted", error?.response?.data?.message || error?.message || "Please try again.");
+    }
+  }, [localPoliticianId]);
+
   const renderVoter = useCallback(
     (voter: Voter) => (
       <VoterCard
@@ -702,6 +717,7 @@ export default function VotersScreen({
         onEdit={handleEditVoter}
         onDelete={handleDeleteVoter}
         onImagePress={handleVoterImagePress}
+        onMarkVoted={handleMarkVoted}
       />
     ),
     [
@@ -711,6 +727,7 @@ export default function VotersScreen({
       handlePrint,
       handleShareVoterSlip,
       handleVoterImagePress,
+      handleMarkVoted,
     ],
   );
 
