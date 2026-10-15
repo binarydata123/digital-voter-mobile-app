@@ -12,7 +12,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, Check, Eye, ImagePlus, Minus, Plus, RotateCw, X } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Image, Modal, Platform, PanResponder, type GestureResponderEvent, type PanResponderGestureState, Pressable, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 type SourceImage = { uri: string; width: number; height: number };
 
@@ -234,17 +234,19 @@ export default function BannerSetupScreen() {
         </Pressable>
       </View>
       <Modal visible={pagePreview} animationType="slide" onRequestClose={() => setPagePreview(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: "#F1F5F9" }}>
-          <View className="flex-row items-center justify-between px-4 py-3">
-            <Text className="text-lg font-bold text-[#0F172A]">Page preview</Text>
-            <Pressable accessibilityLabel="Close preview" onPress={() => setPagePreview(false)} className="rounded-full bg-white p-3"><X color="#087568" size={22} /></Pressable>
-          </View>
-          <ScrollView contentContainerClassName="p-4">
-            {pagePreview && source && template ? <TemplatePagePreview fields={fields} layout={template.key} crop={{ source, width: cropWidth, height: cropHeight, x: originX, y: originY }} columns={4} booth={params.booth} /> : null}
-            <Text className="mt-3 text-center text-xs text-[#64748B]">1 / 1 · Example voter data</Text>
-          </ScrollView>
-          <View className="border-t border-[#E2E8F0] bg-white p-4"><Pressable onPress={() => setPagePreview(false)} className="min-h-[50px] items-center justify-center rounded-[14px] bg-[#064E3B]"><Text className="text-[15px] font-bold text-white">Back to editing</Text></Pressable></View>
-        </SafeAreaView>
+        <SafeAreaProvider style={{ flex: 1, backgroundColor: "#F1F5F9" }}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: "#F1F5F9" }}>
+            <View className="flex-row items-center justify-between px-4 py-3">
+              <Text className="text-lg font-bold text-[#0F172A]">Page preview</Text>
+              <Pressable accessibilityLabel="Close preview" onPress={() => setPagePreview(false)} className="rounded-full bg-white p-3"><X color="#087568" size={22} /></Pressable>
+            </View>
+            <ScrollView contentContainerClassName="p-4">
+              {pagePreview && source && template ? <TemplatePagePreview fields={fields} layout={template.key} crop={{ source, width: cropWidth, height: cropHeight, x: originX, y: originY }} columns={4} booth={params.booth} /> : null}
+              <Text className="mt-3 text-center text-xs text-[#64748B]">1 / 1 · Example voter data</Text>
+            </ScrollView>
+            <View className="border-t border-[#E2E8F0] bg-white p-4"><Pressable onPress={() => setPagePreview(false)} className="min-h-[50px] items-center justify-center rounded-[14px] bg-[#064E3B]"><Text className="text-[15px] font-bold text-white">Back to editing</Text></Pressable></View>
+          </SafeAreaView>
+        </SafeAreaProvider>
       </Modal>
     </SafeAreaView>
   );
