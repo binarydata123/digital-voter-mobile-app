@@ -1,14 +1,13 @@
 import {
   BadgeCheck,
   ImagePlus,
-  MessageSquareWarning,
   MoreVertical,
   PanelsTopLeft,
   Pencil,
   Printer,
   Share2,
   Trash2,
-  UsersRound,
+  UsersRound
 } from "lucide-react-native";
 import { memo, useCallback, useRef, useState } from "react";
 import {
@@ -23,6 +22,10 @@ import {
 import QRCode from "react-native-qrcode-svg";
 
 import type { Voter } from "@/services/voters";
+import {
+  RequirementsComplaintsModal,
+  type VoterRequestPayload,
+} from "./RequirementsComplaintsModal";
 import { VoterTemplateCarousel } from "./VoterTemplateCarousel";
 
 import { getDefaultVoterAvatar } from "@/utils/voterAvatar";
@@ -49,6 +52,7 @@ type VoterCardProps = {
   onDelete?: (voter: Voter) => void;
   onImagePress?: (voter: Voter) => void;
   onMarkVoted?: (voter: Voter) => Promise<void>;
+  onRequestSubmit?: (record: VoterRequestPayload) => void;
 };
 
 function formatEpicNo(epicNo?: string | null): string {
@@ -69,12 +73,14 @@ function VoterCardComponent({
   onDelete,
   onImagePress,
   onMarkVoted,
+  onRequestSubmit,
 }: VoterCardProps) {
   const [qrVisible, setQrVisible] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [sharing, setSharing] = useState(false);
   const shareLock = useRef(false);
+  const [requirementsVisible, setRequirementsVisible] = useState(false);
   const handleSharePress = useCallback(async () => {
     if (!onShare || shareLock.current) return;
     shareLock.current = true;
@@ -122,6 +128,10 @@ function VoterCardComponent({
     onDelete?.(voter);
   }, [onDelete, voter]);
 
+  const handleRequirementsPress = useCallback(() => {
+    setActionsVisible(false);
+    setRequirementsVisible(true);
+  }, []);
   return (
     <View style={styles.voterCard}>
       <View style={styles.voterTop}>
@@ -340,14 +350,12 @@ function VoterCardComponent({
                   onPress={handleEditPress}
                 />
               ) : null}
-              {onEdit ? (
-                <ActionRow
-                  icon={MessageSquareWarning}
-                  title="Requirements & Complaints"
-                  subtitle="Manage voter requirements and complaints"
-                  onPress={handleEditPress}
-                />
-              ) : null}
+              {/* <ActionRow
+                icon={MessageSquareWarning}
+                title="Requirements & Complaints"
+                subtitle="Manage voter requirements and complaints"
+                onPress={handleRequirementsPress}
+              /> */}
               {onDelete ? (
                 <ActionRow
                   danger
@@ -361,6 +369,13 @@ function VoterCardComponent({
           </Pressable>
         </Modal>
       ) : null}
+
+      <RequirementsComplaintsModal
+        visible={requirementsVisible}
+        voter={{ id: voter.id, name: voter.name, epicNo: voter.epicNo }}
+        onClose={() => setRequirementsVisible(false)}
+        onSubmit={(record) => onRequestSubmit?.(record)}
+      />
     </View>
   );
 }
@@ -386,6 +401,7 @@ function areVoterCardPropsEqual(
     previous.onDelete === next.onDelete &&
     previous.onImagePress === next.onImagePress &&
     previous.onMarkVoted === next.onMarkVoted &&
+    previous.onRequestSubmit === next.onRequestSubmit &&
     before.voted === after.voted &&
     before.id === after.id &&
     before.name === after.name &&

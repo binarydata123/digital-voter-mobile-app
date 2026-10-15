@@ -142,7 +142,7 @@ async function initializeDatabase() {
   if (!columns.some((column) => column.name === "voted")) {
     await database.execAsync("ALTER TABLE voters ADD COLUMN voted INTEGER NOT NULL DEFAULT 0;");
   }
-  for (const column of ["education", "working"]) {
+  for (const column of ["education", "working", "economic_category", "social_category", "ration_category"]) {
     if (!columns.some((existing) => existing.name === column)) {
       await database.execAsync(`ALTER TABLE voters ADD COLUMN ${column} TEXT NOT NULL DEFAULT '';`);
     }

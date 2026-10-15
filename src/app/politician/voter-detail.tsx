@@ -1,7 +1,7 @@
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { BadgeCheck, ChevronLeft, ImagePlus, Pencil, Trash2 } from "lucide-react-native";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   ActivityIndicator,
@@ -14,7 +14,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { VoterEditModal } from "@/features/voters/components/VoterEditModal";
 import {
   deleteLocalVoter,
   updateLocalVoter,
@@ -26,6 +25,7 @@ import {
   fetchVoterById,
   getSelectedVoter,
   saveManagedVoter,
+  setSelectedVoter,
   markVoterAsVoted,
   updateVoterDetails,
   type Voter,
@@ -52,9 +52,13 @@ function getRelationLabel(relation?: string): string {
 export default function VoterDetailScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
   const [voter, setVoter] = useState<Voter | null>(getSelectedVoter());
-  const [editing, setEditing] = useState(false);
   const [markingVoted, setMarkingVoted] = useState(false);
   const markingVotedRef = useRef(false);
+
+  useFocusEffect(useCallback(() => {
+    const updated = getSelectedVoter();
+    if (updated?.id === params.id) setVoter(updated);
+  }, [params.id]));
 
   useEffect(() => {
     if (voter) return;
@@ -112,26 +116,6 @@ export default function VoterDetailScreen() {
 
   const relationLabel = getRelationLabel((currentVoter as any).relation);
 
-  async function saveVoter(nextVoter: Voter) {
-    try {
-      const savedVoter = await updateVoterDetails(nextVoter);
-      setVoter(savedVoter);
-      saveManagedVoter(savedVoter);
-      const politicianId = getCurrentUser()?.id;
-      if (politicianId) {
-        await updateLocalVoter(politicianId, savedVoter);
-      }
-      setEditing(false);
-    } catch (error: any) {
-      Alert.alert(
-        "Unable to save voter",
-        error?.response?.data?.message ||
-          error?.message ||
-          "Please check your connection and try again.",
-      );
-    }
-  }
-
   async function pickVoterImage() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
@@ -154,7 +138,15 @@ export default function VoterDetailScreen() {
       return;
     }
 
-    saveVoter({ ...currentVoter, photoUri: result.assets[0].uri });
+    try {
+      const saved = await updateVoterDetails({ ...currentVoter, photoUri: result.assets[0].uri });
+      const politicianId = getCurrentUser()?.id;
+      if (politicianId) await updateLocalVoter(politicianId, saved);
+      saveManagedVoter(saved);
+      setVoter(saved);
+    } catch (error: any) {
+      Alert.alert("Unable to save voter image", error?.response?.data?.message || error?.message || "Please try again.");
+    }
   }
 
   function confirmDelete() {
@@ -193,12 +185,6 @@ export default function VoterDetailScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <VoterEditModal
-        visible={editing}
-        voter={currentVoter}
-        onClose={() => setEditing(false)}
-        onSave={saveVoter}
-      />
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <ChevronLeft color="#0F766E" size={22} strokeWidth={3} />
@@ -238,7 +224,7 @@ export default function VoterDetailScreen() {
           <View style={styles.actionRow}>
             <Pressable
               accessibilityLabel="Edit voter"
-              onPress={() => setEditing(true)}
+              onPress={() => { setSelectedVoter(currentVoter); router.push({ pathname: "./voter-edit", params: { id: currentVoter.id } }); }}
               style={styles.actionButton}>
               <Pencil color="#087568" size={17} strokeWidth={2.6} />
               <Text style={styles.actionText}>Edit</Text>

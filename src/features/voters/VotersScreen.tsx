@@ -2,7 +2,7 @@ import { BannerStudioMenuItem } from "@/features/banner-generation/BannerStudioM
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import {
   ArrowLeft,
   ArrowUp,
@@ -44,13 +44,12 @@ import {
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { AddVoterModal } from "@/features/voters/components/AddVoterModal";
+import { PrintSlipShareCapture } from "@/features/voters/components/PrintSlipShareCapture";
 import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 import { VoterCard } from "@/features/voters/components/VoterCard";
-import { getLocalFamilyMembers } from "@/services/voter-family";
-import { PrintSlipShareCapture } from "@/features/voters/components/PrintSlipShareCapture";
 import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
-import { VoterEditModal } from "@/features/voters/components/VoterEditModal";
 import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleton";
+import { getLocalFamilyMembers } from "@/services/voter-family";
 import { searchRank, searchTerms } from "@/utils/voterSearch";
 
 import { VoterSlipPreview } from "@/features/voters/components/VoterSlipPreview";
@@ -82,9 +81,10 @@ import {
   deleteVoterDetails,
   fetchVoters,
   forEachVoterPage,
-  markVoterAsVoted,
   markPrintedVoterAsVoted,
+  markVoterAsVoted,
   saveManagedVoter,
+  setSelectedVoter,
   updateVoterDetails,
   type Voter,
 } from "@/services/voters";
@@ -146,7 +146,6 @@ export default function VotersScreen({
   const [thermalPrintRequest, setThermalPrintRequest] =
     useState<ThermalPrintRequest | null>(null);
   const [printerSelectionVersion, setPrinterSelectionVersion] = useState(0);
-  const [editingVoter, setEditingVoter] = useState<Voter | null>(null);
   const [loadingFamily, setLoadingFamily] = useState(false);
   const familyLookupId = useRef(0);
   const [sharingSlip, setSharingSlip] = useState<{
@@ -559,26 +558,19 @@ export default function VotersScreen({
     [localPoliticianId, refreshLocalOverview],
   );
 
-  const handleSaveVoter = useCallback(
-    async (nextVoter: Voter) => {
-      try {
-        await replaceVoter(nextVoter);
-        setEditingVoter(null);
-      } catch (error: any) {
-        Alert.alert(
-          "Unable to save voter",
-          error?.response?.data?.message ||
-            error?.message ||
-            "Please check your connection and try again.",
-        );
-      }
-    },
-    [replaceVoter],
-  );
-
   const handleEditVoter = useCallback((voter: Voter) => {
-    setEditingVoter(voter);
+    setSelectedVoter(voter);
+    router.push({ pathname: "./voter-edit", params: { id: voter.id } });
   }, []);
+
+  useFocusEffect(useCallback(() => {
+    setVoters(current => applyManagedVoterChanges(current));
+    let active = true;
+    if (localPoliticianId) getLocalVoterOverview(localPoliticianId).then(overview => {
+      if (active) { setLocalAllVoterTotal(overview.total); setLocalBoothCounts(overview.boothCounts); }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [localPoliticianId]));
 
   const deleteVoter = useCallback(
     async (voter: Voter) => {
@@ -836,23 +828,20 @@ export default function VotersScreen({
                 accessibilityRole="button"
                 accessibilityLabel="Add voter"
                 onPress={() => setAddingVoter(true)}
-                style={styles.headerIconButton}
-              >
+                style={styles.headerIconButton}>
                 <UserPlus color="#0F766E" size={19} strokeWidth={2.6} />
               </Pressable>
               <Pressable
                 accessibilityLabel="Refresh offline voter data"
                 onPress={refreshAllVoterData}
                 disabled={refreshing}
-                style={styles.headerIconButton}
-              >
+                style={styles.headerIconButton}>
                 <RefreshCw color="#0F766E" size={18} strokeWidth={2.8} />
               </Pressable>
               <Pressable
                 accessibilityLabel="Open voter menu"
                 onPress={() => setMenuVisible(true)}
-                style={[styles.headerIconButton, styles.menuButton]}
-              >
+                style={[styles.headerIconButton, styles.menuButton]}>
                 <Menu color="#FFFFFF" size={21} strokeWidth={2.8} />
               </Pressable>
             </View>
@@ -889,8 +878,7 @@ export default function VotersScreen({
       <View
         style={
           section === "controls" ? styles.stickyControls : styles.boothControls
-        }
-      >
+        }>
         {section === "controls" ? (
           <View style={styles.searchRow}>
             {searchMode ? (
@@ -926,21 +914,18 @@ export default function VotersScreen({
                     pathname: "./voter-search",
                     params: { booth: activeBooth },
                   })
-                }
-              >
+                }>
                 <Search color="#94A3B8" size={18} strokeWidth={2.6} />
                 <Text
                   style={[styles.searchInput, { color: "#94A3B8" }]}
-                  numberOfLines={1}
-                >
+                  numberOfLines={1}>
                   Search name, EPIC No. or Serial No.
                 </Text>
               </Pressable>
             )}
             <Pressable
               style={styles.filterButton}
-              onPress={() => setModalVisible(true)}
-            >
+              onPress={() => setModalVisible(true)}>
               <SlidersHorizontal color="#FFFFFF" size={15} strokeWidth={2.8} />
               <Text style={styles.filterButtonText}>Filter</Text>
             </Pressable>
@@ -961,8 +946,7 @@ export default function VotersScreen({
               return (
                 <Pressable
                   onPress={() => selectBooth(item)}
-                  style={[styles.boothTab, isActive && styles.boothTabActive]}
-                >
+                  style={[styles.boothTab, isActive && styles.boothTabActive]}>
                   {item === "All" ? (
                     <UsersRound
                       color={isActive ? "#FFFFFF" : "#087568"}
@@ -974,22 +958,19 @@ export default function VotersScreen({
                     style={[
                       styles.boothTabText,
                       isActive && styles.boothTabTextActive,
-                    ]}
-                  >
+                    ]}>
                     {label}
                   </Text>
                   <View
                     style={[
                       styles.countBadge,
                       isActive && styles.countBadgeActive,
-                    ]}
-                  >
+                    ]}>
                     <Text
                       style={[
                         styles.countBadgeText,
                         isActive && styles.countBadgeTextActive,
-                      ]}
-                    >
+                      ]}>
                       {count}
                     </Text>
                   </View>
@@ -1070,14 +1051,29 @@ export default function VotersScreen({
     const lookupId = ++familyLookupId.current;
     setLoadingFamily(true);
     try {
-      const members = request.scope === "family" ? await getLocalFamilyMembers(localPoliticianId ?? currentUser?.id ?? "", request.voter) : undefined;
+      const members =
+        request.scope === "family"
+          ? await getLocalFamilyMembers(
+              localPoliticianId ?? currentUser?.id ?? "",
+              request.voter,
+            )
+          : undefined;
       if (lookupId !== familyLookupId.current) return;
-      if (members && !members.length) throw new Error("No family members found locally. Refresh the voter list and try again.");
+      if (members && !members.length)
+        throw new Error(
+          "No family members found locally. Refresh the voter list and try again.",
+        );
       setSlipPreview({ ...request, withBanner, members });
       setPrintTypeRequest(null);
     } catch (error) {
-      if (lookupId === familyLookupId.current) Alert.alert("Unable to load family slips", error instanceof Error ? error.message : "Please try again.");
-    } finally { if (lookupId === familyLookupId.current) setLoadingFamily(false); }
+      if (lookupId === familyLookupId.current)
+        Alert.alert(
+          "Unable to load family slips",
+          error instanceof Error ? error.message : "Please try again.",
+        );
+    } finally {
+      if (lookupId === familyLookupId.current) setLoadingFamily(false);
+    }
   }
   function closePrintType() {
     ++familyLookupId.current;
@@ -1104,7 +1100,10 @@ export default function VotersScreen({
     let completed = 0;
     try {
       for (const member of members) {
-        await printThermalVoterSlip(member, savedPrinter, { ...request, showBanner: request.showBanner && completed === 0 });
+        await printThermalVoterSlip(member, savedPrinter, {
+          ...request,
+          showBanner: request.showBanner && completed === 0,
+        });
         completed += 1;
         await handleVoterPrinted(member);
       }
@@ -1113,7 +1112,13 @@ export default function VotersScreen({
       // The saved printer is no longer reachable. Let the user reconnect or
       // choose another device instead of leaving them at a failed print alert.
       const remaining = members.slice(completed);
-      if (remaining.length) setThermalPrintRequest({ ...request, voter: remaining[0], members: remaining, showBanner: request.showBanner && completed === 0 });
+      if (remaining.length)
+        setThermalPrintRequest({
+          ...request,
+          voter: remaining[0],
+          members: remaining,
+          showBanner: request.showBanner && completed === 0,
+        });
     }
   }, [slipPreview, handleVoterPrinted]);
 
@@ -1141,12 +1146,6 @@ export default function VotersScreen({
           onCreated={handleVoterCreated}
         />
       ) : null}
-      <VoterEditModal
-        visible={Boolean(editingVoter)}
-        voter={editingVoter}
-        onClose={() => setEditingVoter(null)}
-        onSave={handleSaveVoter}
-      />
       <View
         pointerEvents="none"
         style={{
@@ -1169,8 +1168,7 @@ export default function VotersScreen({
                   ? router.back()
                   : router.replace("/politician/voters")
               }
-              style={styles.searchPageBack}
-            >
+              style={styles.searchPageBack}>
               <ArrowLeft size={22} color="#087568" />
             </Pressable>
             <View style={{ flex: 1 }}>
@@ -1231,16 +1229,13 @@ export default function VotersScreen({
         transparent
         visible={menuVisible}
         animationType="slide"
-        onRequestClose={() => setMenuVisible(false)}
-      >
+        onRequestClose={() => setMenuVisible(false)}>
         <Pressable
           style={styles.menuBackdrop}
-          onPress={() => setMenuVisible(false)}
-        >
+          onPress={() => setMenuVisible(false)}>
           <Pressable
             style={styles.menuDrawer}
-            onPress={(event) => event.stopPropagation()}
-          >
+            onPress={(event) => event.stopPropagation()}>
             <View style={styles.menuHandle} />
             <View style={styles.menuHeader}></View>
             {canOpenSurvey ? (
@@ -1249,8 +1244,7 @@ export default function VotersScreen({
                   setMenuVisible(false);
                   openSurveyPage();
                 }}
-                style={styles.menuRow}
-              >
+                style={styles.menuRow}>
                 <View style={styles.menuIconWrap}>
                   <UsersRound color="#087568" size={20} strokeWidth={2.6} />
                 </View>
@@ -1269,8 +1263,7 @@ export default function VotersScreen({
                   setMenuVisible(false);
                   router.push("/politician/templates");
                 }}
-                style={styles.menuRow}
-              >
+                style={styles.menuRow}>
                 <View style={styles.menuIconWrap}>
                   <Printer color="#087568" size={20} strokeWidth={2.6} />
                 </View>
@@ -1294,8 +1287,7 @@ export default function VotersScreen({
                 setMenuVisible(false);
                 void confirmLogout();
               }}
-              style={[styles.menuRow, styles.logoutMenuRow]}
-            >
+              style={[styles.menuRow, styles.logoutMenuRow]}>
               <View style={[styles.menuIconWrap, styles.logoutMenuIconWrap]}>
                 <LogOut color="#B91C1C" size={20} strokeWidth={2.6} />
               </View>
@@ -1317,15 +1309,13 @@ export default function VotersScreen({
         animationType="fade"
         onRequestClose={() => {
           if (!deletingVoter) setDeleteVoterRequest(null);
-        }}
-      >
+        }}>
         {deleteVoterRequest ? (
           <Pressable
             style={styles.printChoiceBackdrop}
             onPress={() => {
               if (!deletingVoter) setDeleteVoterRequest(null);
-            }}
-          >
+            }}>
             <Pressable style={styles.deleteConfirmPanel}>
               <Text style={styles.deleteConfirmTitle}>Delete voter?</Text>
               <Text style={styles.deleteConfirmMessage}>
@@ -1338,8 +1328,7 @@ export default function VotersScreen({
                   style={[
                     styles.deleteCancelButton,
                     deletingVoter && styles.disabledButton,
-                  ]}
-                >
+                  ]}>
                   <Text style={styles.deleteCancelText}>Cancel</Text>
                 </Pressable>
                 <Pressable
@@ -1348,8 +1337,7 @@ export default function VotersScreen({
                   style={[
                     styles.deleteConfirmButton,
                     deletingVoter && styles.disabledButton,
-                  ]}
-                >
+                  ]}>
                   <Text style={styles.deleteConfirmText}>
                     {deletingVoter ? "Deleting..." : "Delete"}
                   </Text>
@@ -1377,17 +1365,12 @@ export default function VotersScreen({
         transparent
         visible={Boolean(printTypeRequest)}
         animationType="slide"
-        onRequestClose={closePrintType}
-      >
+        onRequestClose={closePrintType}>
         {printTypeRequest ? (
-          <Pressable
-            style={styles.modalBackdrop}
-            onPress={closePrintType}
-          >
+          <Pressable style={styles.modalBackdrop} onPress={closePrintType}>
             <Pressable
               style={styles.modalSheet}
-              onPress={(event) => event.stopPropagation()}
-            >
+              onPress={(event) => event.stopPropagation()}>
               <View style={styles.handle} />
               <View style={styles.printChoiceHeader}>
                 <Text style={styles.printChoiceTitle}>
@@ -1398,13 +1381,14 @@ export default function VotersScreen({
                 <Pressable
                   accessibilityLabel="Close print type"
                   onPress={closePrintType}
-                  style={styles.printChoiceClose}
-                >
+                  style={styles.printChoiceClose}>
                   <Text style={styles.printChoiceCloseText}>×</Text>
                 </Pressable>
               </View>
 
-              <View style={styles.printOptions} pointerEvents={loadingFamily ? "none" : "auto"}>
+              <View
+                style={styles.printOptions}
+                pointerEvents={loadingFamily ? "none" : "auto"}>
                 {canUseTemplates ? (
                   <PrintChoiceRow
                     icon={
@@ -1442,7 +1426,11 @@ export default function VotersScreen({
                   onPress={() => openSlipPreview(false)}
                 />
               </View>
-              {loadingFamily ? <Text style={styles.printChoiceSubtitle}>Loading family slips from this device…</Text> : null}
+              {loadingFamily ? (
+                <Text style={styles.printChoiceSubtitle}>
+                  Loading family slips from this device…
+                </Text>
+              ) : null}
             </Pressable>
           </Pressable>
         ) : null}
@@ -1453,8 +1441,7 @@ export default function VotersScreen({
         transparent
         visible={Boolean(slipPreview)}
         animationType="fade"
-        onRequestClose={() => setSlipPreview(null)}
-      >
+        onRequestClose={() => setSlipPreview(null)}>
         {slipPreview ? (
           <VoterSlipPreview
             voter={slipPreview.voter}
@@ -1493,12 +1480,10 @@ export default function VotersScreen({
         transparent
         visible={modalVisible}
         animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
-      >
+        onRequestClose={() => setModalVisible(false)}>
         <Pressable
           style={styles.modalBackdrop}
-          onPress={() => setModalVisible(false)}
-        >
+          onPress={() => setModalVisible(false)}>
           <View style={styles.modalSheet}>
             <View style={styles.handle} />
             <Text style={styles.modalTitle}>Booth Wise Voters</Text>
@@ -1510,8 +1495,7 @@ export default function VotersScreen({
                     selectBooth(booth);
                     setModalVisible(false);
                   }}
-                  style={styles.modalCard}
-                >
+                  style={styles.modalCard}>
                   <Text style={styles.modalCardLabel}>{booth}</Text>
                   <Text style={styles.modalCardValue}>{count}</Text>
                 </Pressable>
@@ -1524,8 +1508,7 @@ export default function VotersScreen({
       {/* Scroll-to-top floating button */}
       <Animated.View
         pointerEvents={showScrollTop ? "auto" : "none"}
-        style={[styles.scrollTopWrap, { opacity: scrollTopOpacity }]}
-      >
+        style={[styles.scrollTopWrap, { opacity: scrollTopOpacity }]}>
         <Pressable
           // Preserve the native Pressable style callback on Android.
           cssInterop={false}
@@ -1534,8 +1517,7 @@ export default function VotersScreen({
           style={({ pressed }) => [
             styles.scrollTopButton,
             pressed && { transform: [{ scale: 0.92 }] },
-          ]}
-        >
+          ]}>
           <ArrowUp color="#FFFFFF" size={20} strokeWidth={3} />
         </Pressable>
       </Animated.View>

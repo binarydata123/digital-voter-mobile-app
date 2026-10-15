@@ -34,6 +34,9 @@ export type Voter = {
   photoUri?: string;
   education?: string;
   working?: string;
+  economicCategory?: string;
+  socialCategory?: string;
+  rationCategory?: string;
   voted?: boolean;
 };
 
@@ -383,6 +386,9 @@ function normalizeVoter(raw: any, index: number): Voter {
     voted: [true, 1, "true", "1"].includes(data?.voted ?? raw?.voted),
     education: cleanOptionalText(firstValue(data?.education, data?.Education, raw?.education)),
     working: cleanOptionalText(firstValue(data?.working, data?.Working, data?.occupation, raw?.working, raw?.occupation)),
+    economicCategory: cleanOptionalText(firstValue(data?.economicCategory, raw?.economicCategory)),
+    socialCategory: cleanOptionalText(firstValue(data?.socialCategory, raw?.socialCategory)),
+    rationCategory: cleanOptionalText(firstValue(data?.rationCategory, raw?.rationCategory)),
     name: cleanOptionalText(
       firstValue(
         data?.["Voter Name English"],
@@ -914,6 +920,9 @@ export async function updateVoterDetails(voter: Voter) {
     pollingStation: cleanOptionalText(voter.pollingStation),
     education: voter.education === undefined ? undefined : cleanOptionalText(voter.education),
     working: voter.working === undefined ? undefined : cleanOptionalText(voter.working),
+    economicCategory: voter.economicCategory === undefined ? undefined : cleanOptionalText(voter.economicCategory),
+    socialCategory: voter.socialCategory === undefined ? undefined : cleanOptionalText(voter.socialCategory),
+    rationCategory: voter.rationCategory === undefined ? undefined : cleanOptionalText(voter.rationCategory),
     "Voter Name English": cleanOptionalText(voter.name),
     "Voter Name Hindi": cleanOptionalText(voter.hindiName),
     Gender: cleanOptionalText(voter.gender),
