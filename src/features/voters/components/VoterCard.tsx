@@ -216,16 +216,17 @@ function VoterCardComponent({
           icon={BadgeCheck}
           label="Serial No."
           value={voter.serialNo || "N/A"}
+          compact
         />
 
         <Pressable onPress={handlePrintPress} style={styles.printButton}>
           <Printer color="#087568" size={17} strokeWidth={2.5} />
-          <Text style={styles.printText}>Print</Text>
+          <Text numberOfLines={1} style={styles.printText}>Print</Text>
         </Pressable>
 
         <Pressable onPress={handleFamilyPress} style={styles.familyButton}>
           <UsersRound color="#087568" size={17} strokeWidth={2.5} />
-          <Text style={styles.printText}>Family</Text>
+          <Text numberOfLines={1} style={styles.printText}>Family</Text>
         </Pressable>
       </View>
 
@@ -459,6 +460,7 @@ const InfoTile = memo(function InfoTile({
   label,
   value,
   priority = false,
+  compact = false,
 }: {
   icon: React.ComponentType<{
     color?: string;
@@ -468,15 +470,16 @@ const InfoTile = memo(function InfoTile({
   label: string;
   value: string;
   priority?: boolean;
+  compact?: boolean;
 }) {
   return (
-    <View style={[styles.infoTile, priority && styles.priorityInfoTile]}>
+    <View style={[styles.infoTile, priority && styles.priorityInfoTile, compact && styles.compactInfoTile]}>
       <View style={styles.tileIcon}>
         <Icon color="#087568" size={17} strokeWidth={2.5} />
       </View>
 
-      <View style={styles.tileTextWrap}>
-        <Text style={styles.infoLabel}>{label}</Text>
+      <View style={[styles.tileTextWrap, compact && styles.compactTileTextWrap]}>
+        <Text numberOfLines={1} style={styles.infoLabel}>{label}</Text>
 
         <Text
           numberOfLines={1}
@@ -611,6 +614,7 @@ const styles = StyleSheet.create({
   priorityInfoTile: {
     flex: 1.15,
   },
+  compactInfoTile: { flex: 0, flexShrink: 1 },
   tileIcon: {
     width: 26,
     height: 26,
@@ -620,6 +624,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   tileTextWrap: { flex: 1, minWidth: 0 },
+  compactTileTextWrap: { flex: 0, flexShrink: 1, minWidth: 0 },
   infoLabel: { color: "#747999", fontSize: 12, fontWeight: "800" },
   infoValue: {
     color: "#06082A",
@@ -628,8 +633,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   printButton: {
-    width: 34,
-    height: 45,
+    minWidth: 34,
+    minHeight: 45,
+    flexShrink: 0,
     // borderRadius: 12,
     // borderWidth: 1.5,
     // borderColor: "#99D6CC",
@@ -637,8 +643,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   familyButton: {
-    width: 38,
-    height: 45,
+    minWidth: 44,
+    minHeight: 45,
+    paddingHorizontal: 2,
+    flexShrink: 0,
     // borderRadius: 12,
     // borderWidth: 1.5,
     // borderColor: "#BFEBDD",
