@@ -5,7 +5,7 @@ import {
   hasPoliticianPageAccess,
   refreshCurrentUser,
 } from "./authentication";
-import { imageUpload } from "./background-removal-file";
+import { appendVoterPhoto } from "./voter-photo-upload";
 import { validateNewVoter, type CreateVoterInput } from "@/utils/voterCreation";
 import { getElectionVotingError } from "@/utils/electionVoting";
 
@@ -936,23 +936,32 @@ export async function updateVoterDetails(voter: Voter) {
     source: "voter_detail",
   };
 
-  if (isLocalPhotoUri(voter.photoUri)) {
+  const uploadingPhoto = isLocalPhotoUri(voter.photoUri);
+  let response;
+  if (uploadingPhoto) {
     const formData = new FormData();
     appendVoterStarPayload(formData, payload);
-    formData.append(
-      "voterPhotoFile",
-      await imageUpload(voter.photoUri!),
-      "voter-photo.jpg",
-    );
-
-    await api.put(`/voter-stars/${encodeURIComponent(voterKey)}`, formData);
-    return;
+    const cleanup = await appendVoterPhoto(formData, voter.photoUri!);
+    try {
+      response = await api.put(`/voter-stars/${encodeURIComponent(voterKey)}`, formData);
+    } finally {
+      try { cleanup(); } catch { /* Upload result takes precedence over cache cleanup. */ }
+    }
+  } else {
+    response = await api.put(`/voter-stars/${encodeURIComponent(voterKey)}`, {
+      ...payload,
+      photoUri: voter.photoUri ?? existingStar?.photoUri ?? "",
+    });
   }
 
-  await api.put(`/voter-stars/${encodeURIComponent(voterKey)}`, {
-    ...payload,
-    photoUri: voter.photoUri ?? existingStar?.photoUri ?? "",
-  });
+  if (response?.data?.success === false) {
+    throw new Error(response.data.message || "Unable to save voter");
+  }
+  const savedPhotoUri = response?.data?.data?.star?.photoUri;
+  if (uploadingPhoto && (typeof savedPhotoUri !== "string" || !/^https?:\/\//i.test(savedPhotoUri))) {
+    throw new Error("The server did not confirm the uploaded photo. Refresh voter data before trying again.");
+  }
+  return { ...voter, ...identity, photoUri: savedPhotoUri ?? voter.photoUri };
 }
 
 export async function deleteVoterDetails(voter: Voter) {

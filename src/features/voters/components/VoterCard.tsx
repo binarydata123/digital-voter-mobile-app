@@ -494,7 +494,7 @@ const InfoTile = memo(function InfoTile({
         <Icon color="#087568" size={17} strokeWidth={2.5} />
       </View>
 
-      <View style={[styles.tileTextWrap, compact && styles.compactTileTextWrap]}>
+      <View style={styles.tileTextWrap}>
         <Text numberOfLines={1} style={styles.infoLabel}>{label}</Text>
 
         <Text
@@ -617,7 +617,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   infoTile: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
     minWidth: 0,
     minHeight: 52,
     backgroundColor: "#F6FBFF",
@@ -628,9 +630,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   priorityInfoTile: {
-    flex: 1.15,
+    flexGrow: 1.15,
   },
-  compactInfoTile: { flex: 0, flexShrink: 1 },
+  // Reserve room for the serial label and icon on both web and native.
+  compactInfoTile: { flexGrow: 0, flexShrink: 0, flexBasis: 100 },
   tileIcon: {
     width: 26,
     height: 26,
@@ -640,7 +643,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   tileTextWrap: { flex: 1, minWidth: 0 },
-  compactTileTextWrap: { flex: 0, flexShrink: 1, minWidth: 0 },
   infoLabel: { color: "#747999", fontSize: 12, fontWeight: "800" },
   infoValue: {
     color: "#06082A",

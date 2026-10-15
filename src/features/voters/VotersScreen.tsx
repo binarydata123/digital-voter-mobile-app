@@ -536,15 +536,14 @@ export default function VotersScreen({
 
   const replaceVoter = useCallback(
     async (nextVoter: Voter) => {
+      const savedVoter = await updateVoterDetails(nextVoter);
       setVoters((current) =>
-        current.map((voter) => (voter.id === nextVoter.id ? nextVoter : voter)),
+        current.map((voter) => (voter.id === savedVoter.id ? savedVoter : voter)),
       );
-      saveManagedVoter(nextVoter);
-
-      await updateVoterDetails(nextVoter);
+      saveManagedVoter(savedVoter);
 
       if (localPoliticianId) {
-        await updateLocalVoter(localPoliticianId, nextVoter);
+        await updateLocalVoter(localPoliticianId, savedVoter);
         await refreshLocalOverview();
       }
     },
