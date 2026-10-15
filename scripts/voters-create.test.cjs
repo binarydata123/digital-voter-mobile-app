@@ -30,7 +30,7 @@ function voters(api) {
       ensureAuthSession: async () => ({ user }), getCurrentUser: () => user,
       hasPoliticianPageAccess: () => true,
     },
-    './background-removal-file': {}, '@/utils/voterCreation': creation,
+    './voter-photo-upload': {}, '@/utils/voterCreation': creation,
     '@/utils/electionVoting': load('src/utils/electionVoting.ts'),
   });
 }

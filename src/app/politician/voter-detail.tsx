@@ -113,14 +113,13 @@ export default function VoterDetailScreen() {
   const relationLabel = getRelationLabel((currentVoter as any).relation);
 
   async function saveVoter(nextVoter: Voter) {
-    setVoter(nextVoter);
-    saveManagedVoter(nextVoter);
-
     try {
-      await updateVoterDetails(nextVoter);
+      const savedVoter = await updateVoterDetails(nextVoter);
+      setVoter(savedVoter);
+      saveManagedVoter(savedVoter);
       const politicianId = getCurrentUser()?.id;
       if (politicianId) {
-        await updateLocalVoter(politicianId, nextVoter);
+        await updateLocalVoter(politicianId, savedVoter);
       }
       setEditing(false);
     } catch (error: any) {

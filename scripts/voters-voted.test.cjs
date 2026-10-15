@@ -28,7 +28,7 @@ function service(api, electionDate = electionVoting.getIndiaCalendarDate()) {
       hasPoliticianPageAccess: () => true,
       refreshCurrentUser: async () => ({ electionDate }),
     },
-    './background-removal-file': {},
+    './voter-photo-upload': {},
     '@/utils/voterCreation': load('src/utils/voterCreation.ts', {}),
     '@/utils/electionVoting': electionVoting,
   });
