@@ -174,13 +174,13 @@ function VoterCardComponent({
             <View style={styles.cardRightRail}>
               <View style={styles.boothActions}>
                 <View style={styles.quickActions}>
-                  <Pressable
+                  {/* <Pressable
                     accessibilityLabel="Show voter QR code"
                     onPress={handleQrPress}
                     style={styles.scanButton}
                   >
                     <QrCode color="#087568" size={15} strokeWidth={2.8} />
-                  </Pressable>
+                  </Pressable> */}
 
                   <Pressable
                     accessibilityLabel="Open voter card templates"
