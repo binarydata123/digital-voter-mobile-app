@@ -60,7 +60,7 @@ export function validateNewVoter(form: CreateVoterInput, user: AuthUser) {
       return "Choose locations within your assigned area.";
     }
   }
-  if (!form.epicNo.trim()) return "EPIC number is required and must be unique.";
+  if (!form.epicNo.trim()) return "EPIC number is required.";
   if (!form.nameEnglish.trim()) return "Voter name is required.";
   if (!["Male", "Female", "Transgender", "Other"].includes(form.gender)) return "Select a gender.";
   if (!/^\d+$/.test(form.age) || Number(form.age) < 18 || Number(form.age) > 130) return "Age must be between 18 and 130 years.";

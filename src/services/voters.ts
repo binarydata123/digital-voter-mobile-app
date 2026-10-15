@@ -1046,8 +1046,8 @@ export async function createVoter(input: CreateVoterInput): Promise<Voter> {
   }
   const validation = validateNewVoter(input, user);
   if (validation) throw new Error(validation);
-  const payload = Object.fromEntries(Object.entries(input).map(([key, value]) => [key, value.trim()]));
-  payload.epicNo = payload.epicNo.toUpperCase();
+  const payload = Object.fromEntries(Object.entries(input).map(([key, value]) => [key, value.trim()])) as CreateVoterInput;
+  payload.epicNo = payload.epicNo.replace(/\s+/g, "").toUpperCase();
   const response = await api.post("/politician/dashboard/create-voter", payload);
   if (response.data?.success === false) {
     throw new Error(response.data.message || "Unable to add voter");
