@@ -194,10 +194,10 @@ export default function BannerSetupScreen() {
       <ScrollView scrollEnabled={!dragging} showsVerticalScrollIndicator={false} contentContainerClassName="px-4 pb-6">
         <Text className="text-2xl font-black text-[#0F172A]">{template?.label ?? "Banner"}</Text>
         <Text className="mb-5 mt-2 text-sm leading-6 text-[#64748B]">{ratio < 1 ? "Choose a portrait image for the vertical banner." : ratio === 1 ? "Choose an image for the square badge." : "Choose a landscape image for the horizontal banner."} Adjust the crop below.</Text>
-        <Pressable disabled={busy || !template} onPress={chooseImage} className="mb-5 min-h-[48px] flex-row items-center justify-center gap-2 rounded-xl border border-[#087568] bg-white"><ImagePlus color="#087568" size={20} /><Text className="font-bold text-[#087568]">{source ? "Change image" : "Choose image"}</Text></Pressable>
+        {source ? <Pressable disabled={busy || !template} onPress={chooseImage} className="mb-5 min-h-[48px] flex-row items-center justify-center gap-2 rounded-xl border border-[#087568] bg-white"><ImagePlus color="#087568" size={20} /><Text className="font-bold text-[#087568]">Change image</Text></Pressable> : null}
         <View className="rounded-2xl border border-[#DDE8EF] bg-white p-3">
-          <Text className="text-base font-bold text-[#0F172A]">Crop banner image</Text>
-          <Text className="mb-3 mt-1 text-xs text-[#64748B]">Drag the image to position it inside the green frame.</Text>
+          <Text className="text-base font-bold text-[#0F172A]">{source ? "Crop banner image" : "Upload banner image"}</Text>
+          <Text className="mb-3 mt-1 text-xs text-[#64748B]">{source ? "Drag the image to position it inside the green frame." : "Tap below to choose a banner from your gallery."}</Text>
           <View onLayout={(event) => setPreviewWidth(Math.max(1, event.nativeEvent.layout.width))} className="items-center overflow-hidden rounded-xl bg-[#E2E8F0]">
             {source && previewWidth > 32 ? <View {...cropGesture.panHandlers} accessibilityLabel="Drag image to adjust crop" style={{ width: previewWidth, height: frameWidth / ratio + 64, overflow: "hidden" }}>
               <Image source={{ uri: source.uri }} resizeMode="stretch" style={{ position: "absolute", width: source.width * scale, height: source.height * scale, left: (previewWidth - frameWidth) / 2 - originX * scale, top: 32 - originY * scale }} />
@@ -210,7 +210,7 @@ export default function BannerSetupScreen() {
                 {[1, 2].map((part) => <View key={`h${part}`} style={{ position: "absolute", top: `${part * 100 / 3}%`, left: 0, right: 0, height: 1, backgroundColor: "rgba(255,255,255,0.45)" }} />)}
                 {[{ top: -4, left: -4 }, { top: -4, right: -4 }, { bottom: -4, left: -4 }, { bottom: -4, right: -4 }].map((corner, index) => <View key={index} style={{ position: "absolute", ...corner, width: 8, height: 8, backgroundColor: "white", borderWidth: 1, borderColor: "#087568" }} />)}
               </View>
-            </View> : <View className="min-h-[180px] w-full items-center justify-center"><ImagePlus color="#087568" size={32} /><Text className="mt-3 text-sm text-[#64748B]">Choose an image to start cropping</Text></View>}
+            </View> : <Pressable accessibilityRole="button" accessibilityLabel="Upload banner image" disabled={busy || !template} onPress={chooseImage} className="min-h-[180px] w-full items-center justify-center rounded-xl border border-dashed border-[#087568] bg-[#F0F8F5]"><ImagePlus color="#087568" size={32} /><Text className="mt-3 text-sm font-bold text-[#087568]">Upload banner image</Text><Text className="mt-1 text-xs text-[#64748B]">Choose from gallery</Text></Pressable>}
           </View>
           {source ? <View className="mt-4 flex-row items-center justify-between">
             <View className="flex-row items-center gap-3">

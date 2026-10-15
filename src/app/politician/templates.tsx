@@ -72,6 +72,7 @@ export default function TemplatesScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [boothModalVisible, setBoothModalVisible] = useState(false);
+  const [pendingTemplate, setPendingTemplate] = useState<TemplateLayout | null>(null);
   const [profileUser, setProfileUser] = useState<AuthUser | null>(() =>
     getCurrentUser(),
   );
@@ -160,21 +161,34 @@ export default function TemplatesScreen() {
     };
   }, []);
 
-  function openTemplatePreview(templateLayout: TemplateLayout) {
-    if (!selectedBooth) {
+  function openTemplatePreview(templateLayout: TemplateLayout, booth = selectedBooth) {
+    if (!booth) {
+      setPendingTemplate(templateLayout);
       setBoothModalVisible(true);
       return;
     }
+    setPendingTemplate(null);
     router.push({
       pathname: "/politician/Template/template-preview",
       params: {
         layout: templateLayout,
-        booth: selectedBooth,
+        booth,
         district: activeDistrict,
         state: activeState,
         fields: FIELD_OPTIONS.filter((option) => fields[option.key]).map((option) => option.key).join(","),
       },
     });
+  }
+
+  function closeBoothPicker() {
+    setBoothModalVisible(false);
+    setPendingTemplate(null);
+  }
+
+  function selectBooth(booth: string) {
+    setSelectedBooth(booth);
+    setBoothModalVisible(false);
+    if (pendingTemplate) openTemplatePreview(pendingTemplate, booth);
   }
 
   function openMenu() {
@@ -276,20 +290,20 @@ export default function TemplatesScreen() {
       </ScrollView>
 
       {/* ===================== FILTER DRAWER ===================== */}
-      <Modal transparent visible={boothModalVisible} animationType="slide" onRequestClose={() => setBoothModalVisible(false)}>
-        <Pressable className="flex-1 justify-end bg-[rgba(15,23,42,0.46)]" onPress={() => setBoothModalVisible(false)}>
+      <Modal transparent visible={boothModalVisible} animationType="slide" onRequestClose={closeBoothPicker}>
+        <Pressable className="flex-1 justify-end bg-[rgba(15,23,42,0.46)]" onPress={closeBoothPicker}>
           <Pressable onPress={(event) => event.stopPropagation()} className="max-h-[75%] rounded-t-[28px] bg-white p-5 pb-8">
             <View className="mb-4 h-1 w-[42px] self-center rounded-full bg-[#CBD5E1]" />
             <View className="mb-4 flex-row items-center justify-between">
               <Text className="text-lg font-black text-[#0F172A]">Booth Wise Voters</Text>
-              <Pressable accessibilityLabel="Close booth filter" onPress={() => setBoothModalVisible(false)} className="p-2"><X color="#64748B" size={22} /></Pressable>
+              <Pressable accessibilityLabel="Close booth filter" onPress={closeBoothPicker} className="p-2"><X color="#64748B" size={22} /></Pressable>
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
               {boothError ? <Text className="mb-3 text-sm text-red-600">{boothError}</Text> : null}
               <View className="flex-row flex-wrap justify-between gap-y-3">
                 {["All", ...boothOptions.filter((booth) => booth !== "All")].map((booth) => {
                   const active = selectedBooth === booth;
-                  return <Pressable key={booth} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => { setSelectedBooth(booth); setBoothModalVisible(false); }} className={`min-h-[64px] w-[48%] flex-row items-center justify-between rounded-2xl border p-3.5 ${active ? "border-[#087568] bg-[#D1FAE5]" : "border-[#BBF7D0] bg-[#ECFDF5]"}`}>
+                  return <Pressable key={booth} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => selectBooth(booth)} className={`min-h-[64px] w-[48%] flex-row items-center justify-between rounded-2xl border p-3.5 ${active ? "border-[#087568] bg-[#D1FAE5]" : "border-[#BBF7D0] bg-[#ECFDF5]"}`}>
                     <Text className="flex-1 text-xs font-extrabold text-[#065F46]">{booth === "All" ? "All Voters" : booth}</Text>
                     {active ? <Check color="#087568" size={18} /> : null}
                   </Pressable>;

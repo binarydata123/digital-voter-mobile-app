@@ -1,20 +1,12 @@
 import {
   BadgeCheck,
-  House,
   Printer,
   QrCode,
   Share2,
   UsersRound,
 } from "lucide-react-native";
 import { memo, useCallback, useState } from "react";
-import {
-  Image,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 
 import type { Voter } from "@/services/voters";
@@ -72,9 +64,13 @@ function VoterCardComponent({
             <View style={styles.voterInfo}>
               <Text numberOfLines={1} style={styles.voterName}>
                 {voter.name}
+                <Text style={styles.voterMeta}> {"  " + voter.age} Yrs</Text>
               </Text>
-              <Text style={styles.voterMeta}>
-                {voter.gender} - {voter.age} Years
+              <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={styles.guardian}>
+                {voter.guardian}
               </Text>
             </View>
 
@@ -100,15 +96,7 @@ function VoterCardComponent({
           </View>
 
           <View style={styles.guardianRow}>
-            <Text
-              numberOfLines={1}
-              ellipsizeMode="tail"
-              style={styles.guardian}>
-              {voter.guardian}
-            </Text>
-            <Text style={styles.boothBadge}>
-              S.No. {voter.serialNo ?? voter.id ?? "N/A"}
-            </Text>
+            <Text style={styles.voterMeta}> {"House No." + voter.houseNo}</Text>
           </View>
         </View>
       </View>
@@ -121,8 +109,11 @@ function VoterCardComponent({
           priority
         />
 
-        <InfoTile icon={House} label="House No." value={voter.houseNo} />
-
+        <InfoTile
+          icon={BadgeCheck}
+          label="Serial No."
+          value={voter.serialNo ?? voter.id ?? "N/A"}
+        />
         <Pressable onPress={handlePrintPress} style={styles.printButton}>
           <Printer color="#087568" size={17} strokeWidth={2.5} />
           <Text style={styles.printText}>Print</Text>
@@ -134,7 +125,12 @@ function VoterCardComponent({
         </Pressable>
       </View>
 
-      {filterVisible ? <VoterTemplateCarousel voter={voter} onClose={() => setFilterVisible(false)} /> : null}
+      {filterVisible ? (
+        <VoterTemplateCarousel
+          voter={voter}
+          onClose={() => setFilterVisible(false)}
+        />
+      ) : null}
 
       {qrVisible ? (
         <Modal
@@ -347,7 +343,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: "#DCFCE7",
     color: "#166534",
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "900",
     paddingHorizontal: 9,
     paddingVertical: 6,
@@ -368,6 +364,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "stretch",
     gap: 4,
+    fontSize: 12,
   },
   infoTile: {
     flex: 1.4,
@@ -393,10 +390,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   tileTextWrap: { flex: 1, minWidth: 0 },
-  infoLabel: { color: "#747999", fontSize: 9, fontWeight: "800" },
+  infoLabel: { color: "#747999", fontSize: 12, fontWeight: "800" },
   infoValue: {
     color: "#06082A",
-    fontSize: 11,
+    fontSize: 14,
     fontWeight: "900",
     marginTop: 2,
   },
@@ -422,7 +419,7 @@ const styles = StyleSheet.create({
   },
   printText: {
     color: "#087568",
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: "900",
     textAlign: "center",
   },
