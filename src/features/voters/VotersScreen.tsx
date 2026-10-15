@@ -815,14 +815,14 @@ export default function VotersScreen({
           <View style={styles.headerTop}>
             <View />
             <View style={styles.headerActions}>
-              {/* <Pressable
+              <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Add voter"
                 onPress={() => setAddingVoter(true)}
                 style={styles.headerIconButton}
               >
                 <UserPlus color="#0F766E" size={19} strokeWidth={2.6} />
-              </Pressable> */}
+              </Pressable>
               <Pressable
                 accessibilityLabel="Refresh offline voter data"
                 onPress={refreshAllVoterData}
