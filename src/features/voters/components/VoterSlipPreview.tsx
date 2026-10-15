@@ -41,6 +41,8 @@ export type VoterSlipPaperProps = {
   voter: Voter;
   showBanner: boolean;
   bannerImage?: string;
+  onBannerLoad?: () => void;
+  onBannerError?: () => void;
 };
 
 /* ============================================================
@@ -318,6 +320,7 @@ export async function shareVoterSlipPdf(
   showBanner: boolean,
   bannerImage?: string,
   whatsappNumber?: string,
+  openWhatsApp = true,
 ) {
   const bannerDataUri = showBanner ? await toDataUri(bannerImage) : undefined;
   const html = buildSlipHtml(voter, showBanner, bannerDataUri);
@@ -353,9 +356,9 @@ export async function shareVoterSlipPdf(
         UTI: "com.adobe.pdf",
       });
 
-      if (whatsappNumber) {
+      if (openWhatsApp && whatsappNumber) {
         await openWhatsAppChat(whatsappNumber, voter);
-      } else {
+      } else if (openWhatsApp) {
         await openWhatsAppRecipientPicker(voter);
       }
     } else {
@@ -586,6 +589,8 @@ export function VoterSlipPaper({
   voter,
   showBanner,
   bannerImage,
+  onBannerLoad,
+  onBannerError,
 }: VoterSlipPaperProps) {
   const address = [
     voter.houseNo && voter.houseNo !== "N/A"
@@ -606,6 +611,8 @@ export function VoterSlipPaper({
             source={{ uri: bannerImage }}
             style={styles.bannerImage}
             contentFit="contain"
+            onDisplay={onBannerLoad}
+            onError={onBannerError}
           />
         ) : (
           <View style={styles.bannerFallback}>

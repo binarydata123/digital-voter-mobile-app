@@ -45,6 +45,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { AddVoterModal } from "@/features/voters/components/AddVoterModal";
 import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 import { VoterCard } from "@/features/voters/components/VoterCard";
+import { PrintSlipShareCapture } from "@/features/voters/components/PrintSlipShareCapture";
 import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
 import { VoterEditModal } from "@/features/voters/components/VoterEditModal";
 import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleton";
@@ -144,6 +145,13 @@ export default function VotersScreen({
     useState<ThermalPrintRequest | null>(null);
   const [printerSelectionVersion, setPrinterSelectionVersion] = useState(0);
   const [editingVoter, setEditingVoter] = useState<Voter | null>(null);
+  const [sharingSlip, setSharingSlip] = useState<{ voter: Voter; resolve: () => void } | null>(null);
+  const sharingSlipLock = useRef(false);
+  const finishSharingSlip = useCallback(() => {
+    sharingSlip?.resolve();
+    setSharingSlip(null);
+    sharingSlipLock.current = false;
+  }, [sharingSlip]);
   const [addingVoter, setAddingVoter] = useState(false);
   const [deleteVoterRequest, setDeleteVoterRequest] = useState<Voter | null>(
     null,
@@ -695,12 +703,19 @@ export default function VotersScreen({
     }
   }, [localPoliticianId]);
 
+  const handleSharePrintSlip = useCallback(async (voter: Voter) => {
+    if (sharingSlipLock.current) return;
+    sharingSlipLock.current = true;
+    await new Promise<void>((resolve) => setSharingSlip({ voter, resolve }));
+  }, []);
+
   const renderVoter = useCallback(
     (voter: Voter) => (
       <VoterCard
         voter={voter}
         onPrint={handlePrint}
         onFamily={handleFamily}
+        onShare={handleSharePrintSlip}
         onEdit={handleEditVoter}
         onDelete={handleDeleteVoter}
         onImagePress={handleVoterImagePress}
@@ -712,6 +727,7 @@ export default function VotersScreen({
       handleFamily,
       handleEditVoter,
       handlePrint,
+      handleSharePrintSlip,
       handleVoterImagePress,
       handleMarkVoted,
     ],
@@ -1306,6 +1322,7 @@ export default function VotersScreen({
       </Modal>
 
       {/* Print type modal */}
+      {sharingSlip ? <PrintSlipShareCapture voter={sharingSlip.voter} bannerImage={currentUser?.bannerImage && !/^(undefined|null)$/i.test(currentUser.bannerImage.trim()) ? currentUser.bannerImage : undefined} onComplete={finishSharingSlip} /> : null}
       <Modal
         transparent
         visible={Boolean(printTypeRequest)}
