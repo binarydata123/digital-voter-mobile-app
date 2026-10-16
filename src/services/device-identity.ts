@@ -2,6 +2,7 @@ import * as Crypto from "expo-crypto";
 import * as Device from "expo-device";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
+import { getSimPhoneNumber } from "../../modules/sim-phone-number/src/getSimPhoneNumber";
 
 const DEVICE_KEY = "politicEase.installationId";
 
@@ -24,14 +25,36 @@ function getBrowserName(): string {
   if (/SamsungBrowser\//i.test(ua)) return "Samsung Internet";
   if (/Firefox\/|FxiOS\//i.test(ua)) return "Mozilla Firefox";
   if (/CriOS\//i.test(ua)) return "Google Chrome";
+
   if (/Chrome\//i.test(ua) && !/Chromium/i.test(ua)) {
     return "Google Chrome";
   }
+
   if (/Safari\//i.test(ua) && !/Chrome|Chromium|CriOS|Edg/i.test(ua)) {
     return "Safari";
   }
 
   return "Unknown Browser";
+}
+
+function formatIndianPhoneNumber(value: string): string {
+  const trimmed = value.trim();
+  const digits = trimmed.replace(/\D/g, "");
+
+  if (!digits) return "";
+
+  // Already includes India's country code.
+  if (digits.startsWith("91") && digits.length === 12) {
+    return `+${digits}`;
+  }
+
+  // Indian 10-digit mobile number.
+  if (/^[6-9]\d{9}$/.test(digits)) {
+    return `+91${digits}`;
+  }
+
+  // Keep other formats unchanged rather than guessing.
+  return trimmed;
 }
 
 export function getDeviceIdentity(): Promise<DeviceIdentity> {
@@ -73,12 +96,28 @@ async function loadIdentity(): Promise<DeviceIdentity> {
   if (Platform.OS === "web") {
     deviceName = `Politic Ease · ${getBrowserName()}`;
   } else {
-    const manufacturer = Device.manufacturer;
-    const modelName = Device.modelName;
-
-    deviceName =
-      [manufacturer, modelName].filter(Boolean).join(" ") ||
+    const baseDeviceName =
+      [Device.manufacturer, Device.modelName].filter(Boolean).join(" ") ||
       `Unknown ${Platform.OS} Device`;
+
+    // Default to the device name without a phone number.
+    deviceName = baseDeviceName;
+
+    if (Platform.OS === "android") {
+      try {
+        const phoneNumber = await getSimPhoneNumber();
+
+        if (phoneNumber?.trim()) {
+          const formattedNumber = formatIndianPhoneNumber(phoneNumber);
+
+          if (formattedNumber) {
+            deviceName = `${baseDeviceName} · ${formattedNumber}`;
+          }
+        }
+      } catch {
+        // Ignore SIM detection failures and retain the base device name.
+      }
+    }
   }
 
   return {
