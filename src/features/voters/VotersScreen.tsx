@@ -47,6 +47,7 @@ import { takeCreatedVoter } from "./voter-creation-result";
 import { PrintSlipShareCapture } from "@/features/voters/components/PrintSlipShareCapture";
 import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 import { VoterCard } from "@/features/voters/components/VoterCard";
+import { FamilyLookupNotice, type FamilyNotice } from "@/features/voters/components/FamilyLookupNotice";
 import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
 import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleton";
 import { getLocalFamilyMembers } from "@/services/voter-family";
@@ -59,6 +60,7 @@ import {
   getDefaultPoliticianRoute,
   hasPoliticianPageAccess,
   logoutPolitician,
+  clearLocalAuthSession,
 } from "@/services/authentication";
 import {
   addLocalVoter,
@@ -105,7 +107,7 @@ type SlipPreviewRequest = {
   scope: PrintScope;
   withBanner: boolean;
 };
-type PrintTypeRequest = { voter: Voter; scope: PrintScope };
+type PrintTypeRequest = { voter: Voter; scope: PrintScope; members?: Voter[] };
 type ThermalPrintRequest = {
   members?: Voter[];
   bannerImage?: string;
@@ -152,6 +154,8 @@ export default function VotersScreen({
   );
   const photoUploadLocks = useRef(new Set<string>());
   const familyLookupId = useRef(0);
+  const [familyNotice, setFamilyNotice] = useState<FamilyNotice | null>(null);
+  const familyLookupBusy = useRef(false);
   const [sharingSlip, setSharingSlip] = useState<{
     voter: Voter;
     resolve: () => void;
@@ -250,7 +254,7 @@ export default function VotersScreen({
       setError("");
     } catch (loadError: any) {
       if (loadError?.message === "Please sign in again to continue.") {
-        await logoutPolitician();
+        void clearLocalAuthSession();
         router.replace("/login");
         return;
       }
@@ -316,7 +320,7 @@ export default function VotersScreen({
       setError("");
     } catch (refreshError: any) {
       if (refreshError?.message === "Please sign in again to continue.") {
-        await logoutPolitician();
+        void clearLocalAuthSession();
         router.replace("/login");
         return;
       }
@@ -519,8 +523,7 @@ export default function VotersScreen({
   );
 
   async function confirmLogout() {
-    await logoutPolitician();
-    router.replace("/login");
+    if (await logoutPolitician()) router.replace("/login");
   }
 
   function openSurveyPage() {
@@ -533,9 +536,22 @@ export default function VotersScreen({
     setPrintTypeRequest({ voter, scope: "single" });
   }, []);
 
-  const handleFamily = useCallback((voter: Voter) => {
-    setPrintTypeRequest({ voter, scope: "family" });
-  }, []);
+  const handleFamily = useCallback(async (voter: Voter) => {
+    if (familyLookupBusy.current) return;
+    familyLookupBusy.current = true;
+    const lookupId = ++familyLookupId.current;
+    try {
+      const members = await getLocalFamilyMembers(localPoliticianId ?? getCurrentUser()?.id ?? "", voter);
+      if (lookupId !== familyLookupId.current) return;
+      if (!members.some(member => member.id !== voter.id)) {
+        setFamilyNotice({ voter });
+        return;
+      }
+      setPrintTypeRequest({ voter, scope: "family", members });
+    } catch (error) {
+      if (lookupId === familyLookupId.current) setFamilyNotice({ voter, error: error instanceof Error ? error.message : "Unable to read family members from local storage. Please try again." });
+    } finally { familyLookupBusy.current = false; }
+  }, [localPoliticianId]);
 
   const refreshLocalOverview = useCallback(async () => {
     if (!localPoliticianId) return;
@@ -1092,7 +1108,7 @@ export default function VotersScreen({
     try {
       const members =
         request.scope === "family"
-          ? await getLocalFamilyMembers(
+          ? request.members ?? await getLocalFamilyMembers(
               localPoliticianId ?? currentUser?.id ?? "",
               request.voter,
             )
@@ -1106,10 +1122,7 @@ export default function VotersScreen({
       setPrintTypeRequest(null);
     } catch (error) {
       if (lookupId === familyLookupId.current)
-        Alert.alert(
-          "Unable to load family slips",
-          error instanceof Error ? error.message : "Please try again.",
-        );
+        setFamilyNotice({ voter: request.voter, error: error instanceof Error ? error.message : "Please try again." });
     } finally {
       if (lookupId === familyLookupId.current) setLoadingFamily(false);
     }
@@ -1382,6 +1395,7 @@ export default function VotersScreen({
       </Modal>
 
       {/* Print type modal */}
+      {familyNotice ? <FamilyLookupNotice notice={familyNotice} onClose={() => setFamilyNotice(null)} /> : null}
       {sharingSlip ? (
         <PrintSlipShareCapture
           voter={sharingSlip.voter}

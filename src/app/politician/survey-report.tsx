@@ -18,7 +18,7 @@ import {
   getCurrentUser,
   getDefaultPoliticianRoute,
   hasPoliticianPageAccess,
-  logoutPolitician,
+  clearLocalAuthSession,
 } from "@/services/authentication";
 import {
   buildAssignedSurveyScope,
@@ -246,7 +246,7 @@ export default function SurveyScreen() {
       setError("");
     } catch (loadError: any) {
       if (loadError?.message === "Please sign in again to continue.") {
-        logoutPolitician();
+        void clearLocalAuthSession();
         router.replace("/login");
         return;
       }
@@ -275,7 +275,7 @@ export default function SurveyScreen() {
       })
       .catch((scopeError: any) => {
         if (scopeError?.message === "Please sign in again to continue.") {
-          logoutPolitician();
+          void clearLocalAuthSession();
           router.replace("/login");
           return;
         }
