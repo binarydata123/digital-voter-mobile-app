@@ -44,6 +44,8 @@ function fixture(store = new Map()) {
       require(name) {
         if (name === 'expo-secure-store') return secureStore;
         if (name === 'expo-crypto') return { randomUUID };
+        if (name === 'expo-device') return { manufacturer: 'Test', modelName: 'Phone' };
+        if (name.endsWith('/getSimPhoneNumber')) return { getSimPhoneNumber: async () => null };
         if (name === 'react-native') return { Platform: { OS: 'android', Version: 36 } };
         if (name === 'axios') return { create: () => client };
         if (name === './voter-database') return { deleteVoterDatabase: async () => { databaseDeletes++; } };
@@ -62,14 +64,14 @@ function fixture(store = new Map()) {
   function signedIn(token = 'current-token') { auth.setAuthSession(token, user); }
   return { auth, api, identity, store, notices, user, signedIn, setTransport(value) { transport = value; }, get databaseDeletes() { return databaseDeletes; } };
 }
-const error = (status, code, message = code) => ({ response: { status, data: { code, message } } });
+const error = (status, code, message = code, contactToken) => ({ response: { status, data: { code, message, contactToken } } });
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 test('installation UUID persists across restarts and concurrent identity requests', async () => {
   const f = fixture();
   const values = await Promise.all([f.identity.getDeviceIdentity(), f.identity.getDeviceIdentity()]);
   assert.equal(values[0].deviceId, values[1].deviceId);
-  assert.equal(values[0].deviceName, 'Politic Ease · android 36');
+  assert.equal(values[0].deviceName, 'Test Phone');
   const restarted = fixture(f.store);
   assert.equal((await restarted.identity.getDeviceIdentity()).deviceId, values[0].deviceId);
 });
@@ -88,9 +90,9 @@ test('login sends installation metadata and persists the returned session', asyn
 test('device limit errors retain their code and message without endpoint retries', async () => {
   const f = fixture();
   let requests = 0;
-  f.setTransport(async () => { requests++; throw error(403, 'DEVICE_LIMIT_REACHED', 'Five devices are already signed in.'); });
+  f.setTransport(async () => { requests++; throw error(403, 'DEVICE_LIMIT_REACHED', 'Five devices are already signed in.', 'contact-proof'); });
   await assert.rejects(f.auth.loginPolitician({ phone: '9876543210', password: 'secret' }), failure =>
-    failure.code === 'DEVICE_LIMIT_REACHED' && failure.message.includes('Five devices'));
+    failure.code === 'DEVICE_LIMIT_REACHED' && failure.message.includes('Five devices') && failure.contactToken === 'contact-proof');
   assert.equal(requests, 1);
   assert.equal(await f.api.getApiAuthToken(), null);
 });

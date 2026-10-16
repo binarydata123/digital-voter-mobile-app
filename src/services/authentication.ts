@@ -458,7 +458,10 @@ export async function loginPolitician(payload: LoginPayload): Promise<LoginResul
     (lastError as any)?.response?.data?.message ??
     (lastError as any)?.message ??
     "Unable to login. Please check your credentials.";
-  throw Object.assign(new Error(message), { code: (lastError as any)?.response?.data?.code });
+  throw Object.assign(new Error(message), {
+    code: (lastError as any)?.response?.data?.code,
+    contactToken: (lastError as any)?.response?.data?.contactToken,
+  });
 }
 
 export async function logoutPolitician(): Promise<boolean> {

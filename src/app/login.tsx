@@ -1,8 +1,10 @@
+import { DeviceLimitModal } from "@/features/auth/DeviceLimitModal";
 import { Redirect, router } from "expo-router";
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -31,6 +33,7 @@ export default function LoginScreen() {
   const [phoneError, setPhoneError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [deviceLimit, setDeviceLimit] = useState<{ contactToken?: string } | null>(null);
   const passwordInputRef = useRef<TextInput>(null);
 
   async function handleLogin() {
@@ -61,7 +64,12 @@ export default function LoginScreen() {
 
       router.replace(nextRoute);
     } catch (error: any) {
-      setLoginError(error?.message ?? "Unable to login. Please try again.");
+      if (error?.code === "DEVICE_LIMIT_REACHED") {
+        Keyboard.dismiss();
+        setDeviceLimit({ contactToken: error.contactToken });
+      } else {
+        setLoginError(error?.message ?? "Unable to login. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -72,6 +80,7 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      {deviceLimit && <DeviceLimitModal contactToken={deviceLimit.contactToken} onClose={() => setDeviceLimit(null)} />}
       <KeyboardAvoidingView
         behavior={
           Platform.OS === "ios"
