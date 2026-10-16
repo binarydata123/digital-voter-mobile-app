@@ -24,7 +24,8 @@
         "android.permission.BLUETOOTH_SCAN",
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.READ_PHONE_NUMBERS"
       ],
       "intentFilters": [
         {
@@ -37,10 +38,7 @@
               "pathPrefix": "/politician/voter-slip"
             }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
     },
@@ -86,9 +84,7 @@
         {
           "photosPermission": "Allow Politic Ease to access photos when saving a banner.",
           "savePhotosPermission": "Allow Politic Ease to save your generated banner to Photos.",
-          "granularPermissions": [
-            "photo"
-          ],
+          "granularPermissions": ["photo"],
           "isAccessMediaLocationEnabled": false
         }
       ]
