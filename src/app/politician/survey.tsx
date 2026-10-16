@@ -2,6 +2,10 @@ import { Shimmer } from "@/components/common/Shimmer";
 import { BannerStudioMenuItem } from "@/features/banner-generation/BannerStudioMenuItem";
 import { CONCERN_ICONS } from "@/features/survey/concern-icons";
 import {
+  EDUCATION_OPTIONS,
+  OCCUPATION_OPTIONS,
+} from "@/features/survey/demographic-options";
+import {
   GENDER_ICONS,
   OCCUPATION_ICONS,
 } from "@/features/survey/demographic-icons";
@@ -55,25 +59,8 @@ import {
 
 const GENDERS = ["Male", "Female", "Other"];
 const AGE_BRACKETS = ["18-25", "26-35", "36-50", "50+"];
-const EDUCATION = [
-  "Primary / Basic",
-  "10th / 12th Pass",
-  "Graduate",
-  "PG / Professional",
-];
 // These values are persisted directly and must match the backend enum.
 const INCOME = ["< ₹15k", "₹15k–35k", "₹35k–75k", "₹75k+"];
-const OCCUPATIONS = [
-  "Private Job / Staff",
-  "State Government",
-  "Central / Army",
-  "Business / Trader",
-  "Farmer / Agriculture",
-  "Daily Wage / Labour",
-  "Homemaker",
-  "Student",
-  "Unemployed",
-];
 const CONCERNS = [
   "Roads / Infrastructure",
   "Public Safety / Crime",
@@ -787,7 +774,7 @@ export default function SurveyScreen() {
             >
               <OptionSection
                 title="Education"
-                options={EDUCATION}
+                options={EDUCATION_OPTIONS}
                 value={form.education}
                 field="education"
                 onSelect={setSingle}
@@ -821,7 +808,7 @@ export default function SurveyScreen() {
             >
               <OptionSection
                 title="Occupation"
-                options={OCCUPATIONS}
+                options={OCCUPATION_OPTIONS}
                 value={form.occupation}
                 field="occupation"
                 onSelect={setSingle}

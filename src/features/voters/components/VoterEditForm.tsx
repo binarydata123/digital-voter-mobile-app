@@ -19,6 +19,10 @@ import {
   View,
 } from "react-native";
 
+import {
+  EDUCATION_OPTIONS,
+  OCCUPATION_OPTIONS,
+} from "@/features/survey/demographic-options";
 import type { Voter } from "@/services/voters";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -267,7 +271,7 @@ function VoterEditSheet({ voter, onClose, onSave, mode = "edit", locationFields,
                 <Field
                   onFocus={revealInput}
                   keyboardType="phone-pad"
-                  label="WhatsApp"
+                  label="WhatsApp Number"
                   value={form.whatsappNumber ?? ""}
                   onChangeText={(value) =>
                     updateField(
@@ -297,17 +301,17 @@ function VoterEditSheet({ voter, onClose, onSave, mode = "edit", locationFields,
                 />
               </View>
               <View style={styles.twoColumn}>
-                <Field
-                  onFocus={revealInput}
+                <GenderDropdown
                   label="Education"
                   value={form.education ?? ""}
-                  onChangeText={(value) => updateField("education", value)}
+                  options={EDUCATION_OPTIONS}
+                  onChange={(value) => updateField("education", value)}
                 />
-                <Field
-                  onFocus={revealInput}
+                <GenderDropdown
                   label="Working / occupation"
                   value={form.working ?? ""}
-                  onChangeText={(value) => updateField("working", value)}
+                  options={OCCUPATION_OPTIONS}
+                  onChange={(value) => updateField("working", value)}
                 />
               </View>
             </View>
