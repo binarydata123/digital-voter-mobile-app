@@ -197,8 +197,7 @@ export default function TemplatesScreen() {
 
   async function handleLogout() {
     setMenuVisible(false);
-    await logoutPolitician();
-    router.replace("/login");
+    if (await logoutPolitician()) router.replace("/login");
   }
 
   function goToSurvey() {

@@ -1,3 +1,4 @@
+import { AuthSessionGuard } from "@/features/auth/AuthSessionGuard";
 import { AppUpdateGate } from "@/features/app-updates/AppUpdateGate";
 import "@/global.css";
 import * as Linking from "expo-linking";
@@ -84,6 +85,7 @@ export default function RootLayout() {
         <Stack.Screen name="politician/survey-report" />
         <Stack.Screen name="politician/voter-detail" />
       </Stack>
+      <AuthSessionGuard />
       <AppUpdateGate />
     </ThemeProvider>
   );

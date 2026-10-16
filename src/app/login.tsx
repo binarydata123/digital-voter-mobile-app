@@ -52,7 +52,7 @@ export default function LoginScreen() {
       const nextRoute = getDefaultPoliticianRoute(user);
 
       if (!nextRoute) {
-        logoutPolitician();
+        await logoutPolitician();
         setLoginError(
           "No mobile pages are enabled for this politician account.",
         );

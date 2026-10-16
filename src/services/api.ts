@@ -2,6 +2,13 @@ import { create } from "axios";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
+import { notifyAuthSession } from "./auth-session-events";
+
+let invalidateSession: (() => Promise<void>) | null = null;
+export function setSessionInvalidationHandler(handler: () => Promise<void>) {
+  invalidateSession = handler;
+}
+
 const AUTH_TOKEN_KEY = "votersakha.authToken";
 const LIVE_API_URL = "https://api.voter-app.ai-developer.cloud/api";
 
@@ -14,6 +21,9 @@ console.log("API BASE URL:", baseURL);
 
 let cachedAuthToken: string | null = null;
 let hasLoadedStoredToken = false;
+let tokenRevision = 0;
+let tokenStorageWrite: Promise<void> = Promise.resolve();
+export function waitForAuthTokenStorage() { return tokenStorageWrite; }
 
 export const api = create({
   baseURL,
@@ -21,6 +31,7 @@ export const api = create({
 });
 
 export function setApiAuthToken(token: string | null) {
+  tokenRevision++;
   cachedAuthToken = token;
   hasLoadedStoredToken = true;
 
@@ -30,7 +41,8 @@ export function setApiAuthToken(token: string | null) {
     if (Platform.OS === "web") {
       window.localStorage.setItem(AUTH_TOKEN_KEY, token);
     } else {
-      SecureStore.setItemAsync(AUTH_TOKEN_KEY, token).catch((error) => {
+      tokenStorageWrite = tokenStorageWrite.catch(() => {}).then(() => SecureStore.setItemAsync(AUTH_TOKEN_KEY, token));
+      tokenStorageWrite.catch((error) => {
         console.log("SecureStore save error:", error);
       });
     }
@@ -40,7 +52,8 @@ export function setApiAuthToken(token: string | null) {
     if (Platform.OS === "web") {
       window.localStorage.removeItem(AUTH_TOKEN_KEY);
     } else {
-      SecureStore.deleteItemAsync(AUTH_TOKEN_KEY).catch((error) => {
+      tokenStorageWrite = tokenStorageWrite.catch(() => {}).then(() => SecureStore.deleteItemAsync(AUTH_TOKEN_KEY));
+      tokenStorageWrite.catch((error) => {
         console.log("SecureStore delete error:", error);
       });
     }
@@ -52,13 +65,18 @@ export async function getApiAuthToken() {
     return cachedAuthToken;
   }
 
+  const revision = tokenRevision;
   try {
+    let storedToken: string | null;
     if (Platform.OS === "web") {
-      cachedAuthToken = window.localStorage.getItem(AUTH_TOKEN_KEY);
+      storedToken = window.localStorage.getItem(AUTH_TOKEN_KEY);
     } else {
-      cachedAuthToken = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
+      storedToken = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
     }
+    if (revision !== tokenRevision) return cachedAuthToken;
+    cachedAuthToken = storedToken;
   } catch (error) {
+    if (revision !== tokenRevision) return cachedAuthToken;
     console.log("Token storage error:", error);
     cachedAuthToken = null;
   }
@@ -85,7 +103,19 @@ api.interceptors.request.use(async (config) => {
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const code = error?.response?.data?.code;
+    const requestToken = error?.config?.headers?.Authorization;
+    const token = await getApiAuthToken();
+    if (error?.response?.status === 401 && token && requestToken === `Bearer ${token}` &&
+        ["SESSION_INVALIDATED", "DEVICE_SESSION_REVOKED"].includes(code) &&
+        !["/auth/login", "/login", "/politician/login", "/auth/register"].includes(error?.config?.url)) {
+      setApiAuthToken(null);
+      await invalidateSession?.().catch((storageError) => {
+        console.log("Session cleanup error:", storageError);
+      });
+      notifyAuthSession({ invalidated: true, message: error.response.data.message || "Please sign in again." });
+    }
     if (__DEV__) {
       const requestBaseURL = error?.config?.baseURL ?? baseURL;
       const requestUrl = error?.config?.url ?? "";

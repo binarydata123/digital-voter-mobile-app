@@ -29,7 +29,7 @@ export function BannerStudioMenu() {
             <View style={styles.menuIconWrap}><link.Icon size={20} strokeWidth={2.6} color="#087568" /></View>
             <View style={styles.menuCopy}><Text style={styles.menuRowTitle}>{link.label}</Text><Text style={styles.menuRowSubtitle}>{link.subtitle}</Text></View>
           </Pressable>)}
-          <Pressable accessibilityRole="button" onPress={() => { setVisible(false); void logoutPolitician().then(() => router.replace('/login')); }} style={[styles.menuRow, styles.logoutMenuRow]}>
+          <Pressable accessibilityRole="button" onPress={() => { setVisible(false); void logoutPolitician().then(loggedOut => { if (loggedOut) router.replace('/login'); }); }} style={[styles.menuRow, styles.logoutMenuRow]}>
             <View style={[styles.menuIconWrap, styles.logoutMenuIconWrap]}><LogOut size={20} strokeWidth={2.6} color="#B91C1C" /></View>
             <View style={styles.menuCopy}><Text style={styles.logoutMenuTitle}>Logout</Text><Text style={styles.menuRowSubtitle}>Sign out from this device</Text></View>
           </Pressable>
