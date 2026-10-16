@@ -3,7 +3,7 @@ import { Image } from "expo-image";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { Bluetooth, Download, Printer, X } from "lucide-react-native";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import {
   Alert,
@@ -156,33 +156,57 @@ async function toDataUri(uri?: string): Promise<string | undefined> {
    HTML BUILDER
    ============================================================ */
 
-function buildSlipHtml(
+export function buildSlipHtml(
   voter: Voter,
   showBanner: boolean,
   bannerDataUri?: string,
+  members?: Voter[],
 ) {
-  const address = [
-    voter.houseNo && voter.houseNo !== "N/A"
-      ? "House No. " + voter.houseNo
-      : "",
-    voter.ward ? "Ward " + voter.ward : "",
-    voter.district,
-    voter.state,
-  ]
-    .filter(Boolean)
-    .join(", ");
+  const slips = (members?.length ? members : [voter]).map((voter, index) => {
+    const address = [
+      voter.houseNo && voter.houseNo !== "N/A"
+        ? "House No. " + voter.houseNo
+        : "",
+      voter.ward ? "Ward " + voter.ward : "",
+      voter.district,
+      voter.state,
+    ]
+      .filter(Boolean)
+      .join(", ");
 
-  const bannerBlock = showBanner
-    ? bannerDataUri
-      ? `<div class="banner"><img src="${bannerDataUri}" alt="banner" /></div>`
-      : `<div class="banner">
-           <div class="banner-meta">वार्ड संख्या : ${escapeHtml(voter.ward || "58")}</div>
-           <div class="banner-divider"></div>
-           <div class="banner-text">मतदान केंद्र पता</div>
-           <div class="banner-school">राजकीय उच्च प्राथमिक विद्यालय</div>
-           <div class="banner-place">${escapeHtml(voter.district || "श्रीगंगानगर")}</div>
-         </div>`
-    : "";
+    const bannerBlock = showBanner && index === 0
+      ? bannerDataUri
+        ? `<div class="banner"><img src="${bannerDataUri}" alt="banner" /></div>`
+        : `<div class="banner">
+             <div class="banner-meta">वार्ड संख्या : ${escapeHtml(voter.ward || "58")}</div>
+             <div class="banner-divider"></div>
+             <div class="banner-text">मतदान केंद्र पता</div>
+             <div class="banner-school">राजकीय उच्च प्राथमिक विद्यालय</div>
+             <div class="banner-place">${escapeHtml(voter.district || "श्रीगंगानगर")}</div>
+           </div>`
+      : "";
+
+    return `  <div class="paper">
+    ${bannerBlock}
+    <h1 class="slip-title">Voter Slip</h1>
+    <div class="slip-box">
+      <div class="name">${escapeHtml(voter.name)}</div>
+      ${voter.hindiName ? `<div class="hindi">${escapeHtml(voter.hindiName)}</div>` : ""}
+
+      <div class="row two">
+        <span>Gender : ${escapeHtml(voter.gender || "N/A")}</span>
+        <span>Age : ${escapeHtml(voter.age ?? "N/A")}</span>
+      </div>
+
+      <div class="row">पिता का नाम : ${escapeHtml(formatGuardian(voter.guardian))}</div>
+      <div class="row">Serial No : ${escapeHtml(voter.serialNo || voter.id || "N/A")}</div>
+      <div class="row">Booth No : ${escapeHtml(voter.booth || "N/A")}</div>
+      <div class="row">Epic No : ${escapeHtml(voter.epicNo || "N/A")}</div>
+      <div class="block">Address : ${escapeHtml(address || "N/A")}</div>
+      <div class="block">Polling Station No. &amp; Address : ${escapeHtml(voter.pollingStation || "N/A")}</div>
+    </div>
+  </div>`;
+  }).join("\n");
 
   return `<!DOCTYPE html>
 <html lang="hi">
@@ -206,6 +230,7 @@ function buildSlipHtml(
     border: 1px solid #E5E7EB;
     padding: 17px 12px 15px;
   }
+  .paper + .paper { break-before: page; page-break-before: always; }
   .banner {
     border: 3px solid #2F281F;
     border-radius: 7px;
@@ -241,26 +266,7 @@ function buildSlipHtml(
 </style>
 </head>
 <body>
-  <div class="paper">
-    ${bannerBlock}
-    <h1 class="slip-title">Voter Slip</h1>
-    <div class="slip-box">
-      <div class="name">${escapeHtml(voter.name)}</div>
-      ${voter.hindiName ? `<div class="hindi">${escapeHtml(voter.hindiName)}</div>` : ""}
-
-      <div class="row two">
-        <span>Gender : ${escapeHtml(voter.gender || "N/A")}</span>
-        <span>Age : ${escapeHtml(voter.age ?? "N/A")}</span>
-      </div>
-
-      <div class="row">पिता का नाम : ${escapeHtml(formatGuardian(voter.guardian))}</div>
-      <div class="row">Serial No : ${escapeHtml(voter.serialNo || voter.id || "N/A")}</div>
-      <div class="row">Booth No : ${escapeHtml(voter.booth || "N/A")}</div>
-      <div class="row">Epic No : ${escapeHtml(voter.epicNo || "N/A")}</div>
-      <div class="block">Address : ${escapeHtml(address || "N/A")}</div>
-      <div class="block">Polling Station No. &amp; Address : ${escapeHtml(voter.pollingStation || "N/A")}</div>
-    </div>
-  </div>
+${slips}
 </body>
 </html>`;
 }
@@ -432,26 +438,29 @@ export async function printSlip(
   voter: Voter,
   showBanner: boolean,
   bannerImage?: string,
-) {
+  members?: Voter[],
+): Promise<boolean> {
   const bannerDataUri = showBanner ? await toDataUri(bannerImage) : undefined;
-  const html = buildSlipHtml(voter, showBanner, bannerDataUri);
+  const html = buildSlipHtml(voter, showBanner, bannerDataUri, members);
+
+  if (Platform.OS === "web") {
+    const win = window.open("", "_blank");
+    if (!win) throw new Error("Please allow popups to print.");
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    win.print();
+    return true;
+  }
 
   try {
-    if (Platform.OS === "web") {
-      const win = window.open("", "_blank");
-      if (!win) {
-        Alert.alert("Print blocked", "Please allow popups to print.");
-        return;
-      }
-      win.document.write(html);
-      win.document.close();
-      win.focus();
-      win.print();
-      return;
-    }
     await Print.printAsync({ html });
+    return true;
   } catch (error: any) {
-    Alert.alert("Print failed", error?.message ?? "Unable to print the slip.");
+    // Expo iOS rejects a dismissed print sheet. It must not mark voters as printed.
+    if (Platform.OS === "ios" && (error?.code === "ERR_PRINT_INCOMPLETE" ||
+        error?.message === "Printing did not complete")) return false;
+    throw error;
   }
 }
 
@@ -475,7 +484,10 @@ export function VoterSlipPreview({
     null,
   );
 
+  const [printing, setPrinting] = useState(false);
+  const printLock = useRef(false);
   useEffect(() => {
+    if (Platform.OS !== "android") return;
     void getSavedThermalPrinter().then(setSavedPrinter).catch(() => {
       setSavedPrinter(null);
     });
@@ -486,16 +498,18 @@ export function VoterSlipPreview({
   }
 
   async function handlePrint() {
-    if (onPrint) {
-      try {
-        await onPrint();
-      } catch (error: any) {
-        Alert.alert("Print failed", error?.message ?? "Unable to print the voter slip.");
-      }
-      return;
+    if (printLock.current) return;
+    printLock.current = true;
+    setPrinting(true);
+    try {
+      if (onPrint) await onPrint();
+      else await printSlip(voter, showBanner, bannerImage, members);
+    } catch (error: any) {
+      Alert.alert("Print failed", error?.message ?? "Unable to print the voter slip.");
+    } finally {
+      printLock.current = false;
+      setPrinting(false);
     }
-
-    await printSlip(voter, showBanner, bannerImage);
   }
 
   async function handleChangeDevice() {
@@ -545,7 +559,7 @@ export function VoterSlipPreview({
         </ScrollView>
 
         <View style={styles.footerActions}>
-          {onChangeDevice ? (
+          {Platform.OS === "android" && onChangeDevice ? (
             <View style={styles.printerBar}>
               <View style={styles.printerStatus}>
                 <Bluetooth color="#087568" size={19} strokeWidth={2.7} />
@@ -576,10 +590,12 @@ export function VoterSlipPreview({
             </Pressable> : null}
             <Pressable
               accessibilityLabel="Print voter slip"
+              accessibilityState={{ busy: printing, disabled: printing }}
+              disabled={printing}
               onPress={handlePrint}
               style={[styles.footerButton, styles.printButton]}>
               <Printer color="#FFFFFF" size={17} strokeWidth={2.5} />
-              <Text style={styles.printText}>{members ? `Print all (${members.length})` : "Print"}</Text>
+              <Text style={styles.printText}>{printing ? "Printing…" : members ? `Print all (${members.length})` : "Print"}</Text>
             </Pressable>
           </View>
         </View>

@@ -30,6 +30,7 @@ import {
   Animated,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   StatusBar,
   StyleSheet,
@@ -53,7 +54,7 @@ import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleto
 import { getLocalFamilyMembers } from "@/services/voter-family";
 import { searchRank, searchTerms } from "@/utils/voterSearch";
 
-import { VoterSlipPreview } from "@/features/voters/components/VoterSlipPreview";
+import { VoterSlipPreview, printSlip } from "@/features/voters/components/VoterSlipPreview";
 import {
   ensureAuthSession,
   getCurrentUser,
@@ -1142,6 +1143,14 @@ export default function VotersScreen({
       members: slipPreview.members,
     };
 
+    if (Platform.OS === "ios") {
+      const started = await printSlip(request.voter, request.showBanner, request.bannerImage, request.members);
+      if (!started) return;
+      for (const member of request.members ?? [request.voter]) await handleVoterPrinted(member);
+      setSlipPreview(null);
+      return;
+    }
+
     const savedPrinter = await getSavedThermalPrinter();
     if (!savedPrinter) {
       setThermalPrintRequest(request);
@@ -1497,13 +1506,13 @@ export default function VotersScreen({
             showBanner={slipPreview.withBanner}
             bannerImage={getCurrentUser()?.bannerImage}
             onPrint={handleSlipPreviewPrint}
-            onChangeDevice={handleChangeThermalPrinter}
+            onChangeDevice={Platform.OS === "android" ? handleChangeThermalPrinter : undefined}
             printerSelectionVersion={printerSelectionVersion}
           />
         ) : null}
       </Modal>
 
-      {thermalPrintRequest ? (
+      {Platform.OS === "android" && thermalPrintRequest ? (
         <ThermalPrinterDialog
           visible
           voter={thermalPrintRequest.voter}
