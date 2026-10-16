@@ -1,5 +1,6 @@
 import {
   BadgeCheck,
+  Eye,
   ImagePlus,
   MoreVertical,
   PanelsTopLeft,
@@ -7,7 +8,7 @@ import {
   Printer,
   Share2,
   Trash2,
-  UsersRound
+  UsersRound,
 } from "lucide-react-native";
 import { memo, useCallback, useRef, useState } from "react";
 import {
@@ -48,9 +49,11 @@ type VoterCardProps = {
   onPrint?: (voter: Voter) => void;
   onFamily?: (voter: Voter) => void;
   onShare?: (voter: Voter) => Promise<void>;
+  onView?: (voter: Voter) => void;
   onEdit?: (voter: Voter) => void;
   onDelete?: (voter: Voter) => void;
   onImagePress?: (voter: Voter) => void;
+  uploadingPhoto?: boolean;
   onMarkVoted?: (voter: Voter) => Promise<void>;
   onRequestSubmit?: (record: VoterRequestPayload) => void;
 };
@@ -69,9 +72,11 @@ function VoterCardComponent({
   onPrint,
   onFamily,
   onShare,
+  onView,
   onEdit,
   onDelete,
   onImagePress,
+  uploadingPhoto = false,
   onMarkVoted,
   onRequestSubmit,
 }: VoterCardProps) {
@@ -119,6 +124,10 @@ function VoterCardComponent({
     () => onImagePress?.(voter),
     [onImagePress, voter],
   );
+  const handleViewPress = useCallback(() => {
+    setActionsVisible(false);
+    onView?.(voter);
+  }, [onView, voter]);
   const handleEditPress = useCallback(() => {
     setActionsVisible(false);
     onEdit?.(voter);
@@ -137,6 +146,7 @@ function VoterCardComponent({
       <View style={styles.voterTop}>
         <Avatar
           voter={voter}
+          uploading={uploadingPhoto}
           onPress={onImagePress ? handleImagePress : undefined}
         />
 
@@ -158,7 +168,8 @@ function VoterCardComponent({
                   }}
                   disabled={!onMarkVoted || voter.voted || markingVoted}
                   onPress={handleNamePress}
-                  style={styles.voterNameRow}>
+                  style={styles.voterNameRow}
+                >
                   {markingVoted ? (
                     <ActivityIndicator size="small" color="#15803d" />
                   ) : voter.voted ? (
@@ -168,7 +179,8 @@ function VoterCardComponent({
                   ) : null}
                   <Text
                     numberOfLines={1}
-                    style={[styles.voterName, styles.voterNameText]}>
+                    style={[styles.voterName, styles.voterNameText]}
+                  >
                     {voter.name}
                   </Text>
                 </Pressable>
@@ -192,7 +204,8 @@ function VoterCardComponent({
                   <Pressable
                     accessibilityLabel="Open voter card templates"
                     onPress={() => setFilterVisible(true)}
-                    style={styles.scanButton}>
+                    style={styles.scanButton}
+                  >
                     <PanelsTopLeft
                       color="#087568"
                       size={16}
@@ -206,7 +219,8 @@ function VoterCardComponent({
                       accessibilityState={{ busy: sharing }}
                       disabled={sharing}
                       onPress={handleSharePress}
-                      style={styles.scanButton}>
+                      style={styles.scanButton}
+                    >
                       {sharing ? (
                         <ActivityIndicator color="#087568" size="small" />
                       ) : (
@@ -217,7 +231,8 @@ function VoterCardComponent({
                   <Pressable
                     accessibilityLabel="Open voter actions"
                     onPress={() => setActionsVisible(true)}
-                    style={styles.scanButton}>
+                    style={[styles.scanButton, styles.actionsButton]}
+                  >
                     <MoreVertical color="#087568" size={17} strokeWidth={2.8} />
                   </Pressable>
                 </View>
@@ -229,7 +244,8 @@ function VoterCardComponent({
             <Text
               numberOfLines={1}
               ellipsizeMode="tail"
-              style={styles.guardian}>
+              style={styles.guardian}
+            >
               {voter.guardian}
             </Text>
           </View>
@@ -281,10 +297,12 @@ function VoterCardComponent({
           transparent
           visible
           animationType="fade"
-          onRequestClose={() => setQrVisible(false)}>
+          onRequestClose={() => setQrVisible(false)}
+        >
           <Pressable
             style={styles.qrBackdrop}
-            onPress={() => setQrVisible(false)}>
+            onPress={() => setQrVisible(false)}
+          >
             <Pressable style={styles.qrPanel}>
               <Text style={styles.qrTitle}>{voter.name}</Text>
               <Text style={styles.qrSubtitle}>
@@ -301,7 +319,8 @@ function VoterCardComponent({
 
               <Pressable
                 onPress={() => setQrVisible(false)}
-                style={styles.qrCloseButton}>
+                style={styles.qrCloseButton}
+              >
                 <Text style={styles.qrCloseText}>Close</Text>
               </Pressable>
             </Pressable>
@@ -314,13 +333,16 @@ function VoterCardComponent({
           transparent
           visible
           animationType="slide"
-          onRequestClose={() => setActionsVisible(false)}>
+          onRequestClose={() => setActionsVisible(false)}
+        >
           <Pressable
             style={styles.actionBackdrop}
-            onPress={() => setActionsVisible(false)}>
+            onPress={() => setActionsVisible(false)}
+          >
             <Pressable
               style={styles.actionPanel}
-              onPress={(event) => event.stopPropagation()}>
+              onPress={(event) => event.stopPropagation()}
+            >
               <View style={styles.actionHandle} />
               <View style={styles.actionHeader}>
                 <Text style={styles.actionTitle}>Voter actions</Text>
@@ -342,6 +364,14 @@ function VoterCardComponent({
                   }}
                 />
               ) : null} */}
+              {onView ? (
+                <ActionRow
+                  icon={Eye}
+                  title="View voter"
+                  subtitle="View voter details and photo"
+                  onPress={handleViewPress}
+                />
+              ) : null}
               {onEdit ? (
                 <ActionRow
                   icon={Pencil}
@@ -397,9 +427,11 @@ function areVoterCardPropsEqual(
     previous.onPrint === next.onPrint &&
     previous.onFamily === next.onFamily &&
     previous.onShare === next.onShare &&
+    previous.onView === next.onView &&
     previous.onEdit === next.onEdit &&
     previous.onDelete === next.onDelete &&
     previous.onImagePress === next.onImagePress &&
+    previous.uploadingPhoto === next.uploadingPhoto &&
     previous.onMarkVoted === next.onMarkVoted &&
     previous.onRequestSubmit === next.onRequestSubmit &&
     before.voted === after.voted &&
@@ -427,9 +459,11 @@ export const VoterCard = memo(VoterCardComponent, areVoterCardPropsEqual);
 const Avatar = memo(function Avatar({
   voter,
   onPress,
+  uploading = false,
 }: {
   voter: Voter;
   onPress?: () => void;
+  uploading?: boolean;
 }) {
   const defaultSource = getDefaultVoterAvatar(voter.gender, voter.age);
   const source = isUsableImageUri(voter.photoUri)
@@ -439,7 +473,11 @@ const Avatar = memo(function Avatar({
   const avatar = (
     <View style={styles.avatar}>
       <Image source={source} style={styles.avatarImage} resizeMode="contain" />
-      {onPress ? (
+      {uploading ? (
+        <View style={styles.avatarLoadingOverlay}>
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        </View>
+      ) : onPress ? (
         <View style={styles.avatarEditBadge}>
           <ImagePlus color="#FFFFFF" size={12} strokeWidth={3} />
         </View>
@@ -452,7 +490,15 @@ const Avatar = memo(function Avatar({
   }
 
   return (
-    <Pressable accessibilityLabel="Add or edit voter image" onPress={onPress}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={
+        uploading ? "Uploading voter image" : "Add or edit voter image"
+      }
+      accessibilityState={{ busy: uploading, disabled: uploading }}
+      disabled={uploading}
+      onPress={onPress}
+    >
       {avatar}
     </Pressable>
   );
@@ -479,7 +525,8 @@ const ActionRow = memo(function ActionRow({
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={[styles.actionRow, danger && styles.actionRowDanger]}>
+      style={[styles.actionRow, danger && styles.actionRowDanger]}
+    >
       <View style={[styles.actionIcon, danger && styles.actionIconDanger]}>
         <Icon
           color={danger ? "#B91C1C" : "#087568"}
@@ -524,7 +571,8 @@ const InfoTile = memo(function InfoTile({
         styles.infoTile,
         priority && styles.priorityInfoTile,
         compact && styles.compactInfoTile,
-      ]}>
+      ]}
+    >
       <View style={styles.tileIcon}>
         <Icon color="#087568" size={17} strokeWidth={2.5} />
       </View>
@@ -539,7 +587,8 @@ const InfoTile = memo(function InfoTile({
           adjustsFontSizeToFit
           minimumFontScale={0.8}
           ellipsizeMode="tail"
-          style={styles.infoValue}>
+          style={styles.infoValue}
+        >
           {value}
         </Text>
       </View>
@@ -576,6 +625,16 @@ const styles = StyleSheet.create({
   avatarImage: {
     width: 60,
     height: 60,
+  },
+  avatarLoadingOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   avatarEditBadge: {
     position: "absolute",
@@ -635,6 +694,7 @@ const styles = StyleSheet.create({
   cardRightRail: { alignItems: "flex-end", gap: 7 },
   boothActions: { flexDirection: "row", alignItems: "center", gap: 6 },
   quickActions: { flexDirection: "row", alignItems: "center", gap: 5 },
+  actionsButton: { width: 15 },
   scanButton: {
     width: 26,
     height: 25,

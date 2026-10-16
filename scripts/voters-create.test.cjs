@@ -135,3 +135,28 @@ test('native creation adds a search record and increments cache count only once'
     assert.equal(write.args[0][0], user.id);
   }
 });
+
+test('creation accepts optional form details and validates WhatsApp separately from phone', async () => {
+  assert.equal(creation.validateNewVoter({ ...form, whatsappNumber: '' }, user), '');
+  assert.match(creation.validateNewVoter({ ...form, whatsappNumber: '123' }, user), /WhatsApp/);
+  const details = {
+    whatsappNumber: '9876543210', serialNo: '123', education: 'Graduate',
+    working: 'Teacher', economicCategory: 'BPL', socialCategory: 'OBC', rationCategory: 'PHH',
+  };
+  await voters({ post: async (url, payload) => {
+    for (const [key, value] of Object.entries(details)) assert.equal(payload[key], value);
+    assert.equal(payload.phone, '');
+    return { data: { success: true, data: { voter: { id: fullId } } } };
+  } }).createVoter({ ...form, ...details });
+});
+
+test('new voter result is consumed once and cannot cross user accounts', () => {
+  const results = load('src/features/voters/voter-creation-result.ts');
+  const voter = { id: fullId };
+  results.setCreatedVoter(user.id, voter);
+  assert.equal(results.takeCreatedVoter(user.id), voter);
+  assert.equal(results.takeCreatedVoter(user.id), null);
+  results.setCreatedVoter(user.id, voter);
+  assert.equal(results.takeCreatedVoter('another-user'), null);
+  assert.equal(results.takeCreatedVoter(user.id), null);
+});

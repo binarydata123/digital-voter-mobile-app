@@ -43,7 +43,7 @@ import {
 } from "react-native-safe-area-context";
 
 import { EmptyState } from "@/components/common/EmptyState";
-import { AddVoterModal } from "@/features/voters/components/AddVoterModal";
+import { takeCreatedVoter } from "./voter-creation-result";
 import { PrintSlipShareCapture } from "@/features/voters/components/PrintSlipShareCapture";
 import { ThermalPrinterDialog } from "@/features/voters/components/ThermalPrinterDialog";
 import { VoterCard } from "@/features/voters/components/VoterCard";
@@ -147,6 +147,10 @@ export default function VotersScreen({
     useState<ThermalPrintRequest | null>(null);
   const [printerSelectionVersion, setPrinterSelectionVersion] = useState(0);
   const [loadingFamily, setLoadingFamily] = useState(false);
+  const [uploadingPhotoIds, setUploadingPhotoIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const photoUploadLocks = useRef(new Set<string>());
   const familyLookupId = useRef(0);
   const [sharingSlip, setSharingSlip] = useState<{
     voter: Voter;
@@ -158,7 +162,6 @@ export default function VotersScreen({
     setSharingSlip(null);
     sharingSlipLock.current = false;
   }, [sharingSlip]);
-  const [addingVoter, setAddingVoter] = useState(false);
   const [deleteVoterRequest, setDeleteVoterRequest] = useState<Voter | null>(
     null,
   );
@@ -171,11 +174,12 @@ export default function VotersScreen({
   const lastLocalQueryKey = useRef("");
   const localRequestId = useRef(0);
   const currentUser = getCurrentUser();
-  const headerTitle =
+  const headerTitle = String(
     currentUser?.ward ||
     currentUser?.constituency ||
     currentUser?.district ||
-    "Assigned area";
+    "Assigned area",
+  );
   const headerLocation = [
     currentUser?.city || currentUser?.district,
     currentUser?.state,
@@ -558,16 +562,53 @@ export default function VotersScreen({
     [localPoliticianId, refreshLocalOverview],
   );
 
+  const handleViewVoter = useCallback((voter: Voter) => {
+    setSelectedVoter(voter);
+    router.push({ pathname: "/politician/voter-detail", params: { id: voter.id } });
+  }, []);
+
   const handleEditVoter = useCallback((voter: Voter) => {
     setSelectedVoter(voter);
     router.push({ pathname: "./voter-edit", params: { id: voter.id } });
   }, []);
 
+  const handleVoterCreated = useCallback(
+    async (created: Voter) => {
+      ++localRequestId.current;
+      setQuery("");
+      setActiveBooth("All");
+      setPendingBooth(null);
+      if (localPoliticianId) {
+        try {
+          await addLocalVoter(localPoliticianId, created);
+          await loadInitialLocalPage(localPoliticianId);
+          setError("");
+        } catch {
+          setVoters((current) => [
+            created,
+            ...current.filter((voter) => voter.id !== created.id),
+          ]);
+          setError(
+            "Voter added successfully. Refresh voter data to update offline storage.",
+          );
+        }
+      } else {
+        setVoters((current) => [
+          created,
+          ...current.filter((voter) => voter.id !== created.id),
+        ]);
+      }
+    },
+    [localPoliticianId, loadInitialLocalPage],
+  );
+
   useFocusEffect(
     useCallback(() => {
+      const created = takeCreatedVoter(getCurrentUser()?.id ?? "");
+      if (created) void handleVoterCreated(created);
       setVoters((current) => applyManagedVoterChanges(current));
       let active = true;
-      if (localPoliticianId)
+      if (localPoliticianId && !created)
         getLocalVoterOverview(localPoliticianId)
           .then((overview) => {
             if (active) {
@@ -579,7 +620,7 @@ export default function VotersScreen({
       return () => {
         active = false;
       };
-    }, [localPoliticianId]),
+    }, [localPoliticianId, handleVoterCreated]),
   );
 
   const deleteVoter = useCallback(
@@ -638,6 +679,7 @@ export default function VotersScreen({
 
   const handleVoterImagePress = useCallback(
     async (voter: Voter) => {
+      if (photoUploadLocks.current.has(voter.id)) return;
       const permission =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
 
@@ -660,6 +702,9 @@ export default function VotersScreen({
         return;
       }
 
+      if (photoUploadLocks.current.has(voter.id)) return;
+      photoUploadLocks.current.add(voter.id);
+      setUploadingPhotoIds((current) => new Set(current).add(voter.id));
       try {
         await replaceVoter({ ...voter, photoUri: result.assets[0].uri });
       } catch (error: any) {
@@ -669,6 +714,13 @@ export default function VotersScreen({
             error?.message ||
             "Please check your connection and try again.",
         );
+      } finally {
+        photoUploadLocks.current.delete(voter.id);
+        setUploadingPhotoIds((current) => {
+          const next = new Set(current);
+          next.delete(voter.id);
+          return next;
+        });
       }
     },
     [replaceVoter],
@@ -734,9 +786,11 @@ export default function VotersScreen({
         onPrint={handlePrint}
         onFamily={handleFamily}
         onShare={handleSharePrintSlip}
+        onView={handleViewVoter}
         onEdit={handleEditVoter}
         onDelete={handleDeleteVoter}
         onImagePress={handleVoterImagePress}
+        uploadingPhoto={uploadingPhotoIds.has(voter.id)}
         onMarkVoted={handleMarkVoted}
       />
     ),
@@ -744,9 +798,11 @@ export default function VotersScreen({
       handleDeleteVoter,
       handleFamily,
       handleEditVoter,
+      handleViewVoter,
       handlePrint,
       handleSharePrintSlip,
       handleVoterImagePress,
+      uploadingPhotoIds,
       handleMarkVoted,
     ],
   );
@@ -788,35 +844,9 @@ export default function VotersScreen({
     });
   }, []);
 
-  const handleVoterCreated = useCallback(
-    async (created: Voter) => {
-      ++localRequestId.current;
-      setQuery("");
-      setActiveBooth("All");
-      setPendingBooth(null);
-      if (localPoliticianId) {
-        try {
-          await addLocalVoter(localPoliticianId, created);
-          await loadInitialLocalPage(localPoliticianId);
-          setError("");
-        } catch {
-          setVoters((current) => [
-            created,
-            ...current.filter((voter) => voter.id !== created.id),
-          ]);
-          setError(
-            "Voter added successfully. Refresh voter data to update offline storage.",
-          );
-        }
-      } else {
-        setVoters((current) => [
-          created,
-          ...current.filter((voter) => voter.id !== created.id),
-        ]);
-      }
-    },
-    [localPoliticianId, loadInitialLocalPage],
-  );
+  const handleAddVoter = useCallback(() => {
+    router.push("./voter-add");
+  }, []);
 
   const renderScreenHeader = useCallback(
     () => (
@@ -836,7 +866,7 @@ export default function VotersScreen({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Add voter"
-                onPress={() => setAddingVoter(true)}
+                onPress={handleAddVoter}
                 style={styles.headerIconButton}>
                 <UserPlus color="#0F766E" size={19} strokeWidth={2.6} />
               </Pressable>
@@ -879,7 +909,7 @@ export default function VotersScreen({
         ) : null}
       </>
     ),
-    [error, refreshAllVoterData, refreshing, headerTitle, headerLocation],
+    [error, refreshAllVoterData, refreshing, headerTitle, headerLocation, handleAddVoter],
   );
 
   const renderStickyControls = useCallback(
@@ -1148,13 +1178,6 @@ export default function VotersScreen({
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" />
-      {addingVoter && currentUser ? (
-        <AddVoterModal
-          user={currentUser}
-          onClose={() => setAddingVoter(false)}
-          onCreated={handleVoterCreated}
-        />
-      ) : null}
       <View
         pointerEvents="none"
         style={{
@@ -1215,6 +1238,7 @@ export default function VotersScreen({
         <FlashList
           ref={listRef}
           data={listData}
+          extraData={uploadingPhotoIds}
           keyExtractor={voterKeyExtractor}
           renderItem={renderVoterItem}
           getItemType={getVoterListItemType}

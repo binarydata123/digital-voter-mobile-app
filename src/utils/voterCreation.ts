@@ -1,6 +1,13 @@
 import type { AuthUser } from "@/services/authentication";
 
 export type CreateVoterInput = {
+  whatsappNumber?: string;
+  serialNo?: string;
+  education?: string;
+  working?: string;
+  economicCategory?: string;
+  socialCategory?: string;
+  rationCategory?: string;
   epicNo: string;
   nameEnglish: string;
   gender: string;
@@ -70,6 +77,7 @@ export function validateNewVoter(form: CreateVoterInput, user: AuthUser) {
     if (age === null) return "Enter a valid date of birth in YYYY-MM-DD format.";
     if (age !== Number(form.age)) return "Age must match the date of birth.";
   }
+  if (form.whatsappNumber && !/^\d{10}$/.test(form.whatsappNumber)) return "WhatsApp must be 10 digits.";
   if (form.relation && !form.relationName.trim()) return "Enter the relation name.";
   return "";
 }

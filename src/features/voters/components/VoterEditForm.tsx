@@ -5,7 +5,7 @@ import {
   ChevronDown,
   X,
 } from "lucide-react-native";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -47,6 +47,10 @@ type VoterEditFormProps = {
   voter: Voter | null;
   onClose: () => void;
   onSave: (voter: Voter) => Promise<void>;
+  mode?: "add" | "edit";
+  locationFields?: ReactNode;
+  boothField?: ReactNode;
+  wardField?: ReactNode;
 };
 
 type VoterEditSheetProps = Omit<VoterEditFormProps, "voter"> & {
@@ -84,11 +88,12 @@ function toForm(voter: Voter): EditableVoterFields {
   };
 }
 
-export function VoterEditForm({ voter, onClose, onSave }: VoterEditFormProps) {
+export function VoterEditForm({ voter, onClose, onSave, ...options }: VoterEditFormProps) {
   if (!voter) return null;
 
   return (
     <VoterEditSheet
+      {...options}
       key={voter.id}
       voter={voter}
       onClose={onClose}
@@ -97,7 +102,7 @@ export function VoterEditForm({ voter, onClose, onSave }: VoterEditFormProps) {
   );
 }
 
-function VoterEditSheet({ voter, onClose, onSave }: VoterEditSheetProps) {
+function VoterEditSheet({ voter, onClose, onSave, mode = "edit", locationFields, boothField, wardField }: VoterEditSheetProps) {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const focusedInput = useRef<TextInput | null>(null);
@@ -155,15 +160,10 @@ function VoterEditSheet({ voter, onClose, onSave }: VoterEditSheetProps) {
   function validateForm(): boolean {
     const errors: Record<string, string> = {};
 
-    // Age: 0 - 120
+    // New voters must be adults; existing records can include any age.
     const ageNum = Number(form.age);
-    if (form.age && (!Number.isFinite(ageNum) || ageNum < 0 || ageNum > 120)) {
-      errors.age = "Age must be between 0 and 120";
-    }
-
-    // Mobile: exactly 10 digits
-    if (form.mobileNumber && !/^\d{10}$/.test(form.mobileNumber)) {
-      errors.mobileNumber = "Mobile must be 10 digits";
+    if ((mode === "add" || form.age) && (!Number.isFinite(ageNum) || ageNum < (mode === "add" ? 18 : 0) || ageNum > (mode === "add" ? 130 : 120))) {
+      errors.age = mode === "add" ? "Age must be between 18 and 130" : "Age must be between 0 and 120";
     }
 
     // WhatsApp: exactly 10 digits
@@ -205,17 +205,18 @@ function VoterEditSheet({ voter, onClose, onSave }: VoterEditSheetProps) {
         name: form.name.trim() || voter.name,
         gender: form.gender.trim() || voter.gender,
         guardian: form.guardian.trim() || "N/A",
-        epicNo: form.epicNo.trim() || "N/A",
-        houseNo: form.houseNo.trim() || "N/A",
+        epicNo: form.epicNo.trim(),
+        houseNo: form.houseNo.trim(),
         booth: form.booth.trim() || voter.booth,
         education: form.education?.trim() ?? "",
         working: form.working?.trim() ?? "",
       });
     } catch (error) {
+      const serverMessage = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
       setSaveError(
-        error instanceof Error
+        serverMessage || (error instanceof Error
           ? error.message
-          : "Unable to save voter. Please try again.",
+          : "Unable to save voter. Please try again."),
       );
     } finally {
       saveLock.current = false;
@@ -234,13 +235,14 @@ function VoterEditSheet({ voter, onClose, onSave }: VoterEditSheetProps) {
           <Pressable
             accessibilityLabel="Back"
             onPress={onClose}
+            disabled={saving}
             style={styles.headingIcon}>
             <ArrowLeft size={22} color="#087568" />
           </Pressable>
           <View style={styles.headingCopy}>
-            <Text style={styles.title}>Edit voter</Text>
+            <Text style={styles.title}>{mode === "add" ? "Add voter" : "Edit voter"}</Text>
             <Text numberOfLines={1} style={styles.subtitle}>
-              Update voter details
+              {mode === "add" ? "Add a voter in your assigned area" : "Update voter details"}
             </Text>
           </View>
         </View>
@@ -252,155 +254,134 @@ function VoterEditSheet({ voter, onClose, onSave }: VoterEditSheetProps) {
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.form}>
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Personal details</Text>
-            <Field
-              onFocus={revealInput}
-              label="Name"
-              value={form.name}
-              onChangeText={(value) => updateField("name", value)}
-            />
+          <View pointerEvents={saving ? "none" : "auto"} style={styles.sections}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Personal details</Text>
+              <View style={styles.twoColumn}>
+                <Field
+                  onFocus={revealInput}
+                  label="Name"
+                  value={form.name}
+                  onChangeText={(value) => updateField("name", value)}
+                />
+                <Field
+                  onFocus={revealInput}
+                  keyboardType="phone-pad"
+                  label="WhatsApp"
+                  value={form.whatsappNumber ?? ""}
+                  onChangeText={(value) =>
+                    updateField(
+                      "whatsappNumber",
+                      value.replace(/[^\d]/g, "").slice(0, 10),
+                    )
+                  }
+                  error={fieldErrors.whatsappNumber}
+                />
+              </View>
 
-            <View style={styles.twoColumn}>
-              <GenderDropdown
-                value={form.gender}
-                onChange={(value) => updateField("gender", value)}
-              />
-              <Field
-                onFocus={revealInput}
-                keyboardType="number-pad"
-                label="Age"
-                value={String(form.age || "")}
-                onChangeText={(value) => {
-                  const digits = value.replace(/[^\d]/g, "").slice(0, 3);
-                  updateField("age", Number(digits));
-                }}
-                error={fieldErrors.age}
-              />
+              <View style={styles.twoColumn}>
+                <GenderDropdown
+                  value={form.gender}
+                  onChange={(value) => updateField("gender", value)}
+                />
+                <Field
+                  onFocus={revealInput}
+                  keyboardType="number-pad"
+                  label="Age"
+                  value={String(form.age || "")}
+                  onChangeText={(value) => {
+                    const digits = value.replace(/[^\d]/g, "").slice(0, 3);
+                    updateField("age", Number(digits));
+                  }}
+                  error={fieldErrors.age}
+                />
+              </View>
+              <View style={styles.twoColumn}>
+                <Field
+                  onFocus={revealInput}
+                  label="Education"
+                  value={form.education ?? ""}
+                  onChangeText={(value) => updateField("education", value)}
+                />
+                <Field
+                  onFocus={revealInput}
+                  label="Working / occupation"
+                  value={form.working ?? ""}
+                  onChangeText={(value) => updateField("working", value)}
+                />
+              </View>
             </View>
-            <Field
-              onFocus={revealInput}
-              label="Education"
-              value={form.education ?? ""}
-              onChangeText={(value) => updateField("education", value)}
-            />
-            <Field
-              onFocus={revealInput}
-              label="Working / occupation"
-              value={form.working ?? ""}
-              onChangeText={(value) => updateField("working", value)}
-            />
-          </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Voter identification</Text>
-            <View style={styles.twoColumn}>
-              <Field
-                onFocus={revealInput}
-                label="EPIC No."
-                value={form.epicNo}
-                onChangeText={(value) =>
-                  updateField(
-                    "epicNo",
-                    value.replace(/[^A-Za-z0-9]/g, "").slice(0, 10),
-                  )
-                }
-                error={fieldErrors.epicNo}
-              />
-              <Field
-                onFocus={revealInput}
-                label="Serial No."
-                value={form.serialNo ?? ""}
-                onChangeText={(value) =>
-                  updateField(
-                    "serialNo",
-                    value.replace(/[^A-Za-z0-9]/g, "").slice(0, 10),
-                  )
-                }
-                error={fieldErrors.serialNo}
-              />
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Voter identification</Text>
+              <View style={styles.twoColumn}>
+                <Field
+                  onFocus={revealInput}
+                  label="EPIC No."
+                  value={form.epicNo}
+                  onChangeText={(value) =>
+                    updateField(
+                      "epicNo",
+                      value.replace(/[^A-Za-z0-9]/g, "").slice(0, 10),
+                    )
+                  }
+                  error={fieldErrors.epicNo}
+                />
+                <Field
+                  onFocus={revealInput}
+                  label="Serial No."
+                  value={form.serialNo ?? ""}
+                  onChangeText={(value) =>
+                    updateField(
+                      "serialNo",
+                      value.replace(/[^A-Za-z0-9]/g, "").slice(0, 10),
+                    )
+                  }
+                  error={fieldErrors.serialNo}
+                />
+              </View>
+              <View style={styles.twoColumn}>
+                <Field
+                  onFocus={revealInput}
+                  label="House No."
+                  value={form.houseNo ?? ""}
+                  onChangeText={(value) => updateField("houseNo", value)}
+                />
+                {mode === "add" ? boothField : null}
+              </View>
+              {mode === "add" ? wardField : null}
             </View>
-            <View style={styles.twoColumn}>
-              <Field
-                onFocus={revealInput}
-                label="House No."
-                value={form.houseNo ?? ""}
-                onChangeText={(value) => updateField("houseNo", value)}
-              />
-              <Field
-                onFocus={revealInput}
-                label="Booth"
-                value={form.booth ?? ""}
-                onChangeText={(value) => updateField("booth", value)}
-              />
-            </View>
-            <Field
-              onFocus={revealInput}
-              label="Ward"
-              value={form.ward ?? ""}
-              onChangeText={(value) => updateField("ward", value)}
-            />
-          </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              Welfare & socioeconomic details
-            </Text>
-            <View style={styles.twoColumn}>
-              <GenderDropdown
-                label="Economic category"
-                options={["IRDP", "BPL", "AAY", "APL", "EWS", "Unknown"]}
-                value={form.economicCategory ?? ""}
-                onChange={(value) => updateField("economicCategory", value)}
-              />
-              <GenderDropdown
-                label="Social category"
-                options={["SC", "ST", "OBC", "MBC", "General", "Unknown"]}
-                value={form.socialCategory ?? ""}
-                onChange={(value) => updateField("socialCategory", value)}
-              />
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                Welfare & socioeconomic details
+              </Text>
+              <View style={styles.twoColumn}>
+                <GenderDropdown
+                  label="Economic category"
+                  options={["IRDP", "BPL", "AAY", "APL", "EWS", "Unknown"]}
+                  value={form.economicCategory ?? ""}
+                  onChange={(value) => updateField("economicCategory", value)}
+                />
+                <GenderDropdown
+                  label="Social category"
+                  options={["SC", "ST", "OBC", "MBC", "General", "Unknown"]}
+                  value={form.socialCategory ?? ""}
+                  onChange={(value) => updateField("socialCategory", value)}
+                />
+              </View>
+              <View style={styles.twoColumn}>
+                <GenderDropdown
+                  label="Ration category"
+                  options={["PHH", "AAY", "Other", "Unknown"]}
+                  value={form.rationCategory ?? ""}
+                  onChange={(value) => updateField("rationCategory", value)}
+                />
+                <View style={styles.field} />
+              </View>
             </View>
-            <View style={styles.twoColumn}>
-              <GenderDropdown
-                label="Ration category"
-                options={["PHH", "AAY", "Other", "Unknown"]}
-                value={form.rationCategory ?? ""}
-                onChange={(value) => updateField("rationCategory", value)}
-              />
-              <View style={styles.field} />
-            </View>
-          </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Contact details</Text>
-            <View style={styles.twoColumn}>
-              <Field
-                onFocus={revealInput}
-                keyboardType="phone-pad"
-                label="Mobile"
-                value={form.mobileNumber ?? ""}
-                onChangeText={(value) =>
-                  updateField(
-                    "mobileNumber",
-                    value.replace(/[^\d]/g, "").slice(0, 10),
-                  )
-                }
-                error={fieldErrors.mobileNumber}
-              />
-              <Field
-                onFocus={revealInput}
-                keyboardType="phone-pad"
-                label="WhatsApp"
-                value={form.whatsappNumber ?? ""}
-                onChangeText={(value) =>
-                  updateField(
-                    "whatsappNumber",
-                    value.replace(/[^\d]/g, "").slice(0, 10),
-                  )
-                }
-                error={fieldErrors.whatsappNumber}
-              />
-            </View>
+            {locationFields}
           </View>
         </ScrollView>
 
@@ -410,7 +391,7 @@ function VoterEditSheet({ voter, onClose, onSave }: VoterEditSheetProps) {
           </Text>
         ) : null}
         <View style={styles.actions}>
-          <Pressable onPress={onClose} style={styles.secondaryButton}>
+          <Pressable disabled={saving} onPress={onClose} style={styles.secondaryButton}>
             <Text style={styles.secondaryButtonText}>Cancel</Text>
           </Pressable>
           <Pressable
@@ -419,7 +400,7 @@ function VoterEditSheet({ voter, onClose, onSave }: VoterEditSheetProps) {
             style={[styles.primaryButton, saving && { opacity: 0.6 }]}>
             <Check color="#FFFFFF" size={18} />
             <Text style={styles.primaryButtonText}>
-              {saving ? "Saving…" : "Save changes"}
+              {saving ? "Saving…" : mode === "add" ? "Add voter" : "Save changes"}
             </Text>
           </Pressable>
         </View>
@@ -428,7 +409,7 @@ function VoterEditSheet({ voter, onClose, onSave }: VoterEditSheetProps) {
   );
 }
 
-function GenderDropdown({
+export function GenderDropdown({
   value,
   onChange,
   label = "Gender",
@@ -525,13 +506,14 @@ function GenderDropdown({
   );
 }
 
-function Field({
+export function Field({
   onFocus,
   label,
   value,
   onChangeText,
   keyboardType,
   error,
+  editable = true,
 }: {
   label: string;
   value: string;
@@ -539,12 +521,14 @@ function Field({
   keyboardType?: "default" | "number-pad" | "phone-pad";
   onFocus?: (input: TextInput) => void;
   error?: string;
+  editable?: boolean;
 }) {
   const inputRef = useRef<TextInput>(null);
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        editable={editable}
         ref={inputRef}
         onFocus={() => {
           if (inputRef.current) onFocus?.(inputRef.current);
@@ -562,7 +546,7 @@ function Field({
   );
 }
 
-const styles = StyleSheet.create({
+export const voterFormStyles = StyleSheet.create({
   saveError: {
     color: "#B91C1C",
     backgroundColor: "#FEF2F2",
@@ -615,7 +599,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   formScroll: { flex: 1 },
-  form: { gap: 10, padding: 16, paddingBottom: 110 },
+  form: { gap: 10, padding: 16, paddingBottom: 24 },
+  sections: { gap: 10 },
   section: { gap: 9 },
   sectionTitle: { color: "#334155", fontSize: 13, fontWeight: "700" },
   twoColumn: { flexDirection: "row", gap: 10 },
@@ -733,3 +718,5 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
 });
+
+const styles = voterFormStyles;
