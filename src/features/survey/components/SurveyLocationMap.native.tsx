@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
   },
   map: {
     borderRadius: 8,
-    height: 240,
+    height: 320,
     overflow: "hidden",
     width: "100%",
   },

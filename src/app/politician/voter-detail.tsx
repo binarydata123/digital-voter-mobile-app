@@ -240,6 +240,9 @@ export default function VoterDetailScreen() {
 
           <Row label="Gender" value={currentVoter.gender || "N/A"} />
           <Row label="Age" value={String(currentVoter.age || "N/A")} />
+          <Row label="Economic Category" value={currentVoter.economicCategory || "N/A"} />
+          <Row label="Social Category" value={currentVoter.socialCategory || "N/A"} />
+          <Row label="Ration Category" value={currentVoter.rationCategory || "N/A"} />
           <Row label={relationLabel} value={currentVoter.guardian || "N/A"} />
           <Row label="EPIC No." value={currentVoter.epicNo || "N/A"} />
           <Row label="House No." value={currentVoter.houseNo || "N/A"} />
