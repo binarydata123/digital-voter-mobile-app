@@ -44,8 +44,8 @@ import {
   getCurrentUser,
   getDefaultPoliticianRoute,
   hasPoliticianPageAccess,
-  logoutPolitician,
 } from "@/services/authentication";
+import { logoutAndReturnToLogin } from "@/utils/logout-and-return-to-login";
 import {
   buildAssignedSurveyScope,
   fetchSurveyPoliticianOptions,
@@ -547,7 +547,7 @@ export default function SurveyScreen() {
   }
 
   async function confirmLogout() {
-    if (await logoutPolitician()) router.replace("/login");
+    await logoutAndReturnToLogin();
   }
 
   function openVoterPage() {
