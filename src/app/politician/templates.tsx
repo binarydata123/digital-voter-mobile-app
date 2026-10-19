@@ -32,10 +32,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import {
   getCurrentUser,
   hasPoliticianPageAccess,
-  logoutPolitician,
   refreshCurrentUser,
   type AuthUser,
 } from "@/services/authentication";
+import { logoutAndReturnToLogin } from "@/utils/logout-and-return-to-login";
 import { styles } from "@/features/templates/styles";
 import { getLocalVoterOverview, hasLocalVoters, replaceLocalVotersFromPages } from "@/services/local-voters";
 import { isLocalVoterDatabaseAvailable } from "@/services/voter-database";
@@ -197,7 +197,7 @@ export default function TemplatesScreen() {
 
   async function handleLogout() {
     setMenuVisible(false);
-    if (await logoutPolitician()) router.replace("/login");
+    await logoutAndReturnToLogin();
   }
 
   function goToSurvey() {

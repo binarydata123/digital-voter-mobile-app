@@ -60,9 +60,9 @@ import {
   getCurrentUser,
   getDefaultPoliticianRoute,
   hasPoliticianPageAccess,
-  logoutPolitician,
   clearLocalAuthSession,
 } from "@/services/authentication";
+import { logoutAndReturnToLogin } from "@/utils/logout-and-return-to-login";
 import {
   addLocalVoter,
   deleteLocalVoter,
@@ -524,7 +524,7 @@ export default function VotersScreen({
   );
 
   async function confirmLogout() {
-    if (await logoutPolitician()) router.replace("/login");
+    await logoutAndReturnToLogin();
   }
 
   function openSurveyPage() {
