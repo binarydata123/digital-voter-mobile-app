@@ -101,6 +101,7 @@ import { logoutAndReturnToLogin } from "@/utils/logout-and-return-to-login";
 
 const VOTER_PAGE_SIZE = 50;
 const LOCAL_VOTER_SYNC_MAX_AGE_MS = 10 * 60 * 60 * 1000;
+const VOTER_SYNC_PROMPT_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const startupSyncCheckedForPoliticians = new Set<string>();
 const STICKY_CONTROL_INDICES = [1];
 type VoterListItem =
@@ -158,6 +159,7 @@ export default function VotersScreen({
   const [pendingBooth, setPendingBooth] = useState<string | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [syncPromptVisible, setSyncPromptVisible] = useState(false);
   const [error, setError] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [slipPreview, setSlipPreview] = useState<SlipPreviewRequest | null>(
@@ -361,6 +363,21 @@ export default function VotersScreen({
       setRefreshing(false);
     }
   }, [loadInitialLocalPage, refreshing]);
+
+  useEffect(() => {
+    if (searchMode) return;
+
+    const timer = setInterval(() => {
+      if (!refreshing) setSyncPromptVisible(true);
+    }, VOTER_SYNC_PROMPT_INTERVAL_MS);
+
+    return () => clearInterval(timer);
+  }, [refreshing, searchMode]);
+
+  const refreshFromSyncPrompt = useCallback(async () => {
+    setSyncPromptVisible(false);
+    await refreshAllVoterData();
+  }, [refreshAllVoterData]);
 
   useEffect(() => {
     if (!localPoliticianId) return;
@@ -1357,6 +1374,45 @@ export default function VotersScreen({
 
       <Modal
         transparent
+        visible={syncPromptVisible}
+        animationType="fade"
+        onRequestClose={() => setSyncPromptVisible(false)}>
+        <View style={styles.syncPromptBackdrop}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Update voter data later"
+            onPress={() => setSyncPromptVisible(false)}
+            style={StyleSheet.absoluteFill}
+          />
+          <View accessibilityViewIsModal style={styles.syncPromptCard}>
+            <View style={styles.syncPromptIcon}>
+              <RefreshCw color="#087568" size={27} strokeWidth={2.5} />
+            </View>
+            <Text style={styles.syncPromptTitle}>Update voter data?</Text>
+            <Text style={styles.syncPromptMessage}>
+              New voter updates may be available. Refresh now to get the latest
+              data.
+            </Text>
+            <View style={styles.syncPromptActions}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setSyncPromptVisible(false)}
+                style={styles.syncPromptLaterButton}>
+                <Text style={styles.syncPromptLaterText}>Later</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void refreshFromSyncPrompt()}
+                style={styles.syncPromptUpdateButton}>
+                <Text style={styles.syncPromptUpdateText}>Update now</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        transparent
         visible={menuVisible}
         animationType="slide"
         onRequestClose={() => setMenuVisible(false)}
@@ -2097,6 +2153,65 @@ const styles = StyleSheet.create({
   logoutMenuRow: { borderBottomWidth: 0, marginTop: 4 },
   logoutMenuIconWrap: { backgroundColor: "#FEF2F2" },
   logoutMenuTitle: { color: "#B91C1C", fontSize: 14, fontWeight: "900" },
+
+  syncPromptBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    backgroundColor: "rgba(15, 23, 42, 0.52)",
+  },
+  syncPromptCard: {
+    width: "100%",
+    maxWidth: 380,
+    alignItems: "center",
+    borderRadius: 24,
+    backgroundColor: "#FFFFFF",
+    padding: 24,
+  },
+  syncPromptIcon: {
+    width: 64,
+    height: 64,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 32,
+    backgroundColor: "#EAF7F2",
+    marginBottom: 16,
+  },
+  syncPromptTitle: { color: "#0F172A", fontSize: 19, fontWeight: "900" },
+  syncPromptMessage: {
+    color: "#64748B",
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 20,
+    marginTop: 10,
+    textAlign: "center",
+  },
+  syncPromptActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 22,
+    width: "100%",
+  },
+  syncPromptLaterButton: {
+    flex: 1,
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+  },
+  syncPromptLaterText: { color: "#475569", fontSize: 14, fontWeight: "800" },
+  syncPromptUpdateButton: {
+    flex: 1,
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    backgroundColor: "#087568",
+  },
+  syncPromptUpdateText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
 
   logoutChoiceOverlay: {
     position: "absolute",

@@ -13,11 +13,7 @@ function loadSimPhoneNumberModule(): SimPhoneNumberNativeModule {
 }
 
 export async function getSimPhoneNumber(): Promise<string | null> {
-  if (
-    Platform.OS !== "android" ||
-    !SimPhoneNumber ||
-    typeof SimPhoneNumber.getPhoneNumber !== "function"
-  ) {
+  if (Platform.OS !== "android") {
     return null;
   }
 
