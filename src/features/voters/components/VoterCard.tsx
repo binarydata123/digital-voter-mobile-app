@@ -1,3 +1,4 @@
+import * as Linking from "expo-linking";
 import {
   BadgeCheck,
   Eye,
@@ -13,6 +14,7 @@ import {
 import { memo, useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
   Pressable,
@@ -21,6 +23,7 @@ import {
   View,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
+import Svg, { Path } from "react-native-svg";
 
 import type { Voter } from "@/services/voters";
 import {
@@ -86,6 +89,21 @@ function VoterCardComponent({
   const [sharing, setSharing] = useState(false);
   const shareLock = useRef(false);
   const [requirementsVisible, setRequirementsVisible] = useState(false);
+  const whatsappDigits = (voter.whatsappNumber ?? "").replace(/\D/g, "");
+  const whatsappPhone =
+    whatsappDigits.length === 10 ? `91${whatsappDigits}` : whatsappDigits;
+  const hasWhatsAppNumber = /^[1-9]\d{9,14}$/.test(whatsappPhone);
+  const handleWhatsAppPress = useCallback(async () => {
+    if (!hasWhatsAppNumber) return;
+    const message = `Voter Slip - ${voter.name}\n${buildVoterQrValue(voter)}`;
+    try {
+      await Linking.openURL(
+        `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(message)}`,
+      );
+    } catch {
+      Alert.alert("WhatsApp unavailable", "Unable to open this WhatsApp chat.");
+    }
+  }, [hasWhatsAppNumber, whatsappPhone, voter]);
   const handleSharePress = useCallback(async () => {
     if (!onShare || shareLock.current) return;
     shareLock.current = true;
@@ -201,6 +219,16 @@ function VoterCardComponent({
                     <QrCode color="#087568" size={15} strokeWidth={2.8} />
                   </Pressable> */}
 
+                  {hasWhatsAppNumber ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open WhatsApp chat with ${voter.name}`}
+                      onPress={handleWhatsAppPress}
+                      style={styles.scanButton}
+                    >
+                      <WhatsAppIcon />
+                    </Pressable>
+                  ) : null}
                   <Pressable
                     accessibilityLabel="Open voter card templates"
                     onPress={() => setFilterVisible(true)}
@@ -228,6 +256,7 @@ function VoterCardComponent({
                       )}
                     </Pressable>
                   ) : null}
+
                   <Pressable
                     accessibilityLabel="Open voter actions"
                     onPress={() => setActionsVisible(true)}
@@ -440,6 +469,7 @@ function areVoterCardPropsEqual(
     before.gender === after.gender &&
     before.education === after.education &&
     before.working === after.working &&
+    before.whatsappNumber === after.whatsappNumber &&
     before.age === after.age &&
     before.guardian === after.guardian &&
     before.epicNo === after.epicNo &&
@@ -451,6 +481,23 @@ function areVoterCardPropsEqual(
 }
 
 export const VoterCard = memo(VoterCardComponent, areVoterCardPropsEqual);
+
+function WhatsAppIcon() {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M20.5 11.5a8.5 8.5 0 0 1-12.6 7.45L3 20.5l1.55-4.9A8.5 8.5 0 1 1 20.5 11.5Z"
+        stroke="#087568"
+        strokeWidth={1.8}
+        strokeLinejoin="round"
+      />
+      <Path
+        d="m8.1 7.2 1.4-.3 1.1 2.5-1.1 1a9 9 0 0 0 3.1 3.1l1-1.1 2.5 1.1-.3 1.4c-.2.9-1 1.4-1.9 1.2-3.6-.8-6.4-3.6-7.2-7.2-.2-.9.3-1.7 1.4-1.7Z"
+        fill="#087568"
+      />
+    </Svg>
+  );
+}
 
 /* -------------------------------------------------------------
    AVATAR

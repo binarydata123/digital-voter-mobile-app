@@ -2,7 +2,11 @@ import { PermissionsAndroid, Platform } from "react-native";
 import SimPhoneNumber from "./SimPhoneNumberModule";
 
 export async function getSimPhoneNumber(): Promise<string | null> {
-  if (Platform.OS !== "android") {
+  if (
+    Platform.OS !== "android" ||
+    !SimPhoneNumber ||
+    typeof SimPhoneNumber.getPhoneNumber !== "function"
+  ) {
     return null;
   }
 

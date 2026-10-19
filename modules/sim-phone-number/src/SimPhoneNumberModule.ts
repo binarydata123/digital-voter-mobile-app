@@ -1,7 +1,8 @@
-import { NativeModule, requireNativeModule } from "expo";
+import { NativeModule, requireOptionalNativeModule } from "expo";
 
 declare class SimPhoneNumberModule extends NativeModule {
   getPhoneNumber(): string | null;
 }
 
-export default requireNativeModule<SimPhoneNumberModule>("SimPhoneNumber");
+// Expo Go and builds created before this module was added cannot load it.
+export default requireOptionalNativeModule<SimPhoneNumberModule>("SimPhoneNumber");

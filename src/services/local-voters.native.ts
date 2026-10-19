@@ -49,6 +49,7 @@ type VoterRow = {
   voted: number;
   education: string;
   working: string;
+  whatsapp_number: string;
   economic_category: string;
   social_category: string;
   ration_category: string;
@@ -107,6 +108,7 @@ function toVoter(row: VoterRow): Voter {
     voted: row.voted === 1,
     education: row.education ?? "",
     working: row.working ?? "",
+    whatsappNumber: row.whatsapp_number ?? "",
     economicCategory: row.economic_category ?? "",
     socialCategory: row.social_category ?? "",
     rationCategory: row.ration_category ?? "",
@@ -211,7 +213,7 @@ export async function getLocalVoterPage(
     database.getAllAsync<VoterRow>(
       `SELECT voter_id, voter_key, voter_source, voter_collection, voter_document_id,
         name, hindi_name, gender, age, guardian, epic_no, house_no,
-        booth, ward, district, state, serial_no, polling_station, photo_uri, education, working, economic_category, social_category, ration_category, voted
+        booth, ward, district, state, serial_no, polling_station, photo_uri, education, working, economic_category, social_category, ration_category, whatsapp_number, voted
        FROM voters
        WHERE ${where}
        ORDER BY ${ranking}name COLLATE NOCASE, voter_id
@@ -264,8 +266,8 @@ async function insertLocalVoterPage(
         `INSERT OR REPLACE INTO voters (
           politician_id, voter_id, voter_key, voter_source, voter_collection,
           voter_document_id, name, hindi_name, gender, age, guardian, epic_no,
-          house_no, booth, ward, district, state, serial_no, polling_station, photo_uri, education, working, economic_category, social_category, ration_category, voted
-        ) VALUES ${placeholders(batch.length, 26)}`,
+          house_no, booth, ward, district, state, serial_no, polling_station, photo_uri, education, working, economic_category, social_category, ration_category, whatsapp_number, voted
+        ) VALUES ${placeholders(batch.length, 27)}`,
         batch.flatMap((voter) => [
           politicianId,
           voter.id,
@@ -292,6 +294,7 @@ async function insertLocalVoterPage(
           voter.economicCategory ?? "",
           voter.socialCategory ?? "",
           voter.rationCategory ?? "",
+          voter.whatsappNumber ?? "",
           voter.voted ? 1 : 0,
         ]),
       );
@@ -381,6 +384,7 @@ export async function updateLocalVoter(politicianId: string, voter: Voter) {
         economic_category = ?,
         social_category = ?,
         ration_category = ?,
+        whatsapp_number = ?,
         voted = ?
        WHERE politician_id = ? AND voter_id = ?`,
       voter.voterKey ?? "",
@@ -406,6 +410,7 @@ export async function updateLocalVoter(politicianId: string, voter: Voter) {
       voter.economicCategory ?? "",
       voter.socialCategory ?? "",
       voter.rationCategory ?? "",
+      voter.whatsappNumber ?? "",
       voter.voted ? 1 : 0,
       politicianId,
       voter.id,

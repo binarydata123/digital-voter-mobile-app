@@ -21,7 +21,7 @@ function load(file, dependencies = {}) {
 
 // Run the application's schema, migrations and queries against real SQLite.
 // Only the Expo native bridge and device key storage are replaced in this test.
-function storage(filename) {
+function storage(filename, platform = 'android') {
   const sqlite = new DatabaseSync(filename);
   const params = args => Array.isArray(args[0]) ? args[0] : args;
   const bridge = {
@@ -44,7 +44,7 @@ function storage(filename) {
     'expo-crypto': {},
     'expo-secure-store': { getItemAsync: async () => '00'.repeat(32) },
     'expo-sqlite': { openDatabaseAsync: async () => bridge },
-    'react-native': { Platform: { OS: 'android' } },
+    'react-native': { Platform: { OS: platform } },
   });
   return {
     local: load('src/services/local-voters.native.ts', { './voter-database': database }),
@@ -118,7 +118,7 @@ test('older voter databases gain category columns without losing cached voters',
   t.after(store.close);
   await store.local.replaceLocalVoters(politicianId, [voter]);
   // Recreate the schema state of an installation predating these three fields.
-  for (const column of ['economic_category', 'social_category', 'ration_category']) {
+  for (const column of ['economic_category', 'social_category', 'ration_category', 'whatsapp_number']) {
     store.sqlite.exec(`ALTER TABLE voters DROP COLUMN ${column}`);
   }
   const database = load('src/services/voter-database.native.ts', {
@@ -132,6 +132,35 @@ test('older voter databases gain category columns without losing cached voters',
   });
   await database.getVoterDatabase();
   assert.equal((await store.local.getLocalVoterPage(politicianId)).voters[0].name, voter.name);
+  assert.equal((await store.local.getLocalVoterPage(politicianId)).voters[0].whatsappNumber, '');
+  await store.local.updateLocalVoter(politicianId, { ...voter, whatsappNumber: '9876543210' });
+  assert.equal((await store.local.getLocalVoterPage(politicianId)).voters[0].whatsappNumber, '9876543210');
   await store.local.updateLocalVoter(politicianId, { ...voter, ...categories });
   assertCategories((await store.local.getLocalVoterPage(politicianId)).voters[0]);
 });
+
+for (const platform of ['ios', 'android']) {
+  test(`${platform}: WhatsApp number survives sync, edit and database reopen`, async t => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'voter-whatsapp-'));
+    const filename = path.join(directory, 'voters.db');
+    let store = storage(filename, platform);
+    t.after(() => { store.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+    const read = async () => (await store.local.getLocalVoterPage(politicianId)).voters[0];
+    await store.local.replaceLocalVoters(politicianId, [{ ...voter, whatsappNumber: '9876543210' }]);
+    assert.equal((await read()).whatsappNumber, '9876543210');
+    await store.local.updateLocalVoter(politicianId, { ...await read(), whatsappNumber: '9123456780' });
+    store.close();
+    store = storage(filename, platform);
+    assert.equal((await read()).whatsappNumber, '9123456780');
+    await store.local.replaceLocalVotersFromPages(politicianId, async savePage => {
+      await savePage([{ ...voter, whatsappNumber: '9988776655' }]);
+      return 1;
+    });
+    assert.equal((await read()).whatsappNumber, '9988776655');
+    await store.local.updateLocalVoter(politicianId, { ...await read(), whatsappNumber: '' });
+    assert.equal((await read()).whatsappNumber, '');
+    await store.local.addLocalVoter(politicianId, { ...voter, id: 'new-voter', whatsappNumber: '9876543210' });
+    const page = await store.local.getLocalVoterPage(politicianId);
+    assert.equal(page.voters.find(item => item.id === 'new-voter').whatsappNumber, '9876543210');
+  });
+}
