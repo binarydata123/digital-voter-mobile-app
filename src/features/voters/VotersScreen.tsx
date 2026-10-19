@@ -66,6 +66,7 @@ import { logoutAndReturnToLogin } from "@/utils/logout-and-return-to-login";
 import {
   addLocalVoter,
   deleteLocalVoter,
+  getLastVoterSync,
   getLocalVoterOverview,
   getLocalVoterPage,
   hasLocalVoters,
@@ -93,6 +94,8 @@ import {
 } from "@/services/voters";
 
 const VOTER_PAGE_SIZE = 50;
+const LOCAL_VOTER_SYNC_MAX_AGE_MS = 10 * 60 * 60 * 1000;
+const startupSyncCheckedForPoliticians = new Set<string>();
 const STICKY_CONTROL_INDICES = [1];
 type VoterListItem =
   | { type: "controls" | "booths" }
@@ -100,6 +103,13 @@ type VoterListItem =
 const CONTROLS_ITEM: VoterListItem = { type: "controls" };
 const BOOTHS_ITEM: VoterListItem = { type: "booths" };
 const getVoterListItemType = (item: VoterListItem) => item.type;
+
+function isLocalVoterSyncStale(lastSyncedAt: string | null) {
+  if (!lastSyncedAt) return true;
+
+  const syncedAt = Date.parse(lastSyncedAt);
+  return Number.isNaN(syncedAt) || Date.now() - syncedAt >= LOCAL_VOTER_SYNC_MAX_AGE_MS;
+}
 
 type PrintScope = "single" | "family";
 type SlipPreviewRequest = {
@@ -235,7 +245,21 @@ export default function VotersScreen({
       const currentPoliticianId = session.user?.id ?? null;
 
       if (isLocalVoterDatabaseAvailable() && currentPoliticianId) {
-        if (await hasLocalVoters(currentPoliticianId)) {
+        const hasCachedVoters = await hasLocalVoters(currentPoliticianId);
+        const shouldCheckStartupSync =
+          !startupSyncCheckedForPoliticians.has(currentPoliticianId);
+        const shouldRefreshFromServer =
+          !hasCachedVoters ||
+          (shouldCheckStartupSync &&
+            isLocalVoterSyncStale(
+              await getLastVoterSync(currentPoliticianId),
+            ));
+
+        // This check runs once for each signed-in account during an app session.
+        // A manual refresh remains available whenever the user needs newer data.
+        startupSyncCheckedForPoliticians.add(currentPoliticianId);
+
+        if (!shouldRefreshFromServer) {
           await loadInitialLocalPage(currentPoliticianId);
           setError("");
           return;

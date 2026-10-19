@@ -1,5 +1,16 @@
 import { PermissionsAndroid, Platform } from "react-native";
-import SimPhoneNumber from "./SimPhoneNumberModule";
+
+type SimPhoneNumberNativeModule = {
+  getPhoneNumber(): string | null;
+};
+
+function loadSimPhoneNumberModule(): SimPhoneNumberNativeModule {
+  // The installed app can be an older development build or Expo Go, neither
+  // of which contains this project's custom native module. Loading it lazily
+  // lets sign-in continue with manual phone entry in that case.
+  return require("./SimPhoneNumberModule")
+    .default as SimPhoneNumberNativeModule;
+}
 
 export async function getSimPhoneNumber(): Promise<string | null> {
   if (Platform.OS !== "android") {
@@ -15,7 +26,7 @@ export async function getSimPhoneNumber(): Promise<string | null> {
       return null;
     }
 
-    return SimPhoneNumber.getPhoneNumber();
+    return loadSimPhoneNumberModule().getPhoneNumber();
   } catch (error) {
     console.warn("Could not read SIM phone number:", error);
     return null;
