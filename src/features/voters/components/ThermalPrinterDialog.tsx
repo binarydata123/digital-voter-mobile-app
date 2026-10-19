@@ -7,7 +7,7 @@ import {
   X,
   Zap,
 } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -37,6 +37,8 @@ type ThermalPrinterDialogProps = {
   onSelected?: () => void;
   visible: boolean;
   voter: Voter | null;
+  members?: Voter[];
+  onVoterPrinted?: (voter: Voter) => Promise<void> | void;
   bannerImage?: string;
   showBanner?: boolean;
 };
@@ -47,6 +49,8 @@ export function ThermalPrinterDialog({
   onSelected,
   visible,
   voter,
+  members,
+  onVoterPrinted,
   bannerImage,
   showBanner = false,
 }: ThermalPrinterDialogProps) {
@@ -55,6 +59,8 @@ export function ThermalPrinterDialog({
   const [loadingDevices, setLoadingDevices] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const nextMember = useRef(0);
+  useEffect(() => { nextMember.current = 0; }, [members, voter]);
 
   const loadPrinters = useCallback(async () => {
     setLoadingDevices(true);
@@ -177,7 +183,13 @@ export function ThermalPrinterDialog({
     if (!selected || !voter || printing) return;
     setPrinting(true);
     try {
-      await printThermalVoterSlip(voter, selected, { bannerImage, showBanner });
+      const queue = members ?? [voter];
+      while (nextMember.current < queue.length) {
+        const member = queue[nextMember.current];
+        await printThermalVoterSlip(member, selected, { bannerImage, showBanner: showBanner && nextMember.current === 0 });
+        nextMember.current += 1;
+        await onVoterPrinted?.(member);
+      }
       onPrinted?.();
       onClose();
     } catch (error: any) {

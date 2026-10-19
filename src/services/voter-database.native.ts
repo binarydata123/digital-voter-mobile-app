@@ -44,6 +44,10 @@ async function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS voters (
       politician_id TEXT NOT NULL,
       voter_id TEXT NOT NULL,
+      voter_key TEXT NOT NULL DEFAULT '',
+      voter_source TEXT NOT NULL DEFAULT '',
+      voter_collection TEXT NOT NULL DEFAULT '',
+      voter_document_id TEXT NOT NULL DEFAULT '',
       name TEXT NOT NULL,
       hindi_name TEXT NOT NULL DEFAULT '',
       gender TEXT NOT NULL DEFAULT '',
@@ -57,6 +61,11 @@ async function initializeDatabase() {
       state TEXT NOT NULL DEFAULT '',
       serial_no TEXT NOT NULL DEFAULT '',
       polling_station TEXT NOT NULL DEFAULT '',
+      photo_uri TEXT NOT NULL DEFAULT '',
+      voted INTEGER NOT NULL DEFAULT 0,
+      education TEXT NOT NULL DEFAULT '',
+      working TEXT NOT NULL DEFAULT '',
+      whatsapp_number TEXT NOT NULL DEFAULT '',
       PRIMARY KEY (politician_id, voter_id)
     );
 
@@ -64,6 +73,23 @@ async function initializeDatabase() {
       politician_id TEXT PRIMARY KEY NOT NULL,
       last_synced_at TEXT NOT NULL,
       voter_count INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS survey_locations (
+      id TEXT PRIMARY KEY NOT NULL,
+      politician_id TEXT NOT NULL,
+      election_type TEXT NOT NULL DEFAULT '',
+      election_year TEXT NOT NULL DEFAULT '',
+      state TEXT NOT NULL DEFAULT '',
+      district TEXT NOT NULL DEFAULT '',
+      city TEXT NOT NULL DEFAULT '',
+      ward_no TEXT NOT NULL DEFAULT '',
+      latitude REAL NOT NULL,
+      longitude REAL NOT NULL,
+      accuracy REAL,
+      captured_at TEXT NOT NULL,
+      preferred_politician TEXT NOT NULL DEFAULT '',
+      preferred_party TEXT NOT NULL DEFAULT ''
     );
 
     CREATE INDEX IF NOT EXISTS voters_by_politician_booth
@@ -76,6 +102,15 @@ async function initializeDatabase() {
       ON voters (politician_id, age);
     CREATE INDEX IF NOT EXISTS voters_by_politician_epic
       ON voters (politician_id, epic_no);
+    CREATE INDEX IF NOT EXISTS survey_locations_by_scope
+      ON survey_locations (
+        politician_id,
+        election_type,
+        election_year,
+        state,
+        district,
+        city
+      );
 
     CREATE VIRTUAL TABLE IF NOT EXISTS voter_search USING fts5(
       politician_id UNINDEXED,
@@ -87,6 +122,32 @@ async function initializeDatabase() {
       tokenize = 'unicode61'
     );
   `);
+
+  await database.execAsync(
+    "ALTER TABLE voters ADD COLUMN photo_uri TEXT NOT NULL DEFAULT '';",
+  ).catch(() => {});
+  await database.execAsync(
+    "ALTER TABLE voters ADD COLUMN voter_key TEXT NOT NULL DEFAULT '';",
+  ).catch(() => {});
+  await database.execAsync(
+    "ALTER TABLE voters ADD COLUMN voter_source TEXT NOT NULL DEFAULT '';",
+  ).catch(() => {});
+  await database.execAsync(
+    "ALTER TABLE voters ADD COLUMN voter_collection TEXT NOT NULL DEFAULT '';",
+  ).catch(() => {});
+  await database.execAsync(
+    "ALTER TABLE voters ADD COLUMN voter_document_id TEXT NOT NULL DEFAULT '';",
+  ).catch(() => {});
+
+  const columns = await database.getAllAsync<{ name: string }>("PRAGMA table_info(voters)");
+  if (!columns.some((column) => column.name === "voted")) {
+    await database.execAsync("ALTER TABLE voters ADD COLUMN voted INTEGER NOT NULL DEFAULT 0;");
+  }
+  for (const column of ["education", "working", "economic_category", "social_category", "ration_category", "whatsapp_number"]) {
+    if (!columns.some((existing) => existing.name === column)) {
+      await database.execAsync(`ALTER TABLE voters ADD COLUMN ${column} TEXT NOT NULL DEFAULT '';`);
+    }
+  }
 
   return database;
 }

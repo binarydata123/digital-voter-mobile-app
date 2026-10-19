@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["SimPhoneNumberModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.simphonenumber.SimPhoneNumberModule"]
+  }
+}

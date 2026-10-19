@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
 import { Menu, FileText, UsersRound, Printer, LogOut } from 'lucide-react-native';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { ensureAuthSession, logoutPolitician, type AuthUser } from '@/services/authentication';
+import { ensureAuthSession, type AuthUser } from '@/services/authentication';
+import { logoutAndReturnToLogin } from '@/utils/logout-and-return-to-login';
 
 export function BannerStudioMenu() {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -29,7 +30,7 @@ export function BannerStudioMenu() {
             <View style={styles.menuIconWrap}><link.Icon size={20} strokeWidth={2.6} color="#087568" /></View>
             <View style={styles.menuCopy}><Text style={styles.menuRowTitle}>{link.label}</Text><Text style={styles.menuRowSubtitle}>{link.subtitle}</Text></View>
           </Pressable>)}
-          <Pressable accessibilityRole="button" onPress={() => { setVisible(false); void logoutPolitician().then(() => router.replace('/login')); }} style={[styles.menuRow, styles.logoutMenuRow]}>
+          <Pressable accessibilityRole="button" onPress={() => { setVisible(false); void logoutAndReturnToLogin(); }} style={[styles.menuRow, styles.logoutMenuRow]}>
             <View style={[styles.menuIconWrap, styles.logoutMenuIconWrap]}><LogOut size={20} strokeWidth={2.6} color="#B91C1C" /></View>
             <View style={styles.menuCopy}><Text style={styles.logoutMenuTitle}>Logout</Text><Text style={styles.menuRowSubtitle}>Sign out from this device</Text></View>
           </Pressable>

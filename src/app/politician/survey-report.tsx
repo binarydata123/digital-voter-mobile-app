@@ -18,7 +18,7 @@ import {
   getCurrentUser,
   getDefaultPoliticianRoute,
   hasPoliticianPageAccess,
-  logoutPolitician,
+  clearLocalAuthSession,
 } from "@/services/authentication";
 import {
   buildAssignedSurveyScope,
@@ -28,6 +28,7 @@ import {
   type SurveyScope,
   type SurveySummary,
 } from "@/services/survey";
+import { SurveyLocationMap } from "../../features/survey/components/SurveyLocationMap";
 
 const AGE_BRACKETS = ["18-25", "26-35", "36-50", "50+"];
 const COLORS = [
@@ -188,9 +189,11 @@ export default function SurveyScreen() {
     preferenceByIncome: [],
     majorPublicConcerns: [],
     wardHeatMap: [],
+    surveyLocations: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [mapInteracting, setMapInteracting] = useState(false);
   const autoLoadedScopeKey = useRef<string | null>(null);
   const currentUser = getCurrentUser();
 
@@ -243,7 +246,7 @@ export default function SurveyScreen() {
       setError("");
     } catch (loadError: any) {
       if (loadError?.message === "Please sign in again to continue.") {
-        logoutPolitician();
+        void clearLocalAuthSession();
         router.replace("/login");
         return;
       }
@@ -272,7 +275,7 @@ export default function SurveyScreen() {
       })
       .catch((scopeError: any) => {
         if (scopeError?.message === "Please sign in again to continue.") {
-          logoutPolitician();
+          void clearLocalAuthSession();
           router.replace("/login");
           return;
         }
@@ -344,6 +347,7 @@ export default function SurveyScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
+        scrollEnabled={!mapInteracting}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
@@ -406,6 +410,8 @@ export default function SurveyScreen() {
           </View>
         ) : null}
 
+      
+
         <PieDistribution
           title="Vote share distribution"
           subtitle="Distribution of stated political preferences"
@@ -465,6 +471,10 @@ export default function SurveyScreen() {
           showPercent
         />
         <MajorPublicConcernsChart data={issueRows} />
+          <SurveyLocationMap
+          locations={report.surveyLocations}
+          onInteractionChange={setMapInteracting}
+        />
         </>}
       </ScrollView>
     </SafeAreaView>

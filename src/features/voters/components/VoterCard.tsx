@@ -1,14 +1,20 @@
+import * as Linking from "expo-linking";
 import {
   BadgeCheck,
-  House,
+  Eye,
+  ImagePlus,
+  MoreVertical,
+  PanelsTopLeft,
+  Pencil,
   Printer,
-  QrCode,
   Share2,
+  Trash2,
   UsersRound,
 } from "lucide-react-native";
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
   Pressable,
@@ -17,19 +23,27 @@ import {
   View,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
+import Svg, { Path } from "react-native-svg";
 
 import type { Voter } from "@/services/voters";
+import {
+  RequirementsComplaintsModal,
+  type VoterRequestPayload,
+} from "./RequirementsComplaintsModal";
+import { VoterTemplateCarousel } from "./VoterTemplateCarousel";
 
-const boyImage = require("@/assets/icons/boy.png");
-const girlImage = require("@/assets/icons/girl.png");
-const manImage = require("@/assets/icons/man.png");
-const womenImage = require("@/assets/icons/women.png");
-const oldMenImage = require("@/assets/icons/old-man.png");
-const oldWomenImage = require("@/assets/icons/old-women.png");
+import { getDefaultVoterAvatar } from "@/utils/voterAvatar";
 
 function buildVoterQrValue(voter: Voter): string {
   const epicNo = voter.epicNo ?? voter.id ?? voter.serialNo ?? "";
   return `https://votersakha.tech/voter-slip.html?epicNo=${encodeURIComponent(epicNo)}`;
+}
+
+function isUsableImageUri(uri?: string) {
+  const value = String(uri ?? "")
+    .trim()
+    .toLowerCase();
+  return Boolean(value && value !== "undefined" && value !== "null");
 }
 
 type VoterCardProps = {
@@ -37,8 +51,23 @@ type VoterCardProps = {
   onScan?: (voter: Voter) => void;
   onPrint?: (voter: Voter) => void;
   onFamily?: (voter: Voter) => void;
-  onShare?: (voter: Voter) => Promise<void> | void;
+  onShare?: (voter: Voter) => Promise<void>;
+  onView?: (voter: Voter) => void;
+  onEdit?: (voter: Voter) => void;
+  onDelete?: (voter: Voter) => void;
+  onImagePress?: (voter: Voter) => void;
+  uploadingPhoto?: boolean;
+  onMarkVoted?: (voter: Voter) => Promise<void>;
+  onRequestSubmit?: (record: VoterRequestPayload) => void;
 };
+
+function formatEpicNo(epicNo?: string | null): string {
+  const value = epicNo?.replace(/\s/g, "") ?? "";
+  if (!value) return "N/A";
+  return value.length === 10
+    ? `${value.slice(0, 3)} ${value.slice(3, 6)} ${value.slice(6)}`
+    : epicNo?.trim() || "N/A";
+}
 
 function VoterCardComponent({
   voter,
@@ -46,25 +75,60 @@ function VoterCardComponent({
   onPrint,
   onFamily,
   onShare,
+  onView,
+  onEdit,
+  onDelete,
+  onImagePress,
+  uploadingPhoto = false,
+  onMarkVoted,
+  onRequestSubmit,
 }: VoterCardProps) {
   const [qrVisible, setQrVisible] = useState(false);
+  const [actionsVisible, setActionsVisible] = useState(false);
+  const [filterVisible, setFilterVisible] = useState(false);
   const [sharing, setSharing] = useState(false);
-
-  const handleQrPress = useCallback(() => {
-    setQrVisible(true);
-    onScan?.(voter);
-  }, [onScan, voter]);
-
+  const shareLock = useRef(false);
+  const [requirementsVisible, setRequirementsVisible] = useState(false);
+  const whatsappDigits = (voter.whatsappNumber ?? "").replace(/\D/g, "");
+  const whatsappPhone =
+    whatsappDigits.length === 10 ? `91${whatsappDigits}` : whatsappDigits;
+  const hasWhatsAppNumber = /^[1-9]\d{9,14}$/.test(whatsappPhone);
+  const handleWhatsAppPress = useCallback(async () => {
+    if (!hasWhatsAppNumber) return;
+    const message = `Voter Slip - ${voter.name}\n${buildVoterQrValue(voter)}`;
+    try {
+      await Linking.openURL(
+        `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(message)}`,
+      );
+    } catch {
+      Alert.alert("WhatsApp unavailable", "Unable to open this WhatsApp chat.");
+    }
+  }, [hasWhatsAppNumber, whatsappPhone, voter]);
   const handleSharePress = useCallback(async () => {
-    if (!onShare || sharing) return;
-
+    if (!onShare || shareLock.current) return;
+    shareLock.current = true;
     setSharing(true);
     try {
       await onShare(voter);
     } finally {
+      shareLock.current = false;
       setSharing(false);
     }
-  }, [onShare, sharing, voter]);
+  }, [onShare, voter]);
+  const [markingVoted, setMarkingVoted] = useState(false);
+  const markingVotedRef = useRef(false);
+
+  const handleNamePress = useCallback(async () => {
+    if (!onMarkVoted || voter.voted || markingVotedRef.current) return;
+    markingVotedRef.current = true;
+    setMarkingVoted(true);
+    try {
+      await onMarkVoted(voter);
+    } finally {
+      markingVotedRef.current = false;
+      setMarkingVoted(false);
+    }
+  }, [onMarkVoted, voter]);
 
   const handlePrintPress = useCallback(
     () => onPrint?.(voter),
@@ -74,46 +138,122 @@ function VoterCardComponent({
     () => onFamily?.(voter),
     [onFamily, voter],
   );
+  const handleImagePress = useCallback(
+    () => onImagePress?.(voter),
+    [onImagePress, voter],
+  );
+  const handleViewPress = useCallback(() => {
+    setActionsVisible(false);
+    onView?.(voter);
+  }, [onView, voter]);
+  const handleEditPress = useCallback(() => {
+    setActionsVisible(false);
+    onEdit?.(voter);
+  }, [onEdit, voter]);
+  const handleDeletePress = useCallback(() => {
+    setActionsVisible(false);
+    onDelete?.(voter);
+  }, [onDelete, voter]);
 
   return (
     <View style={styles.voterCard}>
       <View style={styles.voterTop}>
-        <Avatar gender={voter.gender} age={voter.age} />
+        <Avatar
+          voter={voter}
+          uploading={uploadingPhoto}
+          onPress={onImagePress ? handleImagePress : undefined}
+        />
 
         <View style={styles.voterContent}>
           <View style={styles.voterHeaderRow}>
             <View style={styles.voterInfo}>
-              <Text numberOfLines={1} style={styles.voterName}>
-                {voter.name}
-              </Text>
-              <Text style={styles.voterMeta}>
-                {voter.gender} - {voter.age} Years
-              </Text>
+              <View style={styles.nameAndAgeRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    voter.voted
+                      ? `${voter.name}, voted`
+                      : `Mark ${voter.name} as voted`
+                  }
+                  accessibilityState={{
+                    disabled:
+                      !onMarkVoted || Boolean(voter.voted) || markingVoted,
+                    busy: markingVoted,
+                  }}
+                  disabled={!onMarkVoted || voter.voted || markingVoted}
+                  onPress={handleNamePress}
+                  style={styles.voterNameRow}>
+                  {markingVoted ? (
+                    <ActivityIndicator size="small" color="#15803d" />
+                  ) : voter.voted ? (
+                    <View style={styles.votedBadge}>
+                      <BadgeCheck size={15} color="#15803d" />
+                    </View>
+                  ) : null}
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.voterName, styles.voterNameText]}>
+                    {voter.name}
+                  </Text>
+                </Pressable>
+                <Text style={styles.voterAge}>
+                  {voter.age > 0 ? `${voter.age} Yrs` : "Age N/A"}
+                </Text>
+              </View>
             </View>
 
             <View style={styles.cardRightRail}>
               <View style={styles.boothActions}>
                 <View style={styles.quickActions}>
-                  <Pressable
+                  {/* <Pressable
                     accessibilityLabel="Show voter QR code"
                     onPress={handleQrPress}
-                    style={styles.scanButton}>
+                    style={styles.scanButton}
+                  >
                     <QrCode color="#087568" size={15} strokeWidth={2.8} />
+                  </Pressable> */}
+
+                  {hasWhatsAppNumber ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open WhatsApp chat with ${voter.name}`}
+                      onPress={handleWhatsAppPress}
+                      style={styles.scanButton}
+                    >
+                      <WhatsAppIcon />
+                    </Pressable>
+                  ) : null}
+                  <Pressable
+                    accessibilityLabel="Open voter card templates"
+                    onPress={() => setFilterVisible(true)}
+                    style={styles.scanButton}>
+                    <PanelsTopLeft
+                      color="#087568"
+                      size={16}
+                      strokeWidth={2.7}
+                    />
                   </Pressable>
 
+                  {onShare ? (
+                    <Pressable
+                      accessibilityLabel="Share print slip"
+                      accessibilityState={{ busy: sharing }}
+                      disabled={sharing}
+                      onPress={handleSharePress}
+                      style={styles.scanButton}>
+                      {sharing ? (
+                        <ActivityIndicator color="#087568" size="small" />
+                      ) : (
+                        <Share2 color="#087568" size={16} strokeWidth={2.7} />
+                      )}
+                    </Pressable>
+                  ) : null}
+
                   <Pressable
-                    accessibilityLabel="Share voter slip"
-                    disabled={sharing}
-                    onPress={handleSharePress}
-                    style={[
-                      styles.scanButton,
-                      sharing && styles.scanButtonDisabled,
-                    ]}>
-                    {sharing ? (
-                      <ActivityIndicator color="#087568" size="small" />
-                    ) : (
-                      <Share2 color="#087568" size={16} strokeWidth={2.7} />
-                    )}
+                    accessibilityLabel="Open voter actions"
+                    onPress={() => setActionsVisible(true)}
+                    style={[styles.scanButton, styles.actionsButton]}>
+                    <MoreVertical color="#087568" size={17} strokeWidth={2.8} />
                   </Pressable>
                 </View>
               </View>
@@ -127,10 +267,10 @@ function VoterCardComponent({
               style={styles.guardian}>
               {voter.guardian}
             </Text>
-            <Text style={styles.boothBadge}>
-              S.No. {voter.serialNo ?? voter.id ?? "N/A"}
-            </Text>
           </View>
+          <Text numberOfLines={1} style={styles.houseNumber}>
+            House No. {voter.houseNo || "N/A"}
+          </Text>
         </View>
       </View>
 
@@ -138,22 +278,38 @@ function VoterCardComponent({
         <InfoTile
           icon={BadgeCheck}
           label="EPIC No."
-          value={voter.epicNo}
+          value={formatEpicNo(voter.epicNo)}
           priority
         />
 
-        <InfoTile icon={House} label="House No." value={voter.houseNo} />
+        <InfoTile
+          icon={BadgeCheck}
+          label="Serial No."
+          value={voter.serialNo || "N/A"}
+          compact
+        />
 
         <Pressable onPress={handlePrintPress} style={styles.printButton}>
           <Printer color="#087568" size={17} strokeWidth={2.5} />
-          <Text style={styles.printText}>Print</Text>
+          <Text numberOfLines={1} style={styles.printText}>
+            Print
+          </Text>
         </Pressable>
 
         <Pressable onPress={handleFamilyPress} style={styles.familyButton}>
           <UsersRound color="#087568" size={17} strokeWidth={2.5} />
-          <Text style={styles.printText}>Family</Text>
+          <Text numberOfLines={1} style={styles.printText}>
+            Family
+          </Text>
         </Pressable>
       </View>
+
+      {filterVisible ? (
+        <VoterTemplateCarousel
+          voter={voter}
+          onClose={() => setFilterVisible(false)}
+        />
+      ) : null}
 
       {qrVisible ? (
         <Modal
@@ -187,6 +343,76 @@ function VoterCardComponent({
           </Pressable>
         </Modal>
       ) : null}
+
+      {actionsVisible ? (
+        <Modal
+          transparent
+          visible
+          animationType="slide"
+          onRequestClose={() => setActionsVisible(false)}>
+          <Pressable
+            style={styles.actionBackdrop}
+            onPress={() => setActionsVisible(false)}>
+            <Pressable
+              style={styles.actionPanel}
+              onPress={(event) => event.stopPropagation()}>
+              <View style={styles.actionHandle} />
+              <View style={styles.actionHeader}>
+                <Text style={styles.actionTitle}>Voter actions</Text>
+                <Text numberOfLines={1} style={styles.actionSubtitle}>
+                  {voter.name}
+                </Text>
+              </View>
+
+              {/* {onImagePress ? (
+                <ActionRow
+                  icon={ImagePlus}
+                  title={
+                    voter.photoUri ? "Edit voter image" : "Add voter image"
+                  }
+                  subtitle="Update voter profile photo"
+                  onPress={() => {
+                    setActionsVisible(false);
+                    onImagePress(voter);
+                  }}
+                />
+              ) : null} */}
+              {onView ? (
+                <ActionRow
+                  icon={Eye}
+                  title="View voter"
+                  subtitle="View voter details and photo"
+                  onPress={handleViewPress}
+                />
+              ) : null}
+              {onEdit ? (
+                <ActionRow
+                  icon={Pencil}
+                  title="Edit voter"
+                  subtitle="Update voter details"
+                  onPress={handleEditPress}
+                />
+              ) : null}
+              {onDelete ? (
+                <ActionRow
+                  danger
+                  icon={Trash2}
+                  title="Delete voter"
+                  subtitle="Remove this voter from the list"
+                  onPress={handleDeletePress}
+                />
+              ) : null}
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
+
+      <RequirementsComplaintsModal
+        visible={requirementsVisible}
+        voter={{ id: voter.id, name: voter.name, epicNo: voter.epicNo }}
+        onClose={() => setRequirementsVisible(false)}
+        onSubmit={(record) => onRequestSubmit?.(record)}
+      />
     </View>
   );
 }
@@ -208,63 +434,136 @@ function areVoterCardPropsEqual(
     previous.onPrint === next.onPrint &&
     previous.onFamily === next.onFamily &&
     previous.onShare === next.onShare &&
+    previous.onView === next.onView &&
+    previous.onEdit === next.onEdit &&
+    previous.onDelete === next.onDelete &&
+    previous.onImagePress === next.onImagePress &&
+    previous.uploadingPhoto === next.uploadingPhoto &&
+    previous.onMarkVoted === next.onMarkVoted &&
+    previous.onRequestSubmit === next.onRequestSubmit &&
+    before.voted === after.voted &&
     before.id === after.id &&
     before.name === after.name &&
     before.gender === after.gender &&
+    before.education === after.education &&
+    before.working === after.working &&
+    before.whatsappNumber === after.whatsappNumber &&
     before.age === after.age &&
     before.guardian === after.guardian &&
     before.epicNo === after.epicNo &&
     before.houseNo === after.houseNo &&
     before.booth === after.booth &&
-    before.serialNo === after.serialNo
+    before.serialNo === after.serialNo &&
+    before.photoUri === after.photoUri
   );
 }
 
 export const VoterCard = memo(VoterCardComponent, areVoterCardPropsEqual);
 
+function WhatsAppIcon() {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M20.5 11.5a8.5 8.5 0 0 1-12.6 7.45L3 20.5l1.55-4.9A8.5 8.5 0 1 1 20.5 11.5Z"
+        stroke="#087568"
+        strokeWidth={1.8}
+        strokeLinejoin="round"
+      />
+      <Path
+        d="m8.1 7.2 1.4-.3 1.1 2.5-1.1 1a9 9 0 0 0 3.1 3.1l1-1.1 2.5 1.1-.3 1.4c-.2.9-1 1.4-1.9 1.2-3.6-.8-6.4-3.6-7.2-7.2-.2-.9.3-1.7 1.4-1.7Z"
+        fill="#087568"
+      />
+    </Svg>
+  );
+}
+
 /* -------------------------------------------------------------
    AVATAR
    ------------------------------------------------------------- */
 
-const AGE_IMAGES = {
-  maleYoung: boyImage,
-  femaleYoung: girlImage,
-  maleAdult: manImage,
-  femaleAdult: womenImage,
-  maleOld: oldMenImage,
-  femaleOld: oldWomenImage,
-};
-
 const Avatar = memo(function Avatar({
-  gender,
-  age,
+  voter,
+  onPress,
+  uploading = false,
 }: {
-  gender: string;
-  age: number;
+  voter: Voter;
+  onPress?: () => void;
+  uploading?: boolean;
 }) {
-  const isFemale = gender.toLowerCase().startsWith("f");
+  const defaultSource = getDefaultVoterAvatar(voter.gender, voter.age);
+  const source = isUsableImageUri(voter.photoUri)
+    ? { uri: voter.photoUri }
+    : defaultSource;
 
-  const imageSource =
-    age < 35
-      ? isFemale
-        ? AGE_IMAGES.femaleYoung
-        : AGE_IMAGES.maleYoung
-      : age <= 70
-        ? isFemale
-          ? AGE_IMAGES.femaleAdult
-          : AGE_IMAGES.maleAdult
-        : isFemale
-          ? AGE_IMAGES.femaleOld
-          : AGE_IMAGES.maleOld;
+  const avatar = (
+    <View style={styles.avatar}>
+      <Image source={source} style={styles.avatarImage} resizeMode="contain" />
+      {uploading ? (
+        <View style={styles.avatarLoadingOverlay}>
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        </View>
+      ) : onPress ? (
+        <View style={styles.avatarEditBadge}>
+          <ImagePlus color="#FFFFFF" size={12} strokeWidth={3} />
+        </View>
+      ) : null}
+    </View>
+  );
+
+  if (!onPress) {
+    return avatar;
+  }
 
   return (
-    <View style={styles.avatar}>
-      <Image
-        source={imageSource}
-        style={styles.avatarImage}
-        resizeMode="contain"
-      />
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={
+        uploading ? "Uploading voter image" : "Add or edit voter image"
+      }
+      accessibilityState={{ busy: uploading, disabled: uploading }}
+      disabled={uploading}
+      onPress={onPress}>
+      {avatar}
+    </Pressable>
+  );
+});
+
+const ActionRow = memo(function ActionRow({
+  danger = false,
+  icon: Icon,
+  title,
+  subtitle,
+  onPress,
+}: {
+  danger?: boolean;
+  icon: React.ComponentType<{
+    color?: string;
+    size?: number;
+    strokeWidth?: number;
+  }>;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={[styles.actionRow, danger && styles.actionRowDanger]}>
+      <View style={[styles.actionIcon, danger && styles.actionIconDanger]}>
+        <Icon
+          color={danger ? "#B91C1C" : "#087568"}
+          size={20}
+          strokeWidth={2.6}
+        />
+      </View>
+      <View style={styles.actionCopy}>
+        <Text style={[styles.actionText, danger && styles.actionTextDanger]}>
+          {title}
+        </Text>
+        <Text style={styles.actionSubtitle}>{subtitle}</Text>
+      </View>
+    </Pressable>
   );
 });
 
@@ -277,6 +576,7 @@ const InfoTile = memo(function InfoTile({
   label,
   value,
   priority = false,
+  compact = false,
 }: {
   icon: React.ComponentType<{
     color?: string;
@@ -286,17 +586,30 @@ const InfoTile = memo(function InfoTile({
   label: string;
   value: string;
   priority?: boolean;
+  compact?: boolean;
 }) {
   return (
-    <View style={[styles.infoTile, priority && styles.priorityInfoTile]}>
+    <View
+      style={[
+        styles.infoTile,
+        priority && styles.priorityInfoTile,
+        compact && styles.compactInfoTile,
+      ]}>
       <View style={styles.tileIcon}>
         <Icon color="#087568" size={17} strokeWidth={2.5} />
       </View>
 
       <View style={styles.tileTextWrap}>
-        <Text style={styles.infoLabel}>{label}</Text>
+        <Text numberOfLines={1} style={styles.infoLabel}>
+          {label}
+        </Text>
 
-        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.infoValue}>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+          ellipsizeMode="tail"
+          style={styles.infoValue}>
           {value}
         </Text>
       </View>
@@ -334,6 +647,29 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
   },
+  avatarLoadingOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarEditBadge: {
+    position: "absolute",
+    right: 0,
+    bottom: 0,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#087568",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   voterContent: { flex: 1, minWidth: 0, paddingTop: 3 },
   voterHeaderRow: {
     flexDirection: "row",
@@ -341,18 +677,34 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   voterInfo: { flex: 1, minWidth: 0 },
-  voterName: { color: "#06082A", fontWeight: "900", fontSize: 16 },
-  voterMeta: {
+  voterName: { color: "#06082A", fontWeight: "900", fontSize: 14 },
+  nameAndAgeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  voterNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    minHeight: 22,
+    flexShrink: 1,
+  },
+  voterNameText: { flexShrink: 1 },
+  votedBadge: { flexDirection: "row", alignItems: "center", gap: 2 },
+  voterAge: {
     color: "#747999",
     fontWeight: "800",
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: 10,
+    flexShrink: 0,
+  },
+  houseNumber: {
+    color: "#747999",
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 8,
   },
   guardian: {
     color: "#047857",
     flex: 1,
     fontWeight: "900",
-    fontSize: 12,
+    fontSize: 11,
   },
   guardianRow: {
     alignItems: "center",
@@ -363,16 +715,7 @@ const styles = StyleSheet.create({
   cardRightRail: { alignItems: "flex-end", gap: 7 },
   boothActions: { flexDirection: "row", alignItems: "center", gap: 6 },
   quickActions: { flexDirection: "row", alignItems: "center", gap: 5 },
-  boothBadge: {
-    overflow: "hidden",
-    backgroundColor: "#DCFCE7",
-    color: "#166534",
-    fontSize: 10,
-    fontWeight: "900",
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 9,
-  },
+  actionsButton: { width: 15 },
   scanButton: {
     width: 26,
     height: 25,
@@ -383,17 +726,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  scanButtonDisabled: { opacity: 0.7 },
   cardFooter: {
     marginTop: 10,
     flexDirection: "row",
     alignItems: "stretch",
     gap: 4,
+    fontSize: 12,
   },
   infoTile: {
-    flex: 1,
-    minWidth: 58,
-    height: 50,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    minHeight: 52,
     backgroundColor: "#F6FBFF",
     borderRadius: 12,
     flexDirection: "row",
@@ -402,9 +747,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   priorityInfoTile: {
-    flex: 1.55,
-    minWidth: 112,
+    flexGrow: 1.15,
   },
+  // Reserve room for the serial label and icon on both web and native.
+  compactInfoTile: { flexGrow: 0, flexShrink: 0, flexBasis: 100 },
   tileIcon: {
     width: 26,
     height: 26,
@@ -414,16 +760,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   tileTextWrap: { flex: 1, minWidth: 0 },
-  infoLabel: { color: "#747999", fontSize: 9, fontWeight: "800" },
+  infoLabel: { color: "#747999", fontSize: 12, fontWeight: "800" },
   infoValue: {
     color: "#06082A",
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "900",
     marginTop: 2,
   },
   printButton: {
-    width: 34,
-    height: 45,
+    minWidth: 34,
+    minHeight: 45,
+    flexShrink: 0,
     // borderRadius: 12,
     // borderWidth: 1.5,
     // borderColor: "#99D6CC",
@@ -431,8 +778,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   familyButton: {
-    width: 38,
-    height: 45,
+    minWidth: 44,
+    minHeight: 45,
+    paddingHorizontal: 2,
+    flexShrink: 0,
     // borderRadius: 12,
     // borderWidth: 1.5,
     // borderColor: "#BFEBDD",
@@ -443,7 +792,7 @@ const styles = StyleSheet.create({
   },
   printText: {
     color: "#087568",
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: "900",
     textAlign: "center",
   },
@@ -502,4 +851,62 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 13,
   },
+
+  /* ---------- Action modal ---------- */
+  actionBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.5)",
+    justifyContent: "flex-end",
+  },
+  actionPanel: {
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 18,
+    paddingBottom: 32,
+  },
+  actionHandle: {
+    alignSelf: "center",
+    width: 44,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#CBD5E1",
+    marginBottom: 14,
+  },
+  actionHeader: { marginBottom: 8 },
+  actionTitle: { color: "#0F172A", fontSize: 18, fontWeight: "800" },
+  actionSubtitle: {
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  actionRow: {
+    width: "100%",
+    minHeight: 66,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderBottomColor: "#EEF2F7",
+    borderBottomWidth: 1,
+    paddingVertical: 10,
+  },
+  actionRowDanger: { borderBottomWidth: 0, marginTop: 4 },
+  actionCopy: { flexGrow: 1, flexBasis: 0, minWidth: 0 },
+  actionIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: "#ECFDF5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionIconDanger: { backgroundColor: "#FEF2F2" },
+  actionText: {
+    color: "#0F172A",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  actionTextDanger: { color: "#B91C1C" },
 });

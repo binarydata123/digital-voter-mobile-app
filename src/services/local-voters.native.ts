@@ -28,6 +28,10 @@ export type LocalVoterPageLoader = (
 
 type VoterRow = {
   voter_id: string;
+  voter_key: string;
+  voter_source: string;
+  voter_collection: string;
+  voter_document_id: string;
   name: string;
   hindi_name: string;
   gender: string;
@@ -41,6 +45,14 @@ type VoterRow = {
   state: string;
   serial_no: string;
   polling_station: string;
+  photo_uri: string;
+  voted: number;
+  education: string;
+  working: string;
+  whatsapp_number: string;
+  economic_category: string;
+  social_category: string;
+  ration_category: string;
 };
 
 const VOTER_INSERT_BATCH_SIZE = 50;
@@ -74,6 +86,11 @@ function toDatabaseAge(value: unknown) {
 function toVoter(row: VoterRow): Voter {
   return {
     id: row.voter_id,
+    voterKey: row.voter_key,
+    voterSource:
+      row.voter_source === "district_collection" ? "district_collection" : "user",
+    voterCollection: row.voter_collection,
+    voterDocumentId: row.voter_document_id,
     name: row.name,
     hindiName: row.hindi_name,
     gender: row.gender,
@@ -87,6 +104,14 @@ function toVoter(row: VoterRow): Voter {
     state: row.state,
     serialNo: row.serial_no,
     pollingStation: row.polling_station,
+    photoUri: row.photo_uri,
+    voted: row.voted === 1,
+    education: row.education ?? "",
+    working: row.working ?? "",
+    whatsappNumber: row.whatsapp_number ?? "",
+    economicCategory: row.economic_category ?? "",
+    socialCategory: row.social_category ?? "",
+    rationCategory: row.ration_category ?? "",
   };
 }
 
@@ -136,7 +161,9 @@ export async function hasLocalVoters(politicianId: string) {
 
   const database = await getVoterDatabase();
   const result = await database.getFirstAsync<{ has_cache: number }>(
-    "SELECT 1 AS has_cache FROM sync_state WHERE politician_id = ?",
+    `SELECT 1 AS has_cache FROM sync_state
+     WHERE politician_id = ? AND voter_count > 0
+       AND EXISTS (SELECT 1 FROM voters WHERE voters.politician_id = sync_state.politician_id)`,
     politicianId,
   );
   return result?.has_cache === 1;
@@ -184,8 +211,9 @@ export async function getLocalVoterPage(
       params,
     ),
     database.getAllAsync<VoterRow>(
-      `SELECT voter_id, name, hindi_name, gender, age, guardian, epic_no, house_no,
-        booth, ward, district, state, serial_no, polling_station
+      `SELECT voter_id, voter_key, voter_source, voter_collection, voter_document_id,
+        name, hindi_name, gender, age, guardian, epic_no, house_no,
+        booth, ward, district, state, serial_no, polling_station, photo_uri, education, working, economic_category, social_category, ration_category, whatsapp_number, voted
        FROM voters
        WHERE ${where}
        ORDER BY ${ranking}name COLLATE NOCASE, voter_id
@@ -236,12 +264,17 @@ async function insertLocalVoterPage(
   for (const batch of chunk(voters, VOTER_INSERT_BATCH_SIZE)) {
       await database.runAsync(
         `INSERT OR REPLACE INTO voters (
-          politician_id, voter_id, name, hindi_name, gender, age, guardian, epic_no,
-          house_no, booth, ward, district, state, serial_no, polling_station
-        ) VALUES ${placeholders(batch.length, 15)}`,
+          politician_id, voter_id, voter_key, voter_source, voter_collection,
+          voter_document_id, name, hindi_name, gender, age, guardian, epic_no,
+          house_no, booth, ward, district, state, serial_no, polling_station, photo_uri, education, working, economic_category, social_category, ration_category, whatsapp_number, voted
+        ) VALUES ${placeholders(batch.length, 27)}`,
         batch.flatMap((voter) => [
           politicianId,
           voter.id,
+          voter.voterKey ?? "",
+          voter.voterSource ?? "",
+          voter.voterCollection ?? "",
+          voter.voterDocumentId ?? "",
           voter.name,
           voter.hindiName ?? "",
           voter.gender,
@@ -255,6 +288,14 @@ async function insertLocalVoterPage(
           voter.state ?? "",
           voter.serialNo ?? "",
           voter.pollingStation ?? "",
+          voter.photoUri ?? "",
+          voter.education ?? "",
+          voter.working ?? "",
+          voter.economicCategory ?? "",
+          voter.socialCategory ?? "",
+          voter.rationCategory ?? "",
+          voter.whatsappNumber ?? "",
+          voter.voted ? 1 : 0,
         ]),
       );
   }
@@ -311,6 +352,135 @@ export async function replaceLocalVoters(politicianId: string, voters: Voter[]) 
     await resetLocalVoters(database, politicianId);
     await insertLocalVoterPage(database, politicianId, voters);
     await completeLocalVoterSync(database, politicianId, voters.length);
+  });
+}
+
+export async function updateLocalVoter(politicianId: string, voter: Voter) {
+  const database = await getVoterDatabase();
+
+  await database.withTransactionAsync(async () => {
+    await database.runAsync(
+      `UPDATE voters SET
+        voter_key = ?,
+        voter_source = ?,
+        voter_collection = ?,
+        voter_document_id = ?,
+        name = ?,
+        hindi_name = ?,
+        gender = ?,
+        age = ?,
+        guardian = ?,
+        epic_no = ?,
+        house_no = ?,
+        booth = ?,
+        ward = ?,
+        district = ?,
+        state = ?,
+        serial_no = ?,
+        polling_station = ?,
+        photo_uri = ?,
+        education = ?,
+        working = ?,
+        economic_category = ?,
+        social_category = ?,
+        ration_category = ?,
+        whatsapp_number = ?,
+        voted = ?
+       WHERE politician_id = ? AND voter_id = ?`,
+      voter.voterKey ?? "",
+      voter.voterSource ?? "",
+      voter.voterCollection ?? "",
+      voter.voterDocumentId ?? "",
+      voter.name,
+      voter.hindiName ?? "",
+      voter.gender,
+      toDatabaseAge(voter.age),
+      voter.guardian,
+      voter.epicNo,
+      voter.houseNo,
+      voter.booth,
+      voter.ward ?? "",
+      voter.district ?? "",
+      voter.state ?? "",
+      voter.serialNo ?? "",
+      voter.pollingStation ?? "",
+      voter.photoUri ?? "",
+      voter.education ?? "",
+      voter.working ?? "",
+      voter.economicCategory ?? "",
+      voter.socialCategory ?? "",
+      voter.rationCategory ?? "",
+      voter.whatsappNumber ?? "",
+      voter.voted ? 1 : 0,
+      politicianId,
+      voter.id,
+    );
+
+    await database.runAsync(
+      "DELETE FROM voter_search WHERE politician_id = ? AND voter_id = ?",
+      politicianId,
+      voter.id,
+    );
+    await database.runAsync(
+      `INSERT INTO voter_search (
+        politician_id, voter_id, name, hindi_name, epic_no, serial_no
+      ) VALUES (?, ?, ?, ?, ?, ?)`,
+      politicianId,
+      voter.id,
+      voter.name,
+      voter.hindiName ?? "",
+      voter.epicNo,
+      voter.serialNo ?? "",
+    );
+  });
+}
+
+export async function addLocalVoter(politicianId: string, voter: Voter) {
+  const database = await getVoterDatabase();
+  await database.withTransactionAsync(async () => {
+    const existing = await database.getFirstAsync<{ voter_id: string }>(
+      "SELECT voter_id FROM voters WHERE politician_id = ? AND voter_id = ?",
+      politicianId,
+      voter.id,
+    );
+    await database.runAsync(
+      "DELETE FROM voter_search WHERE politician_id = ? AND voter_id = ?",
+      politicianId,
+      voter.id,
+    );
+    await insertLocalVoterPage(database, politicianId, [voter]);
+    if (!existing) {
+      await database.runAsync(
+        "UPDATE sync_state SET voter_count = voter_count + 1 WHERE politician_id = ?",
+        politicianId,
+      );
+    }
+  });
+}
+
+export async function deleteLocalVoter(politicianId: string, voterId: string) {
+  const database = await getVoterDatabase();
+
+  await database.withTransactionAsync(async () => {
+    await database.runAsync(
+      "DELETE FROM voter_search WHERE politician_id = ? AND voter_id = ?",
+      politicianId,
+      voterId,
+    );
+    await database.runAsync(
+      "DELETE FROM voters WHERE politician_id = ? AND voter_id = ?",
+      politicianId,
+      voterId,
+    );
+    await database.runAsync(
+      `UPDATE sync_state
+       SET voter_count = CASE
+         WHEN voter_count > 0 THEN voter_count - 1
+         ELSE 0
+       END
+       WHERE politician_id = ?`,
+      politicianId,
+    );
   });
 }
 

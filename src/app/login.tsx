@@ -1,8 +1,11 @@
+import { DeviceLimitModal } from "@/features/auth/DeviceLimitModal";
+import { LoginErrorModal } from "@/features/auth/LoginErrorModal";
 import { Redirect, router } from "expo-router";
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -28,9 +31,8 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [phoneError, setPhoneError] = useState("");
-  const [passwordError, setPasswordError] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [deviceLimit, setDeviceLimit] = useState<{ contactToken?: string } | null>(null);
   const passwordInputRef = useRef<TextInput>(null);
 
   async function handleLogin() {
@@ -41,10 +43,12 @@ export default function LoginScreen() {
         ? "Enter a valid 10 digit phone number."
         : "";
     const nextPasswordError = !password ? "Password is required." : "";
-    setPhoneError(nextPhoneError);
-    setPasswordError(nextPasswordError);
     setLoginError("");
-    if (nextPhoneError || nextPasswordError) return;
+    if (nextPhoneError || nextPasswordError) {
+      Keyboard.dismiss();
+      setLoginError(nextPhoneError || nextPasswordError);
+      return;
+    }
 
     setLoading(true);
     try {
@@ -52,7 +56,7 @@ export default function LoginScreen() {
       const nextRoute = getDefaultPoliticianRoute(user);
 
       if (!nextRoute) {
-        logoutPolitician();
+        await logoutPolitician();
         setLoginError(
           "No mobile pages are enabled for this politician account.",
         );
@@ -61,7 +65,12 @@ export default function LoginScreen() {
 
       router.replace(nextRoute);
     } catch (error: any) {
-      setLoginError(error?.message ?? "Unable to login. Please try again.");
+      if (error?.code === "DEVICE_LIMIT_REACHED") {
+        Keyboard.dismiss();
+        setDeviceLimit({ contactToken: error.contactToken });
+      } else {
+        setLoginError(error?.message ?? "Unable to login. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -72,6 +81,8 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      {deviceLimit && <DeviceLimitModal contactToken={deviceLimit.contactToken} onClose={() => setDeviceLimit(null)} />}
+      <LoginErrorModal message={loginError} onClose={() => setLoginError("")} />
       <KeyboardAvoidingView
         behavior={
           Platform.OS === "ios"
@@ -122,7 +133,6 @@ export default function LoginScreen() {
                   value={phone}
                   onChangeText={(value) => {
                     setPhone(value.replace(/\D/g, "").slice(0, 10));
-                    setPhoneError("");
                     setLoginError("");
                   }}
                   keyboardType="phone-pad"
@@ -139,7 +149,6 @@ export default function LoginScreen() {
                     accessibilityRole="button"
                     onPress={() => {
                       setPhone("");
-                      setPhoneError("");
                       setLoginError("");
                     }}
                     style={styles.clearButton}>
@@ -147,12 +156,6 @@ export default function LoginScreen() {
                   </Pressable>
                 ) : null}
               </View>
-              {phoneError ? (
-                <Text accessibilityRole="alert" style={styles.fieldError}>
-                  {phoneError}
-                </Text>
-              ) : null}
-
               {/* Password Input */}
               <Text style={styles.label}>PASSWORD</Text>
               <View style={styles.inputWrapper}>
@@ -167,7 +170,6 @@ export default function LoginScreen() {
                   value={password}
                   onChangeText={(value) => {
                     setPassword(value);
-                    setPasswordError("");
                     setLoginError("");
                   }}
                   placeholder="••••••••"
@@ -188,12 +190,6 @@ export default function LoginScreen() {
                   )}
                 </Pressable>
               </View>
-              {passwordError ? (
-                <Text accessibilityRole="alert" style={styles.fieldError}>
-                  {passwordError}
-                </Text>
-              ) : null}
-
               {/* Sign In Button */}
               <Pressable
                 // Keep NativeWind from processing Pressable's style callback.
@@ -211,11 +207,6 @@ export default function LoginScreen() {
                   <Text style={styles.loginButtonText}>Sign in</Text>
                 )}
               </Pressable>
-              {loginError ? (
-                <Text accessibilityRole="alert" style={styles.errorText}>
-                  {loginError}
-                </Text>
-              ) : null}
             </View>
           </View>
         </ScrollView>
@@ -242,18 +233,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#0F4C4E",
     alignItems: "center",
     justifyContent: "center",
-  },
-  errorText: {
-    color: "#B91C1C",
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  fieldError: {
-    color: "#B91C1C",
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: -12,
-    marginBottom: 20,
   },
   safe: {
     flex: 1,

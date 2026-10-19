@@ -53,6 +53,24 @@ export async function replaceLocalVoters(
   // No voter cache is created by the fallback implementation.
 }
 
+export async function updateLocalVoter(
+  _politicianId: string,
+  _voter: Voter,
+) {
+  // No voter cache is created by the fallback implementation.
+}
+
+export async function addLocalVoter(_politicianId: string, _voter: Voter) {
+  // Metro selects the native or web implementation at runtime.
+}
+
+export async function deleteLocalVoter(
+  _politicianId: string,
+  _voterId: string,
+) {
+  // No voter cache is created by the fallback implementation.
+}
+
 export async function replaceLocalVotersFromPages(
   _politicianId: string,
   _loadPages: LocalVoterPageLoader,

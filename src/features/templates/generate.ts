@@ -2,7 +2,7 @@ import { DEFAULT_TEMPLATE_FIELDS, type TemplateFields } from "./fields";
 import { buildTemplateHtml, getAllLocalTemplateVoters, openWebTemplatePrint } from "./print";
 import { hasLocalVoters, replaceLocalVotersFromPages } from "@/services/local-voters";
 import { isLocalVoterDatabaseAvailable } from "@/services/voter-database";
-import { fetchTemplateVoters, forEachVoterPage, type Voter } from "@/services/voters";
+import { fetchTemplateVoters, forEachVoterPage, isVoterInBooth, type Voter } from "@/services/voters";
 import type { AuthUser } from "@/services/authentication";
 import type { TemplateLayout } from "./components/TemplateThumbnail";
 import * as FileSystem from "expo-file-system/legacy";
@@ -16,10 +16,20 @@ export async function generateTemplatePdf({ user, booth, district, state, layout
       const columns = 4;
       let records: Voter[];
       if (isLocalVoterDatabaseAvailable()) {
+        let downloaded = false;
         if (!(await hasLocalVoters(user.id))) {
           await replaceLocalVotersFromPages(user.id, (savePage) => forEachVoterPage({}, savePage));
+          downloaded = true;
         }
         records = await getAllLocalTemplateVoters(user.id, booth);
+        // A completed cache can predate changes to the assigned booths.
+        // Check the server once on a cache miss without deleting offline data.
+        if (!records.length && !downloaded) {
+          await forEachVoterPage({ booth }, (page) => {
+            records.push(...page);
+          });
+          records = records.filter((voter) => isVoterInBooth(voter, booth));
+        }
       } else {
         const districts = district ? [district] : user.districts?.length ? user.districts : [user.district].filter(Boolean);
         if (!districts.length) throw new Error("District is required to load booth voters.");
@@ -29,7 +39,9 @@ export async function generateTemplatePdf({ user, booth, district, state, layout
         }
       }
       const voters = Array.from(new Map(records.map((voter) => [voter.id, voter])).values());
-      if (!voters.length) throw new Error("No voters found for this booth.");
+      if (!voters.length) throw new Error(booth === "All"
+        ? "No assigned voters were found for this account. Check your voter assignments and refresh the voter list."
+        : `No assigned voters were found in ${booth}. Select another booth or refresh the voter list.`);
       const html = buildTemplateHtml({ booth, columns, layout: layout, politicianName: user.name, voters, bannerImageUrl: bannerImageUrl, fields });
       if (Platform.OS === "web") {
         await openWebTemplatePrint(html, printWindow);

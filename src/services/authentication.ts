@@ -1,7 +1,9 @@
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
-import { api, getApiAuthToken, setApiAuthToken } from "./api";
+import { api, getApiAuthToken, setApiAuthToken, setSessionInvalidationHandler, waitForAuthTokenStorage } from "./api";
+import { getDeviceIdentity } from "./device-identity";
+import { notifyAuthSession } from "./auth-session-events";
 import { deleteVoterDatabase } from "./voter-database";
 
 export type AuthUser = {
@@ -22,6 +24,7 @@ export type AuthUser = {
   state?: string;
   electionType?: string;
   electionYear?: string | number;
+  electionDate?: string | null;
   imageUrl?: string;
   bannerImage?: string;
   templateBannerImage?: string;
@@ -56,6 +59,9 @@ type LoginResult = {
 let authToken: string | null = null;
 let currentUser: AuthUser | null = null;
 let hasLoadedStoredUser = false;
+
+let userStorageWrite: Promise<void> = Promise.resolve();
+let userRevision = 0;
 
 const AUTH_USER_KEY = "votersakha.authUser";
 
@@ -149,6 +155,7 @@ function normalizeUser(raw: any): AuthUser {
     state: source?.state ?? profile?.state ?? states?.[0],
     electionType: source?.electionType ?? profile?.electionType,
     electionYear: source?.electionYear ?? profile?.electionYear,
+    electionDate: source?.electionDate ?? profile?.electionDate ?? null,
     imageUrl: source?.imageUrl ?? source?.profileImage ?? source?.photo ?? profile?.profileImage,
     bannerImage:
       source?.bannerImage ??
@@ -300,6 +307,7 @@ function extractToken(raw: any) {
 }
 
 function saveStoredUser(user: AuthUser | null) {
+  userRevision++;
   hasLoadedStoredUser = true;
 
   if (Platform.OS === "web") {
@@ -311,11 +319,11 @@ function saveStoredUser(user: AuthUser | null) {
     return;
   }
 
-  const action = user
+  userStorageWrite = userStorageWrite.catch(() => {}).then(() => user
     ? SecureStore.setItemAsync(AUTH_USER_KEY, JSON.stringify(user))
-    : SecureStore.deleteItemAsync(AUTH_USER_KEY);
+    : SecureStore.deleteItemAsync(AUTH_USER_KEY));
 
-  action.catch((error) => {
+  userStorageWrite.catch((error) => {
     console.log("User storage error:", error);
   });
 }
@@ -325,14 +333,17 @@ async function loadStoredUser() {
     return currentUser;
   }
 
+  const revision = userRevision;
   try {
     const storedUser =
       Platform.OS === "web"
         ? window.localStorage.getItem(AUTH_USER_KEY)
         : await SecureStore.getItemAsync(AUTH_USER_KEY);
 
+    if (revision !== userRevision) return currentUser;
     currentUser = storedUser ? normalizeUser(JSON.parse(storedUser)) : null;
   } catch (error) {
+    if (revision !== userRevision) return currentUser;
     console.log("User storage load error:", error);
     currentUser = null;
   }
@@ -388,6 +399,9 @@ export async function ensureAuthSession() {
   }
 
   await loadStoredUser();
+  if (token !== (await getApiAuthToken())) {
+    throw new Error("Please sign in again to continue.");
+  }
   return { token, user: currentUser };
 }
 
@@ -396,6 +410,9 @@ export async function refreshCurrentUser() {
   const response = await api.get("/auth/user", {
     headers: { Authorization: `Bearer ${token}` },
   });
+  if (token !== (await getApiAuthToken())) {
+    throw new Error("Please sign in again to continue.");
+  }
   const user = normalizeUser(response.data);
 
   currentUser = user;
@@ -404,6 +421,7 @@ export async function refreshCurrentUser() {
 }
 
 export async function loginPolitician(payload: LoginPayload): Promise<LoginResult> {
+  const device = await getDeviceIdentity();
   const endpoints = ["/auth/login", "/politician/login", "/login"];
   let lastError: unknown;
 
@@ -415,6 +433,7 @@ export async function loginPolitician(payload: LoginPayload): Promise<LoginResul
         mobile: payload.phone,
         password: payload.password,
         role: "politician",
+        ...device,
       });
       const token = extractToken(response.data);
       const user = normalizeUser(response.data);
@@ -424,6 +443,7 @@ export async function loginPolitician(payload: LoginPayload): Promise<LoginResul
       }
 
       setAuthSession(token, user);
+      await Promise.all([waitForAuthTokenStorage(), userStorageWrite]);
       return { token, user };
     } catch (error: any) {
       lastError = error;
@@ -438,11 +458,34 @@ export async function loginPolitician(payload: LoginPayload): Promise<LoginResul
     (lastError as any)?.response?.data?.message ??
     (lastError as any)?.message ??
     "Unable to login. Please check your credentials.";
-  throw new Error(message);
+  throw Object.assign(new Error(message), {
+    code: (lastError as any)?.response?.data?.code,
+    contactToken: (lastError as any)?.response?.data?.contactToken,
+  });
 }
 
-export async function logoutPolitician() {
+export async function logoutPolitician(): Promise<boolean> {
+  const token = await getApiAuthToken();
+  if (token) {
+    try {
+      const response = await api.post("/auth/logout", {}, { headers: { Authorization: `Bearer ${token}` } });
+      if (response.data?.success !== true) throw new Error("Logout was not confirmed.");
+    } catch (error: any) {
+      // Revoked sessions have already been removed by the server.
+      if (error?.response?.status !== 401) {
+        notifyAuthSession({ invalidated: false, message: "Could not log out. Check your connection and try again. Your device slot has not been released." });
+        return false;
+      }
+    }
+  }
+  if ((await getApiAuthToken()) !== token) return true;
+  await clearLocalAuthSession();
+  return true;
+}
+
+export async function clearLocalAuthSession() {
   setAuthSession(null, null);
+  await Promise.all([waitForAuthTokenStorage(), userStorageWrite]);
 
   try {
     await deleteVoterDatabase();
@@ -450,3 +493,5 @@ export async function logoutPolitician() {
     console.log("Voter database cleanup error:", error);
   }
 }
+
+setSessionInvalidationHandler(clearLocalAuthSession);
