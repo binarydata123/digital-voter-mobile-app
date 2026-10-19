@@ -10,7 +10,6 @@ import {
   Layers,
   MapPin,
   Pencil,
-  Phone,
   Trash2,
   User,
   Vote,
@@ -349,6 +348,10 @@ export default function VoterDetailScreen() {
             label="Serial Number"
             value={currentVoter.serialNo || currentVoter.id || "N/A"}
           />
+          <DetailRow
+            label="WhatsApp Number"
+            value={currentVoter.whatsappNumber || "N/A"}
+          />
         </Section>
 
         {/* Categories Section */}
@@ -380,16 +383,11 @@ export default function VoterDetailScreen() {
           <DetailRow
             label="Education"
             value={currentVoter.education || "N/A"}
-            icon={<GraduationCap size={14} color="#64748B" />}
+            // icon={<GraduationCap size={14} color="#64748B" />}
           />
           <DetailRow
             label="Working / Occupation"
             value={currentVoter.working || "N/A"}
-          />
-          <DetailRow
-            label="WhatsApp Number"
-            value={currentVoter.whatsappNumber || "N/A"}
-            icon={<Phone size={14} color="#64748B" />}
           />
         </Section>
 
@@ -407,7 +405,7 @@ export default function VoterDetailScreen() {
             label="Polling Station"
             value={currentVoter.pollingStation || "N/A"}
             multiline
-            icon={<MapPin size={14} color="#64748B" />}
+            // icon={<MapPin size={14} color="#64748B" />}
           />
         </Section>
       </ScrollView>
