@@ -155,10 +155,6 @@ function VoterCardComponent({
     onDelete?.(voter);
   }, [onDelete, voter]);
 
-  const handleRequirementsPress = useCallback(() => {
-    setActionsVisible(false);
-    setRequirementsVisible(true);
-  }, []);
   return (
     <View style={styles.voterCard}>
       <View style={styles.voterTop}>
@@ -186,8 +182,7 @@ function VoterCardComponent({
                   }}
                   disabled={!onMarkVoted || voter.voted || markingVoted}
                   onPress={handleNamePress}
-                  style={styles.voterNameRow}
-                >
+                  style={styles.voterNameRow}>
                   {markingVoted ? (
                     <ActivityIndicator size="small" color="#15803d" />
                   ) : voter.voted ? (
@@ -197,8 +192,7 @@ function VoterCardComponent({
                   ) : null}
                   <Text
                     numberOfLines={1}
-                    style={[styles.voterName, styles.voterNameText]}
-                  >
+                    style={[styles.voterName, styles.voterNameText]}>
                     {voter.name}
                   </Text>
                 </Pressable>
@@ -232,8 +226,7 @@ function VoterCardComponent({
                   <Pressable
                     accessibilityLabel="Open voter card templates"
                     onPress={() => setFilterVisible(true)}
-                    style={styles.scanButton}
-                  >
+                    style={styles.scanButton}>
                     <PanelsTopLeft
                       color="#087568"
                       size={16}
@@ -247,8 +240,7 @@ function VoterCardComponent({
                       accessibilityState={{ busy: sharing }}
                       disabled={sharing}
                       onPress={handleSharePress}
-                      style={styles.scanButton}
-                    >
+                      style={styles.scanButton}>
                       {sharing ? (
                         <ActivityIndicator color="#087568" size="small" />
                       ) : (
@@ -260,8 +252,7 @@ function VoterCardComponent({
                   <Pressable
                     accessibilityLabel="Open voter actions"
                     onPress={() => setActionsVisible(true)}
-                    style={[styles.scanButton, styles.actionsButton]}
-                  >
+                    style={[styles.scanButton, styles.actionsButton]}>
                     <MoreVertical color="#087568" size={17} strokeWidth={2.8} />
                   </Pressable>
                 </View>
@@ -273,8 +264,7 @@ function VoterCardComponent({
             <Text
               numberOfLines={1}
               ellipsizeMode="tail"
-              style={styles.guardian}
-            >
+              style={styles.guardian}>
               {voter.guardian}
             </Text>
           </View>
@@ -326,12 +316,10 @@ function VoterCardComponent({
           transparent
           visible
           animationType="fade"
-          onRequestClose={() => setQrVisible(false)}
-        >
+          onRequestClose={() => setQrVisible(false)}>
           <Pressable
             style={styles.qrBackdrop}
-            onPress={() => setQrVisible(false)}
-          >
+            onPress={() => setQrVisible(false)}>
             <Pressable style={styles.qrPanel}>
               <Text style={styles.qrTitle}>{voter.name}</Text>
               <Text style={styles.qrSubtitle}>
@@ -348,8 +336,7 @@ function VoterCardComponent({
 
               <Pressable
                 onPress={() => setQrVisible(false)}
-                style={styles.qrCloseButton}
-              >
+                style={styles.qrCloseButton}>
                 <Text style={styles.qrCloseText}>Close</Text>
               </Pressable>
             </Pressable>
@@ -362,16 +349,13 @@ function VoterCardComponent({
           transparent
           visible
           animationType="slide"
-          onRequestClose={() => setActionsVisible(false)}
-        >
+          onRequestClose={() => setActionsVisible(false)}>
           <Pressable
             style={styles.actionBackdrop}
-            onPress={() => setActionsVisible(false)}
-          >
+            onPress={() => setActionsVisible(false)}>
             <Pressable
               style={styles.actionPanel}
-              onPress={(event) => event.stopPropagation()}
-            >
+              onPress={(event) => event.stopPropagation()}>
               <View style={styles.actionHandle} />
               <View style={styles.actionHeader}>
                 <Text style={styles.actionTitle}>Voter actions</Text>
@@ -409,12 +393,6 @@ function VoterCardComponent({
                   onPress={handleEditPress}
                 />
               ) : null}
-              {/* <ActionRow
-                icon={MessageSquareWarning}
-                title="Requirements & Complaints"
-                subtitle="Manage voter requirements and complaints"
-                onPress={handleRequirementsPress}
-              /> */}
               {onDelete ? (
                 <ActionRow
                   danger
@@ -544,8 +522,7 @@ const Avatar = memo(function Avatar({
       }
       accessibilityState={{ busy: uploading, disabled: uploading }}
       disabled={uploading}
-      onPress={onPress}
-    >
+      onPress={onPress}>
       {avatar}
     </Pressable>
   );
@@ -572,8 +549,7 @@ const ActionRow = memo(function ActionRow({
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={[styles.actionRow, danger && styles.actionRowDanger]}
-    >
+      style={[styles.actionRow, danger && styles.actionRowDanger]}>
       <View style={[styles.actionIcon, danger && styles.actionIconDanger]}>
         <Icon
           color={danger ? "#B91C1C" : "#087568"}
@@ -618,8 +594,7 @@ const InfoTile = memo(function InfoTile({
         styles.infoTile,
         priority && styles.priorityInfoTile,
         compact && styles.compactInfoTile,
-      ]}
-    >
+      ]}>
       <View style={styles.tileIcon}>
         <Icon color="#087568" size={17} strokeWidth={2.5} />
       </View>
@@ -634,8 +609,7 @@ const InfoTile = memo(function InfoTile({
           adjustsFontSizeToFit
           minimumFontScale={0.8}
           ellipsizeMode="tail"
-          style={styles.infoValue}
-        >
+          style={styles.infoValue}>
           {value}
         </Text>
       </View>
