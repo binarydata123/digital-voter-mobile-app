@@ -55,6 +55,7 @@ import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
 import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleton";
 import { getLocalFamilyMembers } from "@/services/voter-family";
 import { searchRank, searchTerms } from "@/utils/voterSearch";
+import { getElectionVotingError } from "@/utils/electionVoting";
 import { takeCreatedVoter } from "./voter-creation-result";
 
 import {
@@ -812,6 +813,7 @@ export default function VotersScreen({
   const handleMarkVoted = useCallback(
     async (voter: Voter) => {
       if (voter.voted) return;
+      if (getElectionVotingError(getCurrentUser()?.electionDate)) return;
       try {
         const updated = await markVoterAsVoted(voter);
         saveManagedVoter(updated);
@@ -822,6 +824,7 @@ export default function VotersScreen({
           await updateLocalVoter(localPoliticianId, updated);
         }
       } catch (error: any) {
+        if (getElectionVotingError(getCurrentUser()?.electionDate)) return;
         Alert.alert(
           "Unable to mark voter as voted",
           error?.response?.data?.message ||
@@ -950,20 +953,23 @@ export default function VotersScreen({
                 accessibilityRole="button"
                 accessibilityLabel="Add voter"
                 onPress={handleAddVoter}
-                style={styles.headerIconButton}>
+                style={styles.headerIconButton}
+              >
                 <UserPlus color="#0F766E" size={19} strokeWidth={2.6} />
               </Pressable>
               <Pressable
                 accessibilityLabel="Refresh offline voter data"
                 onPress={refreshAllVoterData}
                 disabled={refreshing}
-                style={styles.headerIconButton}>
+                style={styles.headerIconButton}
+              >
                 <RefreshCw color="#0F766E" size={18} strokeWidth={2.8} />
               </Pressable>
               <Pressable
                 accessibilityLabel="Open voter menu"
                 onPress={() => setMenuVisible(true)}
-                style={[styles.headerIconButton, styles.menuButton]}>
+                style={[styles.headerIconButton, styles.menuButton]}
+              >
                 <Menu color="#FFFFFF" size={21} strokeWidth={2.8} />
               </Pressable>
             </View>
@@ -1007,7 +1013,8 @@ export default function VotersScreen({
       <View
         style={
           section === "controls" ? styles.stickyControls : styles.boothControls
-        }>
+        }
+      >
         {section === "controls" ? (
           <View style={styles.searchRow}>
             {searchMode ? (
@@ -1043,18 +1050,21 @@ export default function VotersScreen({
                     pathname: "./voter-search",
                     params: { booth: activeBooth },
                   })
-                }>
+                }
+              >
                 <Search color="#94A3B8" size={18} strokeWidth={2.6} />
                 <Text
                   style={[styles.searchInput, { color: "#94A3B8" }]}
-                  numberOfLines={1}>
+                  numberOfLines={1}
+                >
                   Search name, EPIC No. or Serial No.
                 </Text>
               </Pressable>
             )}
             <Pressable
               style={styles.filterButton}
-              onPress={() => setModalVisible(true)}>
+              onPress={() => setModalVisible(true)}
+            >
               <SlidersHorizontal color="#FFFFFF" size={15} strokeWidth={2.8} />
               <Text style={styles.filterButtonText}>Filter</Text>
             </Pressable>
@@ -1075,7 +1085,8 @@ export default function VotersScreen({
               return (
                 <Pressable
                   onPress={() => selectBooth(item)}
-                  style={[styles.boothTab, isActive && styles.boothTabActive]}>
+                  style={[styles.boothTab, isActive && styles.boothTabActive]}
+                >
                   {item === "All" ? (
                     <UsersRound
                       color={isActive ? "#FFFFFF" : "#087568"}
@@ -1087,19 +1098,22 @@ export default function VotersScreen({
                     style={[
                       styles.boothTabText,
                       isActive && styles.boothTabTextActive,
-                    ]}>
+                    ]}
+                  >
                     {label}
                   </Text>
                   <View
                     style={[
                       styles.countBadge,
                       isActive && styles.countBadgeActive,
-                    ]}>
+                    ]}
+                  >
                     <Text
                       style={[
                         styles.countBadgeText,
                         isActive && styles.countBadgeTextActive,
-                      ]}>
+                      ]}
+                    >
                       {count}
                     </Text>
                   </View>
@@ -1305,7 +1319,8 @@ export default function VotersScreen({
                   ? router.back()
                   : router.replace("/politician/voters")
               }
-              style={styles.searchPageBack}>
+              style={styles.searchPageBack}
+            >
               <ArrowLeft size={22} color="#087568" />
             </Pressable>
             <View style={{ flex: 1 }}>
@@ -1327,17 +1342,14 @@ export default function VotersScreen({
           !pendingBooth &&
           filteredVoters.length === 0)) ? (
         <View style={styles.searchEmptyArea}>
-          <View style={styles.searchEmptyIcon}>
-            <Search size={30} color="#087568" strokeWidth={1.8} />
-          </View>
-          <Text style={styles.searchEmptyTitle}>
-            {query.trim() ? "No voters found" : "Search for a voter"}
-          </Text>
-          <Text style={styles.searchEmptyMessage}>
-            {query.trim()
-              ? "Try a different name, EPIC number, serial number, or booth."
-              : "Enter a name, EPIC number, or serial number above to find voters."}
-          </Text>
+          <EmptyState
+            title={query.trim() ? "No voters found" : "Search for a voter"}
+            message={
+              query.trim()
+                ? "Try a different name, EPIC number, serial number, or booth."
+                : "Enter a name, EPIC number, or serial number above to find voters."
+            }
+          />
         </View>
       ) : (
         <FlashList
@@ -1406,13 +1418,16 @@ export default function VotersScreen({
         transparent
         visible={menuVisible}
         animationType="slide"
-        onRequestClose={() => setMenuVisible(false)}>
+        onRequestClose={() => setMenuVisible(false)}
+      >
         <Pressable
           style={styles.menuBackdrop}
-          onPress={() => setMenuVisible(false)}>
+          onPress={() => setMenuVisible(false)}
+        >
           <Pressable
             style={styles.menuDrawer}
-            onPress={(event) => event.stopPropagation()}>
+            onPress={(event) => event.stopPropagation()}
+          >
             <View style={styles.menuHandle} />
             <View style={styles.menuHeader}></View>
             {canOpenSurvey ? (
@@ -1421,7 +1436,8 @@ export default function VotersScreen({
                   setMenuVisible(false);
                   openSurveyPage();
                 }}
-                style={styles.menuRow}>
+                style={styles.menuRow}
+              >
                 <View style={styles.menuIconWrap}>
                   <UsersRound color="#087568" size={20} strokeWidth={2.6} />
                 </View>
@@ -1440,7 +1456,8 @@ export default function VotersScreen({
                   setMenuVisible(false);
                   router.push("/politician/templates");
                 }}
-                style={styles.menuRow}>
+                style={styles.menuRow}
+              >
                 <View style={styles.menuIconWrap}>
                   <Printer color="#087568" size={20} strokeWidth={2.6} />
                 </View>
@@ -1464,7 +1481,8 @@ export default function VotersScreen({
                 setMenuVisible(false);
                 void confirmLogout();
               }}
-              style={[styles.menuRow, styles.logoutMenuRow]}>
+              style={[styles.menuRow, styles.logoutMenuRow]}
+            >
               <View style={[styles.menuIconWrap, styles.logoutMenuIconWrap]}>
                 <LogOut color="#B91C1C" size={20} strokeWidth={2.6} />
               </View>
@@ -1486,13 +1504,15 @@ export default function VotersScreen({
         animationType="fade"
         onRequestClose={() => {
           if (!deletingVoter) setDeleteVoterRequest(null);
-        }}>
+        }}
+      >
         {deleteVoterRequest ? (
           <Pressable
             style={styles.printChoiceBackdrop}
             onPress={() => {
               if (!deletingVoter) setDeleteVoterRequest(null);
-            }}>
+            }}
+          >
             <Pressable style={styles.deleteConfirmPanel}>
               <Text style={styles.deleteConfirmTitle}>Delete voter?</Text>
               <Text style={styles.deleteConfirmMessage}>
@@ -1505,7 +1525,8 @@ export default function VotersScreen({
                   style={[
                     styles.deleteCancelButton,
                     deletingVoter && styles.disabledButton,
-                  ]}>
+                  ]}
+                >
                   <Text style={styles.deleteCancelText}>Cancel</Text>
                 </Pressable>
                 <Pressable
@@ -1514,7 +1535,8 @@ export default function VotersScreen({
                   style={[
                     styles.deleteConfirmButton,
                     deletingVoter && styles.disabledButton,
-                  ]}>
+                  ]}
+                >
                   <Text style={styles.deleteConfirmText}>
                     {deletingVoter ? "Deleting..." : "Delete"}
                   </Text>
@@ -1548,12 +1570,14 @@ export default function VotersScreen({
         transparent
         visible={Boolean(printTypeRequest)}
         animationType="slide"
-        onRequestClose={closePrintType}>
+        onRequestClose={closePrintType}
+      >
         {printTypeRequest ? (
           <Pressable style={styles.modalBackdrop} onPress={closePrintType}>
             <Pressable
               style={styles.modalSheet}
-              onPress={(event) => event.stopPropagation()}>
+              onPress={(event) => event.stopPropagation()}
+            >
               <View style={styles.handle} />
               <View style={styles.printChoiceHeader}>
                 <Text style={styles.printChoiceTitle}>
@@ -1564,14 +1588,16 @@ export default function VotersScreen({
                 <Pressable
                   accessibilityLabel="Close print type"
                   onPress={closePrintType}
-                  style={styles.printChoiceClose}>
+                  style={styles.printChoiceClose}
+                >
                   <Text style={styles.printChoiceCloseText}>×</Text>
                 </Pressable>
               </View>
 
               <View
                 style={styles.printOptions}
-                pointerEvents={loadingFamily ? "none" : "auto"}>
+                pointerEvents={loadingFamily ? "none" : "auto"}
+              >
                 {canUseTemplates ? (
                   <PrintChoiceRow
                     icon={
@@ -1624,7 +1650,8 @@ export default function VotersScreen({
         transparent
         visible={Boolean(slipPreview)}
         animationType="fade"
-        onRequestClose={() => setSlipPreview(null)}>
+        onRequestClose={() => setSlipPreview(null)}
+      >
         {slipPreview ? (
           <VoterSlipPreview
             voter={slipPreview.voter}
@@ -1665,10 +1692,12 @@ export default function VotersScreen({
         transparent
         visible={modalVisible}
         animationType="slide"
-        onRequestClose={() => setModalVisible(false)}>
+        onRequestClose={() => setModalVisible(false)}
+      >
         <Pressable
           style={styles.modalBackdrop}
-          onPress={() => setModalVisible(false)}>
+          onPress={() => setModalVisible(false)}
+        >
           <View style={styles.modalSheet}>
             <View style={styles.handle} />
             <Text style={styles.modalTitle}>Booth Wise Voters</Text>
@@ -1680,7 +1709,8 @@ export default function VotersScreen({
                     selectBooth(booth);
                     setModalVisible(false);
                   }}
-                  style={styles.modalCard}>
+                  style={styles.modalCard}
+                >
                   <Text style={styles.modalCardLabel}>{booth}</Text>
                   <Text style={styles.modalCardValue}>{count}</Text>
                 </Pressable>
@@ -1693,7 +1723,8 @@ export default function VotersScreen({
       {/* Scroll-to-top floating button */}
       <Animated.View
         pointerEvents={showScrollTop ? "auto" : "none"}
-        style={[styles.scrollTopWrap, { opacity: scrollTopOpacity }]}>
+        style={[styles.scrollTopWrap, { opacity: scrollTopOpacity }]}
+      >
         <Pressable
           // Preserve the native Pressable style callback on Android.
           cssInterop={false}
@@ -1702,7 +1733,8 @@ export default function VotersScreen({
           style={({ pressed }) => [
             styles.scrollTopButton,
             pressed && { transform: [{ scale: 0.92 }] },
-          ]}>
+          ]}
+        >
           <ArrowUp color="#FFFFFF" size={20} strokeWidth={3} />
         </Pressable>
       </Animated.View>
@@ -1768,29 +1800,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingTop: 48,
     paddingBottom: 20,
-    gap: 10,
-  },
-  searchEmptyIcon: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: "#E4F1EB",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  searchEmptyTitle: {
-    color: "#0F172A",
-    fontSize: 17,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  searchEmptyMessage: {
-    color: "#64748B",
-    fontSize: 13,
-    lineHeight: 20,
-    textAlign: "center",
-    maxWidth: 300,
   },
   safe: { flex: 1, backgroundColor: "#F4FBF7" },
   /* ---------- Header ---------- */
@@ -1840,7 +1849,7 @@ const styles = StyleSheet.create({
   },
   menuButton: { backgroundColor: "#087568" },
   headerCopy: {
-    width: "48%",
+    width: "100%",
   },
   eyebrow: {
     color: "#55718A",
