@@ -42,6 +42,7 @@ import {
 } from "@/services/voters";
 
 import { getDefaultVoterAvatar } from "@/utils/voterAvatar";
+import { getElectionVotingError } from "@/utils/electionVoting";
 
 function isUsableImageUri(uri?: string) {
   const value = String(uri ?? "")
@@ -58,13 +59,6 @@ function getRelationLabel(relation?: string): string {
   if (n.includes("husband") || n === "पति") return "Husband's Name";
   if (n.includes("wife") || n === "पत्नी") return "Wife's Name";
   return relation;
-}
-
-function isElectionDay(electionDate?: string) {
-  if (!electionDate) return false;
-  const today = new Date().toISOString().split("T")[0];
-  const targetDate = new Date(electionDate).toISOString().split("T")[0];
-  return today === targetDate;
 }
 
 function formatEpicNo(epicNo?: string | null): string {
@@ -117,16 +111,10 @@ export default function VoterDetailScreen() {
   }
 
   const currentVoter = voter;
-  const electionDay = isElectionDay((currentVoter as any).electionDate);
+  const electionDay = !getElectionVotingError(getCurrentUser()?.electionDate);
 
   async function markVoted() {
-    if (!electionDay) {
-      Alert.alert(
-        "Not Election Day",
-        "You can only mark a voter as voted on the election date.",
-      );
-      return;
-    }
+    if (!electionDay) return;
     if (currentVoter.voted || markingVotedRef.current) return;
 
     markingVotedRef.current = true;
@@ -138,6 +126,7 @@ export default function VoterDetailScreen() {
       const politicianId = getCurrentUser()?.id;
       if (politicianId) await updateLocalVoter(politicianId, updated);
     } catch (error: any) {
+      if (getElectionVotingError(getCurrentUser()?.electionDate)) return;
       Alert.alert(
         "Unable to mark voter as voted",
         error?.response?.data?.message || error?.message || "Please try again.",

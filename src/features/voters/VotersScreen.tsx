@@ -55,6 +55,7 @@ import { VoterDataSetup } from "@/features/voters/components/VoterDataSetup";
 import { VoterListSkeleton } from "@/features/voters/components/VoterListSkeleton";
 import { getLocalFamilyMembers } from "@/services/voter-family";
 import { searchRank, searchTerms } from "@/utils/voterSearch";
+import { getElectionVotingError } from "@/utils/electionVoting";
 import { takeCreatedVoter } from "./voter-creation-result";
 
 import {
@@ -812,6 +813,7 @@ export default function VotersScreen({
   const handleMarkVoted = useCallback(
     async (voter: Voter) => {
       if (voter.voted) return;
+      if (getElectionVotingError(getCurrentUser()?.electionDate)) return;
       try {
         const updated = await markVoterAsVoted(voter);
         saveManagedVoter(updated);
@@ -822,6 +824,7 @@ export default function VotersScreen({
           await updateLocalVoter(localPoliticianId, updated);
         }
       } catch (error: any) {
+        if (getElectionVotingError(getCurrentUser()?.electionDate)) return;
         Alert.alert(
           "Unable to mark voter as voted",
           error?.response?.data?.message ||
